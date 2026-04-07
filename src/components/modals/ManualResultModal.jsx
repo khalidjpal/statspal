@@ -1,0 +1,225 @@
+import { useState, useEffect } from 'react';
+import { supabase } from '../../supabase';
+
+export default function ManualResultModal({ game, team, players, existingStats, onClose, onSaved }) {
+  const teamPlayers = players.filter(p => p.team_id === team.id);
+  const isNew = !game.result; // No result yet = entering fresh
+
+  const [result, setResult] = useState(game.result || 'W');
+  const [homeSets, setHomeSets] = useState(game.home_sets || 3);
+  const [awaySets, setAwaySets] = useState(game.away_sets || 0);
+  const [setScores, setSetScores] = useState(() => {
+    if (game.set_scores && game.set_scores.length > 0) return game.set_scores;
+    const count = (game.home_sets || 3) + (game.away_sets || 0);
+    return Array.from({ length: count || 3 }, () => ({ home: 25, away: 20 }));
+  });
+  const [stats, setStats] = useState(() => {
+    const init = {};
+    teamPlayers.forEach(p => {
+      const existing = existingStats.find(s => s.player_id === p.id);
+      init[p.id] = existing
+        ? { ...existing }
+        : { kills: 0, aces: 0, digs: 0, assists: 0, blocks: 0, errors: 0, attempts: 0, sets_played: 0 };
+    });
+    return init;
+  });
+  const [saving, setSaving] = useState(false);
+  const [tab, setTab] = useState('score');
+
+  // Update set scores array when set counts change
+  useEffect(() => {
+    const count = homeSets + awaySets;
+    if (count > 0 && count !== setScores.length) {
+      setSetScores(prev => {
+        const arr = [...prev];
+        while (arr.length < count) arr.push({ home: 25, away: 20 });
+        return arr.slice(0, count);
+      });
+    }
+  }, [homeSets, awaySets]);
+
+  function updateSetScore(idx, side, val) {
+    setSetScores(prev => {
+      const arr = [...prev];
+      arr[idx] = { ...arr[idx], [side]: Math.max(0, parseInt(val) || 0) };
+      return arr;
+    });
+  }
+
+  function updateStat(playerId, field, value) {
+    setStats(prev => ({
+      ...prev,
+      [playerId]: { ...prev[playerId], [field]: Math.max(0, parseInt(value) || 0) },
+    }));
+  }
+
+  async function handleSave() {
+    setSaving(true);
+
+    // Update the completed game record
+    await supabase.from('completed_games').update({
+      result,
+      home_sets: homeSets,
+      away_sets: awaySets,
+      set_scores: setScores.slice(0, homeSets + awaySets),
+    }).eq('id', game.id);
+
+    // Delete existing stats and insert new ones
+    await supabase.from('player_game_stats').delete().eq('game_id', game.id);
+    const rows = teamPlayers
+      .map(p => ({
+        game_id: game.id,
+        player_id: p.id,
+        ...stats[p.id],
+      }))
+      .filter(r => r.sets_played > 0 || r.kills > 0 || r.aces > 0 || r.digs > 0 || r.assists > 0 || r.blocks > 0);
+
+    if (rows.length > 0) {
+      await supabase.from('player_game_stats').insert(rows);
+    }
+
+    // If league game, auto-sync standings
+    if (game.is_league && game.league_team_id) {
+      // Find the "us" league team
+      const { data: leagueTeams } = await supabase.from('league_teams')
+        .select('*')
+        .eq('team_id', team.id)
+        .eq('is_us', true);
+      const usTeam = leagueTeams?.[0];
+
+      if (usTeam) {
+        // Remove any existing league result for this game date + opponent combo
+        await supabase.from('league_results').delete()
+          .eq('team_id', team.id)
+          .or(`and(home_league_team_id.eq.${usTeam.id},away_league_team_id.eq.${game.league_team_id}),and(home_league_team_id.eq.${game.league_team_id},away_league_team_id.eq.${usTeam.id})`)
+          .eq('game_date', game.game_date);
+
+        // Determine home/away based on location
+        const isHome = (game.location || 'Home') === 'Home';
+        await supabase.from('league_results').insert({
+          team_id: team.id,
+          home_league_team_id: isHome ? usTeam.id : game.league_team_id,
+          away_league_team_id: isHome ? game.league_team_id : usTeam.id,
+          home_sets: isHome ? homeSets : awaySets,
+          away_sets: isHome ? awaySets : homeSets,
+          game_date: game.game_date,
+        });
+      }
+    }
+
+    setSaving(false);
+    onSaved();
+  }
+
+  const statFields = ['sets_played', 'kills', 'aces', 'digs', 'assists', 'blocks', 'errors', 'attempts'];
+  const statLabels = { sets_played: 'SP', kills: 'K', aces: 'A', digs: 'D', assists: 'AST', blocks: 'B', errors: 'E', attempts: 'ATT' };
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: 700, maxHeight: '90vh', overflow: 'auto' }}>
+        <h2>{isNew ? 'Enter Result' : 'Edit Result'} — vs {game.opponent}</h2>
+
+        {/* Tab toggle */}
+        <div style={{ display: 'flex', gap: 0, marginBottom: 16, borderRadius: 8, overflow: 'hidden', border: '1px solid #e4e6ea' }}>
+          <button
+            onClick={() => setTab('score')}
+            style={{ flex: 1, padding: '10px', fontSize: 13, fontWeight: 600, background: tab === 'score' ? '#1a3a8f' : '#fff', color: tab === 'score' ? '#fff' : '#555', border: 'none', cursor: 'pointer' }}
+          >
+            Score
+          </button>
+          <button
+            onClick={() => setTab('stats')}
+            style={{ flex: 1, padding: '10px', fontSize: 13, fontWeight: 600, background: tab === 'stats' ? '#1a3a8f' : '#fff', color: tab === 'stats' ? '#fff' : '#555', border: 'none', cursor: 'pointer' }}
+          >
+            Player Stats
+          </button>
+        </div>
+
+        {tab === 'score' && (
+          <div>
+            <label>Result</label>
+            <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+              <button
+                onClick={() => setResult('W')}
+                style={{ flex: 1, padding: 10, borderRadius: 8, border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: 14, background: result === 'W' ? '#e8f5e9' : '#f0f2f5', color: result === 'W' ? '#1a5c2a' : '#888' }}
+              >
+                Win
+              </button>
+              <button
+                onClick={() => setResult('L')}
+                style={{ flex: 1, padding: 10, borderRadius: 8, border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: 14, background: result === 'L' ? '#fdecea' : '#f0f2f5', color: result === 'L' ? '#8b1a1a' : '#888' }}
+              >
+                Loss
+              </button>
+            </div>
+
+            <div style={{ display: 'flex', gap: 12, marginBottom: 16 }}>
+              <div style={{ flex: 1 }}>
+                <label>{team.name} Sets</label>
+                <input type="number" min={0} max={3} value={homeSets} onChange={e => setHomeSets(Math.max(0, +e.target.value))} />
+              </div>
+              <div style={{ flex: 1 }}>
+                <label>Opponent Sets</label>
+                <input type="number" min={0} max={3} value={awaySets} onChange={e => setAwaySets(Math.max(0, +e.target.value))} />
+              </div>
+            </div>
+
+            <label>Set Scores</label>
+            {setScores.slice(0, homeSets + awaySets).map((s, i) => (
+              <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 }}>
+                <span style={{ fontSize: 13, fontWeight: 600, color: '#888', width: 50 }}>Set {i + 1}</span>
+                <input type="number" min={0} value={s.home} onChange={e => updateSetScore(i, 'home', e.target.value)}
+                  style={{ width: 60, textAlign: 'center' }} />
+                <span style={{ color: '#888' }}>-</span>
+                <input type="number" min={0} value={s.away} onChange={e => updateSetScore(i, 'away', e.target.value)}
+                  style={{ width: 60, textAlign: 'center' }} />
+              </div>
+            ))}
+          </div>
+        )}
+
+        {tab === 'stats' && (
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+              <thead>
+                <tr style={{ background: '#f8f9fa' }}>
+                  <th style={{ padding: '6px 8px', textAlign: 'left', fontSize: 11 }}>Player</th>
+                  {statFields.map(f => (
+                    <th key={f} style={{ padding: '6px 3px', textAlign: 'center', fontSize: 10, textTransform: 'uppercase' }}>
+                      {statLabels[f]}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {teamPlayers.map(p => (
+                  <tr key={p.id} style={{ borderTop: '1px solid #eee' }}>
+                    <td style={{ padding: '4px 8px', fontWeight: 600, fontSize: 12, whiteSpace: 'nowrap' }}>{p.name}</td>
+                    {statFields.map(f => (
+                      <td key={f} style={{ padding: '2px' }}>
+                        <input
+                          type="number"
+                          min={0}
+                          value={stats[p.id]?.[f] || 0}
+                          onChange={e => updateStat(p.id, f, e.target.value)}
+                          style={{ width: 42, textAlign: 'center', padding: '4px 2px', border: '1px solid #ddd', borderRadius: 4, fontSize: 12 }}
+                        />
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        <div className="modal-actions" style={{ marginTop: 16 }}>
+          <button className="modal-btn-cancel" onClick={onClose}>Cancel</button>
+          <button className="modal-btn-primary" onClick={handleSave} disabled={saving}>
+            {saving ? 'Saving...' : 'Save Result'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}

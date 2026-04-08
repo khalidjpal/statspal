@@ -17,89 +17,55 @@ export default function StandingsTab({ team, leagueTeams, leagueResults, isAdmin
     <div>
       {isAdmin && (
         <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-          <button className="modal-btn-primary" onClick={() => setShowAddTeam(true)} style={{ flex: 1 }}>
-            + League Team
-          </button>
-          <button className="modal-btn-primary" onClick={() => setShowAddResult(true)} style={{ flex: 1 }}>
-            + Result
-          </button>
-        </div>
-      )}
-
-      {team.league_name && (
-        <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 12 }}>
-          {team.league_name}
+          <button className="modal-btn-primary" onClick={() => setShowAddTeam(true)} style={{ flex: 1 }}>+ League Team</button>
+          <button className="modal-btn-primary" onClick={() => setShowAddResult(true)} style={{ flex: 1 }}>+ Result</button>
         </div>
       )}
 
       {standings.length === 0 ? (
         <div className="empty-state">No league teams added yet</div>
       ) : (
-        <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
-            <thead>
-              <tr style={{ background: 'rgba(128,128,128,0.06)', textAlign: 'left' }}>
-                <th style={{ padding: '10px 12px', fontWeight: 600 }}>#</th>
-                <th style={{ padding: '10px 12px', fontWeight: 600 }}>Team</th>
-                <th style={{ padding: '10px 8px', fontWeight: 600, textAlign: 'center' }}>W</th>
-                <th style={{ padding: '10px 8px', fontWeight: 600, textAlign: 'center' }}>L</th>
-                <th style={{ padding: '10px 8px', fontWeight: 600, textAlign: 'center' }}>Sets</th>
-                {isAdmin && <th style={{ padding: '10px 8px', fontWeight: 600, textAlign: 'center' }}></th>}
-              </tr>
-            </thead>
-            <tbody>
-              {standings.map((t, i) => (
-                <tr key={t.id} style={{ borderTop: '1px solid var(--border)', fontWeight: t.is_us ? 700 : 400 }}>
-                  <td style={{ padding: '10px 12px' }}>{i + 1}</td>
-                  <td style={{ padding: '10px 12px' }}>
-                    <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: t.dot_color || '#888888', marginRight: 8 }} />
-                    <span style={{ color: t.text_color || 'var(--text)' }}>{t.name}</span>
-                  </td>
-                  <td style={{ padding: '10px 8px', textAlign: 'center' }}>{t.wins}</td>
-                  <td style={{ padding: '10px 8px', textAlign: 'center' }}>{t.losses}</td>
-                  <td style={{ padding: '10px 8px', textAlign: 'center' }}>{t.setsWon}-{t.setsLost}</td>
-                  {isAdmin && (
-                    <td style={{ padding: '10px 8px', textAlign: 'center' }}>
-                      <button
-                        onClick={() => {
-                          const full = myLeagueTeams.find(lt => lt.id === t.id);
-                          if (full) setEditingTeam(full);
-                        }}
-                        style={{ background: 'rgba(128,128,128,0.08)', color: 'var(--text-secondary)', padding: '4px 10px', borderRadius: 6, fontSize: 11, fontWeight: 600, border: 'none', cursor: 'pointer' }}
-                      >
-                        Edit
-                      </button>
-                    </td>
-                  )}
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {standings.map((t, i) => {
+            const total = t.wins + t.losses;
+            const pct = total > 0 ? t.wins / total : 0;
+            const barColor = t.dot_color || '#58a6ff';
+            return (
+              <div key={t.id} className="stb-row" style={t.is_us ? { border: `1px solid ${barColor}40`, background: '#0d1117' } : undefined}>
+                <div className="stb-rank">{i + 1}</div>
+                <div className="stb-info">
+                  <div className="stb-name-row">
+                    <span className="stb-dot" style={{ background: barColor }} />
+                    <span className="stb-name" style={{ color: t.text_color || 'var(--text)', fontWeight: t.is_us ? 700 : 500 }}>{t.name}</span>
+                    {isAdmin && (
+                      <button className="stb-edit" onClick={() => {
+                        const full = myLeagueTeams.find(lt => lt.id === t.id);
+                        if (full) setEditingTeam(full);
+                      }}>Edit</button>
+                    )}
+                  </div>
+                  <div className="stb-bar-track">
+                    <div className="stb-bar-fill" style={{
+                      width: `${Math.max(pct * 100, 2)}%`,
+                      background: `linear-gradient(90deg, ${barColor}, ${barColor}80)`,
+                      boxShadow: pct > 0 ? `0 0 12px ${barColor}30` : 'none',
+                    }} />
+                  </div>
+                  <div className="stb-stats">
+                    <span><b>{t.wins}</b>W</span>
+                    <span><b>{t.losses}</b>L</span>
+                    <span className="stb-sets">{t.setsWon}-{t.setsLost} sets</span>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
 
-      {showAddTeam && (
-        <AddLeagueTeamModal
-          teamId={team.id}
-          onClose={() => setShowAddTeam(false)}
-          onSaved={() => { setShowAddTeam(false); refresh(); }}
-        />
-      )}
-      {showAddResult && (
-        <AddResultModal
-          teamId={team.id}
-          leagueTeams={myLeagueTeams}
-          onClose={() => setShowAddResult(false)}
-          onSaved={() => { setShowAddResult(false); refresh(); }}
-        />
-      )}
-      {editingTeam && (
-        <EditLeagueTeamModal
-          leagueTeam={editingTeam}
-          onClose={() => setEditingTeam(null)}
-          onSaved={() => { setEditingTeam(null); refresh(); }}
-        />
-      )}
+      {showAddTeam && <AddLeagueTeamModal teamId={team.id} onClose={() => setShowAddTeam(false)} onSaved={() => { setShowAddTeam(false); refresh(); }} />}
+      {showAddResult && <AddResultModal teamId={team.id} leagueTeams={myLeagueTeams} onClose={() => setShowAddResult(false)} onSaved={() => { setShowAddResult(false); refresh(); }} />}
+      {editingTeam && <EditLeagueTeamModal leagueTeam={editingTeam} onClose={() => setEditingTeam(null)} onSaved={() => { setEditingTeam(null); refresh(); }} />}
     </div>
   );
 }

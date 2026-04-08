@@ -18,7 +18,7 @@ export default function Login() {
   return (
     <div className="login-container">
       <div className="login-logo">🏐</div>
-      <div className="login-title">StatsPal</div>
+      <div className="login-title">StatPal</div>
 
       <div className="login-card">
         {error && <div className="login-error">{error}</div>}

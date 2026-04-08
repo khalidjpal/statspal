@@ -34,7 +34,7 @@ export default function Hub({ onSelectTeam, onGodMode }) {
       <header className="hub-header">
         <div className="hub-header-left">
           <span className="hub-header-logo">🏐</span>
-          <h1>StatsPal</h1>
+          <h1>StatPal</h1>
         </div>
         <div className="hub-user-info">
           <span className="hub-user-name">{currentUser?.name}</span>

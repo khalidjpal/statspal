@@ -53,7 +53,7 @@ export default function StandingsTab({ team, leagueTeams, leagueResults, isAdmin
                   <td style={{ padding: '10px 12px' }}>{i + 1}</td>
                   <td style={{ padding: '10px 12px' }}>
                     <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: t.dot_color || '#888888', marginRight: 8 }} />
-                    <span style={{ color: t.is_us ? t.text_color : 'var(--text)' }}>{t.name}</span>
+                    <span style={{ color: t.text_color || 'var(--text)' }}>{t.name}</span>
                   </td>
                   <td style={{ padding: '10px 8px', textAlign: 'center' }}>{t.wins}</td>
                   <td style={{ padding: '10px 8px', textAlign: 'center' }}>{t.losses}</td>

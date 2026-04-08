@@ -34,7 +34,7 @@ export default function RosterTab({ team, players, isAdmin, refresh, onSelectPla
                 </span>
                 <div>
                   <div style={{ fontWeight: 600 }}>{p.name}</div>
-                  <div style={{ fontSize: 12, color: '#8892a4' }}>
+                  <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
                     {[p.jersey_number ? `#${p.jersey_number}` : null, p.position, p.height, p.grade].filter(Boolean).join(' · ')}
                   </div>
                 </div>

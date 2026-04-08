@@ -20,7 +20,7 @@ export default function ManualResultModal({ game, team, players, existingStats, 
       const existing = existingStats.find(s => s.player_id === p.id);
       init[p.id] = existing
         ? { ...existing }
-        : { kills: 0, aces: 0, digs: 0, assists: 0, blocks: 0, errors: 0, attempts: 0, sets_played: 0 };
+        : { kills: 0, aces: 0, digs: 0, assists: 0, blocks: 0, errors: 0, attempts: 0, sets_played: 0, block_assists: 0, serve_errors: 0 };
     });
     return init;
   });
@@ -85,7 +85,7 @@ export default function ManualResultModal({ game, team, players, existingStats, 
         player_id: p.id,
         ...stats[p.id],
       }))
-      .filter(r => r.sets_played > 0 || r.kills > 0 || r.aces > 0 || r.digs > 0 || r.assists > 0 || r.blocks > 0);
+      .filter(r => r.sets_played > 0 || r.kills > 0 || r.aces > 0 || r.digs > 0 || r.assists > 0 || r.blocks > 0 || r.block_assists > 0 || r.serve_errors > 0 || r.errors > 0);
 
     if (rows.length > 0) {
       await supabase.from('player_game_stats').insert(rows);
@@ -124,8 +124,8 @@ export default function ManualResultModal({ game, team, players, existingStats, 
     onSaved();
   }
 
-  const statFields = ['sets_played', 'kills', 'aces', 'digs', 'assists', 'blocks', 'errors', 'attempts'];
-  const statLabels = { sets_played: 'SP', kills: 'K', aces: 'A', digs: 'D', assists: 'AST', blocks: 'B', errors: 'E', attempts: 'ATT' };
+  const statFields = ['sets_played', 'kills', 'errors', 'attempts', 'assists', 'aces', 'serve_errors', 'digs', 'blocks', 'block_assists'];
+  const statLabels = { sets_played: 'SP', kills: 'K', errors: 'E', attempts: 'TA', assists: 'A', aces: 'SA', serve_errors: 'SE', digs: 'Digs', blocks: 'BS', block_assists: 'BA' };
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -139,16 +139,16 @@ export default function ManualResultModal({ game, team, players, existingStats, 
         )}
 
         {/* Tab toggle */}
-        <div style={{ display: 'flex', gap: 0, marginBottom: 16, borderRadius: 8, overflow: 'hidden', border: '1px solid rgba(255,255,255,0.06)' }}>
+        <div style={{ display: 'flex', gap: 0, marginBottom: 16, borderRadius: 8, overflow: 'hidden', border: '1px solid var(--border)' }}>
           <button
             onClick={() => setTab('score')}
-            style={{ flex: 1, padding: '10px', fontSize: 13, fontWeight: 600, background: tab === 'score' ? '#1a3a8f' : 'rgba(255,255,255,0.04)', color: tab === 'score' ? '#fff' : '#8892a4', border: 'none', cursor: 'pointer' }}
+            style={{ flex: 1, padding: '10px', fontSize: 13, fontWeight: 600, background: tab === 'score' ? '#1a3a8f' : 'transparent', color: tab === 'score' ? '#fff' : 'var(--text-secondary)', border: 'none', cursor: 'pointer' }}
           >
             Score
           </button>
           <button
             onClick={() => setTab('stats')}
-            style={{ flex: 1, padding: '10px', fontSize: 13, fontWeight: 600, background: tab === 'stats' ? '#1a3a8f' : 'rgba(255,255,255,0.04)', color: tab === 'stats' ? '#fff' : '#8892a4', border: 'none', cursor: 'pointer' }}
+            style={{ flex: 1, padding: '10px', fontSize: 13, fontWeight: 600, background: tab === 'stats' ? '#1a3a8f' : 'transparent', color: tab === 'stats' ? '#fff' : 'var(--text-secondary)', border: 'none', cursor: 'pointer' }}
           >
             Player Stats
           </button>
@@ -186,7 +186,7 @@ export default function ManualResultModal({ game, team, players, existingStats, 
             <label>Set Scores</label>
             {setScores.slice(0, homeSets + awaySets).map((s, i) => (
               <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 }}>
-                <span style={{ fontSize: 13, fontWeight: 600, color: '#8892a4', width: 50 }}>Set {i + 1}</span>
+                <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)', width: 50 }}>Set {i + 1}</span>
                 <input type="number" min={0} value={s.home} onChange={e => updateSetScore(i, 'home', e.target.value)}
                   style={{ width: 60, textAlign: 'center' }} />
                 <span style={{ color: '#8892a4' }}>-</span>
@@ -201,10 +201,10 @@ export default function ManualResultModal({ game, team, players, existingStats, 
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
               <thead>
-                <tr style={{ background: 'rgba(255,255,255,0.03)' }}>
-                  <th style={{ padding: '6px 8px', textAlign: 'left', fontSize: 11 }}>Player</th>
+                <tr style={{ background: 'rgba(128,128,128,0.06)' }}>
+                  <th style={{ padding: '6px 8px', textAlign: 'left', fontSize: 11, color: 'var(--text-secondary)' }}>Player</th>
                   {statFields.map(f => (
-                    <th key={f} style={{ padding: '6px 3px', textAlign: 'center', fontSize: 10, textTransform: 'uppercase' }}>
+                    <th key={f} style={{ padding: '6px 3px', textAlign: 'center', fontSize: 10, textTransform: 'uppercase', color: 'var(--text-secondary)' }}>
                       {statLabels[f]}
                     </th>
                   ))}
@@ -212,8 +212,8 @@ export default function ManualResultModal({ game, team, players, existingStats, 
               </thead>
               <tbody>
                 {teamPlayers.map(p => (
-                  <tr key={p.id} style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-                    <td style={{ padding: '4px 8px', fontWeight: 600, fontSize: 12, whiteSpace: 'nowrap' }}>{p.name}</td>
+                  <tr key={p.id} style={{ borderTop: '1px solid var(--border)' }}>
+                    <td style={{ padding: '4px 8px', fontWeight: 600, fontSize: 12, whiteSpace: 'nowrap', color: 'var(--text)' }}>{p.name}</td>
                     {statFields.map(f => (
                       <td key={f} style={{ padding: '2px' }}>
                         <input
@@ -221,7 +221,7 @@ export default function ManualResultModal({ game, team, players, existingStats, 
                           min={0}
                           value={stats[p.id]?.[f] || 0}
                           onChange={e => updateStat(p.id, f, e.target.value)}
-                          style={{ width: 42, textAlign: 'center', padding: '4px 2px', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 4, fontSize: 12 }}
+                          style={{ width: 42, textAlign: 'center', padding: '4px 2px', borderRadius: 4, fontSize: 12 }}
                         />
                       </td>
                     ))}

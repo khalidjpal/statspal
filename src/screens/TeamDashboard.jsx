@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useData } from '../contexts/DataContext';
-import { teamTotals, teamRecord } from '../utils/stats';
 import StatsStrip from '../components/StatsStrip';
 import ScheduleTab from '../components/ScheduleTab';
 import StandingsTab from '../components/StandingsTab';
@@ -18,18 +17,11 @@ export default function TeamDashboard({ team, onBack, onSelectGame, onSelectPlay
 
   useEffect(() => { refresh(); }, [refresh]);
 
-  const teamGames = completedGames.filter(g => g.team_id === team.id);
-  const teamStats = playerGameStats.filter(s => {
-    const game = completedGames.find(g => g.id === s.game_id);
-    return game && game.team_id === team.id;
-  });
-  const totals = teamTotals(teamStats);
-  const record = teamRecord(teamGames);
   const isAdmin = currentUser?.role === 'admin';
   const isCoachOrAdmin = isAdmin || currentUser?.role === 'coach';
 
   return (
-    <div style={{ minHeight: '100vh', background: '#0a0f1e' }}>
+    <div style={{ minHeight: '100vh', background: 'var(--bg)' }}>
       {/* Header */}
       <div style={{
         background: `linear-gradient(135deg, ${team.color || '#0d1f5c'}, ${team.color || '#1a3a8f'})`,
@@ -69,7 +61,13 @@ export default function TeamDashboard({ team, onBack, onSelectGame, onSelectPlay
       </div>
 
       <div style={{ padding: '16px 20px', maxWidth: 800, margin: '0 auto' }}>
-        <StatsStrip stats={totals} gamesPlayed={`${record.w}-${record.l}`} />
+        <StatsStrip
+          players={players}
+          playerGameStats={playerGameStats}
+          completedGames={completedGames}
+          teamId={team.id}
+          currentUser={currentUser}
+        />
 
         {/* Tab bar */}
         <div className="tab-bar">

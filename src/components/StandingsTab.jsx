@@ -27,7 +27,7 @@ export default function StandingsTab({ team, leagueTeams, leagueResults, isAdmin
       )}
 
       {team.league_name && (
-        <div style={{ fontSize: 14, fontWeight: 600, color: '#8892a4', marginBottom: 12 }}>
+        <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 12 }}>
           {team.league_name}
         </div>
       )}
@@ -38,7 +38,7 @@ export default function StandingsTab({ team, leagueTeams, leagueResults, isAdmin
         <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
             <thead>
-              <tr style={{ background: 'rgba(255,255,255,0.03)', textAlign: 'left' }}>
+              <tr style={{ background: 'rgba(128,128,128,0.06)', textAlign: 'left' }}>
                 <th style={{ padding: '10px 12px', fontWeight: 600 }}>#</th>
                 <th style={{ padding: '10px 12px', fontWeight: 600 }}>Team</th>
                 <th style={{ padding: '10px 8px', fontWeight: 600, textAlign: 'center' }}>W</th>
@@ -49,11 +49,11 @@ export default function StandingsTab({ team, leagueTeams, leagueResults, isAdmin
             </thead>
             <tbody>
               {standings.map((t, i) => (
-                <tr key={t.id} style={{ borderTop: '1px solid rgba(255,255,255,0.06)', fontWeight: t.is_us ? 700 : 400 }}>
+                <tr key={t.id} style={{ borderTop: '1px solid var(--border)', fontWeight: t.is_us ? 700 : 400 }}>
                   <td style={{ padding: '10px 12px' }}>{i + 1}</td>
                   <td style={{ padding: '10px 12px' }}>
-                    <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: t.dot_color, marginRight: 8 }} />
-                    <span style={{ color: t.text_color }}>{t.name}</span>
+                    <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: t.dot_color || '#888888', marginRight: 8 }} />
+                    <span style={{ color: t.is_us ? t.text_color : 'var(--text)' }}>{t.name}</span>
                   </td>
                   <td style={{ padding: '10px 8px', textAlign: 'center' }}>{t.wins}</td>
                   <td style={{ padding: '10px 8px', textAlign: 'center' }}>{t.losses}</td>
@@ -65,7 +65,7 @@ export default function StandingsTab({ team, leagueTeams, leagueResults, isAdmin
                           const full = myLeagueTeams.find(lt => lt.id === t.id);
                           if (full) setEditingTeam(full);
                         }}
-                        style={{ background: 'rgba(255,255,255,0.03)', color: '#8892a4', padding: '4px 10px', borderRadius: 6, fontSize: 11, fontWeight: 600, border: 'none', cursor: 'pointer' }}
+                        style={{ background: 'rgba(128,128,128,0.08)', color: 'var(--text-secondary)', padding: '4px 10px', borderRadius: 6, fontSize: 11, fontWeight: 600, border: 'none', cursor: 'pointer' }}
                       >
                         Edit
                       </button>

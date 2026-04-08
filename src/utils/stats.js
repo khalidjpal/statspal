@@ -88,7 +88,7 @@ export function n3(v) {
 
 // Compute totals for a single player across games
 export function playerTotals(statsRows) {
-  const t = { kills: 0, aces: 0, digs: 0, assists: 0, blocks: 0, errors: 0, attempts: 0, sets_played: 0 };
+  const t = { kills: 0, aces: 0, digs: 0, assists: 0, blocks: 0, errors: 0, attempts: 0, sets_played: 0, block_assists: 0, serve_errors: 0 };
   for (const r of statsRows) {
     t.kills += r.kills || 0;
     t.aces += r.aces || 0;
@@ -98,6 +98,8 @@ export function playerTotals(statsRows) {
     t.errors += r.errors || 0;
     t.attempts += r.attempts || 0;
     t.sets_played += r.sets_played || 0;
+    t.block_assists += r.block_assists || 0;
+    t.serve_errors += r.serve_errors || 0;
   }
   return t;
 }

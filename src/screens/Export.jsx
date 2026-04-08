@@ -1,5 +1,5 @@
 import { useData } from '../contexts/DataContext';
-import { hpct, n2, n3, playerTotals } from '../utils/stats';
+import { hpct, n3, playerTotals } from '../utils/stats';
 import { sortedCompleted } from '../utils/sort';
 
 export default function Export({ team, onBack }) {
@@ -9,16 +9,24 @@ export default function Export({ team, onBack }) {
   const teamGames = sortedCompleted(completedGames.filter(g => g.team_id === team.id));
 
   function buildCSV() {
-    const headers = ['Player', 'SP', 'K', 'A', 'D', 'AST', 'B', 'E', 'Att', 'Hit%', 'K/S', 'A/S', 'D/S', 'AST/S', 'B/S'];
+    const headers = ['Player', 'SP', 'K', 'E', 'TA', 'K%', 'A', 'SA', 'SE', 'Digs', 'BS', 'BA'];
     const rows = teamPlayers.map(p => {
       const stats = playerGameStats.filter(s => s.player_id === p.id);
       const t = playerTotals(stats);
-      const sp = t.sets_played || 1;
       const h = hpct(t.kills, t.errors, t.attempts);
       return [
-        p.name, t.sets_played, t.kills, t.aces, t.digs, t.assists, t.blocks, t.errors, t.attempts,
-        h !== null ? (h >= 0 ? '+' : '') + h.toFixed(3) : '',
-        n2(t.kills / sp), n2(t.aces / sp), n2(t.digs / sp), n2(t.assists / sp), n2(t.blocks / sp),
+        p.name,
+        t.sets_played,
+        t.kills,
+        t.errors,
+        t.attempts,
+        h !== null ? n3(h) : '',
+        t.assists,
+        t.aces,
+        t.serve_errors,
+        t.digs,
+        t.blocks,
+        t.block_assists,
       ];
     });
     return [headers, ...rows].map(r => r.join(',')).join('\n');
@@ -43,7 +51,7 @@ export default function Export({ team, onBack }) {
   }
 
   return (
-    <div style={{ minHeight: '100vh', background: '#0a0f1e' }}>
+    <div style={{ minHeight: '100vh', background: 'var(--bg)' }}>
       <div style={{
         background: `linear-gradient(135deg, ${team.color || '#0d1f5c'}, ${team.color || '#1a3a8f'})`,
         color: '#fff', padding: '16px 20px',
@@ -56,8 +64,8 @@ export default function Export({ team, onBack }) {
 
       <div style={{ padding: '16px 20px', maxWidth: 600, margin: '0 auto' }}>
         <div className="card" style={{ textAlign: 'center' }}>
-          <h3 style={{ marginBottom: 8, color: '#f0f4ff' }}>Season Stats</h3>
-          <p style={{ fontSize: 13, color: '#8892a4', marginBottom: 16 }}>Download player season averages and totals as CSV</p>
+          <h3 style={{ marginBottom: 8, color: 'var(--text)' }}>Season Stats</h3>
+          <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 16 }}>Download player season averages and totals as CSV</p>
           <button
             className="modal-btn-primary"
             onClick={() => download(buildCSV(), `${team.name.replace(/\s+/g, '_')}_season_stats.csv`)}
@@ -67,8 +75,8 @@ export default function Export({ team, onBack }) {
         </div>
 
         <div className="card" style={{ textAlign: 'center' }}>
-          <h3 style={{ marginBottom: 8, color: '#f0f4ff' }}>Game Log</h3>
-          <p style={{ fontSize: 13, color: '#8892a4', marginBottom: 16 }}>Download all game results as CSV</p>
+          <h3 style={{ marginBottom: 8, color: 'var(--text)' }}>Game Log</h3>
+          <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 16 }}>Download all game results as CSV</p>
           <button
             className="modal-btn-primary"
             onClick={() => download(buildGameLogCSV(), `${team.name.replace(/\s+/g, '_')}_game_log.csv`)}

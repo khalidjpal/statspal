@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useData } from '../contexts/DataContext';
+import { useTheme } from '../contexts/ThemeContext';
 import { teamRecord } from '../utils/stats';
 import CreateTeamModal from '../components/modals/CreateTeamModal';
 import ManageAccountsModal from '../components/modals/ManageAccountsModal';
@@ -8,6 +9,7 @@ import ManageAccountsModal from '../components/modals/ManageAccountsModal';
 export default function Hub({ onSelectTeam, onGodMode }) {
   const { currentUser, logout } = useAuth();
   const { teams, completedGames, refresh, loading } = useData();
+  const { dark, toggleTheme } = useTheme();
   const [showCreateTeam, setShowCreateTeam] = useState(false);
   const [showAccounts, setShowAccounts] = useState(false);
 
@@ -35,6 +37,18 @@ export default function Hub({ onSelectTeam, onGodMode }) {
         </div>
         <div className="hub-user-info">
           <span className="hub-user-name">{currentUser?.name}</span>
+          <button
+            onClick={toggleTheme}
+            title={dark ? 'Switch to light mode' : 'Switch to dark mode'}
+            style={{
+              background: 'rgba(255,255,255,0.1)', border: 'none', cursor: 'pointer',
+              width: 34, height: 34, borderRadius: '50%', fontSize: 17,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              transition: 'background 0.2s', flexShrink: 0,
+            }}
+          >
+            {dark ? '☀️' : '🌙'}
+          </button>
           <button className="hub-logout-btn" onClick={logout}>Logout</button>
         </div>
       </header>

@@ -1,5 +1,5 @@
 import { useData } from '../contexts/DataContext';
-import { hpct, n2, n3, hcol, hlbl } from '../utils/stats';
+import { hpct, n3, hcol, hlbl } from '../utils/stats';
 import { pColors, mkInit } from '../utils/colors';
 
 export default function PlayerGameDetailPlayer({ player, game, onBack }) {
@@ -7,13 +7,13 @@ export default function PlayerGameDetailPlayer({ player, game, onBack }) {
   const team = teams.find(t => t.id === player.team_id);
   const colors = player.colors || pColors(player.player_index ?? 0);
   const stats = playerGameStats.find(s => s.player_id === player.id && s.game_id === game.id) ||
-    { kills: 0, aces: 0, digs: 0, assists: 0, blocks: 0, errors: 0, attempts: 0, sets_played: 0 };
+    { kills: 0, aces: 0, digs: 0, assists: 0, blocks: 0, errors: 0, attempts: 0, sets_played: 0, block_assists: 0, serve_errors: 0 };
 
   const sp = stats.sets_played || 1;
   const h = hpct(stats.kills, stats.errors, stats.attempts);
 
   return (
-    <div style={{ minHeight: '100vh', background: '#0a0f1e' }}>
+    <div style={{ minHeight: '100vh', background: 'var(--bg)' }}>
       <div style={{
         background: `linear-gradient(135deg, ${team?.color || '#0d1f5c'}, ${team?.color || '#1a3a8f'})`,
         color: '#fff', padding: '16px 20px',
@@ -36,51 +36,36 @@ export default function PlayerGameDetailPlayer({ player, game, onBack }) {
 
       <div style={{ padding: '16px 20px', maxWidth: 600, margin: '0 auto' }}>
         <div className="card" style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: 13, fontWeight: 600, color: '#8892a4', marginBottom: 8 }}>Hitting Efficiency</div>
+          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 8 }}>K% — Hitting Efficiency</div>
           <div style={{ fontSize: 40, fontWeight: 700, color: hcol(stats.kills, stats.errors, stats.attempts) }}>
             {n3(h)}
           </div>
           <div style={{ fontSize: 13, color: hcol(stats.kills, stats.errors, stats.attempts), fontWeight: 600 }}>
             {hlbl(stats.kills, stats.errors, stats.attempts)}
           </div>
-          <div style={{ fontSize: 12, color: '#8892a4', marginTop: 8 }}>
-            {stats.kills}K - {stats.errors}E / {stats.attempts} Att
+          <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 8 }}>
+            {stats.kills}K - {stats.errors}E / {stats.attempts} TA
           </div>
         </div>
 
+        {/* Game totals — Presto format */}
         <div className="card">
-          <div style={{ fontSize: 13, fontWeight: 600, color: '#8892a4', marginBottom: 12 }}>Game Stats ({stats.sets_played} sets)</div>
+          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 12 }}>Game Totals ({stats.sets_played} SP)</div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, textAlign: 'center' }}>
             {[
-              { label: 'Kills', value: stats.kills },
-              { label: 'Aces', value: stats.aces },
+              { label: 'K',    value: stats.kills },
+              { label: 'E',    value: stats.errors, color: stats.errors > 0 ? '#ef4444' : undefined },
+              { label: 'TA',   value: stats.attempts },
+              { label: 'A',    value: stats.assists },
+              { label: 'SA',   value: stats.aces },
+              { label: 'SE',   value: stats.serve_errors || 0, color: (stats.serve_errors || 0) > 0 ? '#ef4444' : undefined },
               { label: 'Digs', value: stats.digs },
-              { label: 'Assists', value: stats.assists },
-              { label: 'Blocks', value: stats.blocks },
-              { label: 'Errors', value: stats.errors, color: '#ef4444' },
+              { label: 'BS',   value: stats.blocks },
+              { label: 'BA',   value: stats.block_assists || 0 },
             ].map((item, i) => (
               <div key={i}>
-                <div style={{ fontSize: 10, fontWeight: 600, color: '#8892a4', textTransform: 'uppercase' }}>{item.label}</div>
-                <div style={{ fontSize: 20, fontWeight: 700, color: item.color || '#f0f4ff' }}>{item.value}</div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="card">
-          <div style={{ fontSize: 13, fontWeight: 600, color: '#8892a4', marginBottom: 12 }}>Per Set</div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, textAlign: 'center' }}>
-            {[
-              { label: 'K/S', value: n2(stats.kills / sp) },
-              { label: 'A/S', value: n2(stats.aces / sp) },
-              { label: 'D/S', value: n2(stats.digs / sp) },
-              { label: 'AST/S', value: n2(stats.assists / sp) },
-              { label: 'B/S', value: n2(stats.blocks / sp) },
-              { label: 'E/S', value: n2(stats.errors / sp) },
-            ].map((item, i) => (
-              <div key={i}>
-                <div style={{ fontSize: 10, fontWeight: 600, color: '#8892a4', textTransform: 'uppercase' }}>{item.label}</div>
-                <div style={{ fontSize: 20, fontWeight: 700, color: '#f0f4ff' }}>{item.value}</div>
+                <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>{item.label}</div>
+                <div style={{ fontSize: 20, fontWeight: 700, color: item.color || 'var(--text)' }}>{item.value}</div>
               </div>
             ))}
           </div>

@@ -36,7 +36,7 @@ export default function AccountsTab({ team, accounts, players, refresh }) {
           <div key={acc.id} className="game-row" onClick={() => setEditAccount(acc)}>
             <div>
               <div style={{ fontWeight: 600 }}>{acc.name}</div>
-              <div style={{ fontSize: 12, color: '#888' }}>
+              <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
                 @{acc.username} · {acc.role} {!acc.active && ' · Inactive'}
               </div>
             </div>

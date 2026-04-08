@@ -151,10 +151,18 @@ export default function ScheduleTab({ team, schedule, completedGames, players, p
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             {g.result ? (
               <>
-                <span style={{ fontSize: 13, color: '#8892a4' }}>{g.home_sets}-{g.away_sets}</span>
+                <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>{g.home_sets}-{g.away_sets}</span>
                 <span className={`game-result-badge ${g.result === 'W' ? 'win' : 'loss'}`}>
                   {g.result}
                 </span>
+                {isAdmin && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setManualGame(g); }}
+                    style={{ background: 'rgba(128,128,128,0.1)', color: 'var(--text-secondary)', padding: '4px 10px', borderRadius: 6, fontSize: 11, fontWeight: 600, border: 'none', cursor: 'pointer' }}
+                  >
+                    Edit
+                  </button>
+                )}
               </>
             ) : (
               isAdmin && (

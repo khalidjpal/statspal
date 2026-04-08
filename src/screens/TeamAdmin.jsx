@@ -48,7 +48,7 @@ export default function TeamAdmin({ team, onBack, onExport }) {
   }
 
   return (
-    <div style={{ minHeight: '100vh', background: '#0a0f1e' }}>
+    <div style={{ minHeight: '100vh', background: 'var(--bg)' }}>
       <div style={{
         background: `linear-gradient(135deg, ${team.color || '#0d1f5c'}, ${team.color || '#1a3a8f'})`,
         color: '#fff', padding: '16px 20px',
@@ -85,12 +85,12 @@ export default function TeamAdmin({ team, onBack, onExport }) {
 
         {tab === 'Schedule' && (
           <div>
-            <h3 style={{ fontSize: 14, fontWeight: 700, marginBottom: 8, color: '#f0f4ff' }}>Upcoming Games</h3>
+            <h3 style={{ fontSize: 14, fontWeight: 700, marginBottom: 8, color: 'var(--text)' }}>Upcoming Games</h3>
             {teamSchedule.map(g => (
               <div key={g.id} className="game-row">
                 <div>
-                  <div style={{ fontWeight: 600, color: '#f0f4ff' }}>{g.opponent}</div>
-                  <div style={{ fontSize: 12, color: '#8892a4' }}>
+                  <div style={{ fontWeight: 600, color: 'var(--text)' }}>{g.opponent}</div>
+                  <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
                     {new Date(g.game_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} · {g.location}
                   </div>
                 </div>
@@ -102,12 +102,12 @@ export default function TeamAdmin({ team, onBack, onExport }) {
             ))}
             {teamSchedule.length === 0 && <div className="empty-state">No scheduled games</div>}
 
-            <h3 style={{ fontSize: 14, fontWeight: 700, marginBottom: 8, marginTop: 20, color: '#f0f4ff' }}>Completed Games</h3>
+            <h3 style={{ fontSize: 14, fontWeight: 700, marginBottom: 8, marginTop: 20, color: 'var(--text)' }}>Completed Games</h3>
             {teamGames.map(g => (
               <div key={g.id} className="game-row">
                 <div>
-                  <div style={{ fontWeight: 600, color: '#f0f4ff' }}>{g.opponent}</div>
-                  <div style={{ fontSize: 12, color: '#8892a4' }}>
+                  <div style={{ fontWeight: 600, color: 'var(--text)' }}>{g.opponent}</div>
+                  <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
                     {g.result} {g.home_sets}-{g.away_sets} · {new Date(g.game_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                   </div>
                 </div>
@@ -126,8 +126,8 @@ export default function TeamAdmin({ team, onBack, onExport }) {
             {teamPlayers.map(p => (
               <div key={p.id} className="game-row">
                 <div>
-                  <div style={{ fontWeight: 600, color: '#f0f4ff' }}>{p.name}</div>
-                  <div style={{ fontSize: 12, color: '#8892a4' }}>
+                  <div style={{ fontWeight: 600, color: 'var(--text)' }}>{p.name}</div>
+                  <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
                     {[p.jersey_number ? `#${p.jersey_number}` : null, p.position].filter(Boolean).join(' · ')}
                   </div>
                 </div>
@@ -144,7 +144,7 @@ export default function TeamAdmin({ team, onBack, onExport }) {
         {tab === 'Danger' && (
           <div className="card" style={{ textAlign: 'center' }}>
             <h3 style={{ color: '#ef4444', marginBottom: 8 }}>Danger Zone</h3>
-            <p style={{ fontSize: 13, color: '#8892a4', marginBottom: 16 }}>
+            <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 16 }}>
               Permanently delete this team and all associated data.
             </p>
             <button onClick={deleteTeam}

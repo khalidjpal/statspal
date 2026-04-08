@@ -1,10 +1,15 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useData } from '../contexts/DataContext';
-import { hpct, n2, n3, hcol, playerTotals } from '../utils/stats';
+import { useAuth } from '../contexts/AuthContext';
+import { hpct, n3, hcol, playerTotals } from '../utils/stats';
 import { pColors, mkInit } from '../utils/colors';
+import ManualResultModal from '../components/modals/ManualResultModal';
 
 export default function GameSummary({ game, team, onBack, onSelectPlayer }) {
   const { players, playerGameStats, refresh } = useData();
+  const { currentUser } = useAuth();
+  const isAdmin = currentUser?.role === 'admin';
+  const [editingGame, setEditingGame] = useState(null);
 
   useEffect(() => { refresh(); }, [refresh]);
 
@@ -12,14 +17,15 @@ export default function GameSummary({ game, team, onBack, onSelectPlayer }) {
   const gameStats = playerGameStats.filter(s => s.game_id === game.id);
 
   function getPlayerStats(playerId) {
-    return gameStats.find(s => s.player_id === playerId) || { kills: 0, aces: 0, digs: 0, assists: 0, blocks: 0, errors: 0, attempts: 0, sets_played: 0 };
+    return gameStats.find(s => s.player_id === playerId) || {
+      kills: 0, aces: 0, digs: 0, assists: 0, blocks: 0, errors: 0, attempts: 0, sets_played: 0, block_assists: 0, serve_errors: 0,
+    };
   }
 
-  // Team totals for this game
   const totals = playerTotals(gameStats);
 
   return (
-    <div style={{ minHeight: '100vh', background: '#0a0f1e' }}>
+    <div style={{ minHeight: '100vh', background: 'var(--bg)' }}>
       <div style={{
         background: `linear-gradient(135deg, ${team.color || '#0d1f5c'}, ${team.color || '#1a3a8f'})`,
         color: '#fff', padding: '16px 20px',
@@ -47,77 +53,107 @@ export default function GameSummary({ game, team, onBack, onSelectPlayer }) {
       </div>
 
       <div style={{ padding: '16px 20px', maxWidth: 800, margin: '0 auto' }}>
-        {/* Team totals strip */}
-        <div className="card" style={{ marginBottom: 16, background: '#111827', border: '1px solid rgba(255,255,255,0.06)' }}>
-          <div style={{ fontSize: 13, fontWeight: 600, color: '#8892a4', marginBottom: 8 }}>Team Totals</div>
-          <div style={{ display: 'flex', justifyContent: 'space-around', textAlign: 'center' }}>
+        {/* Team totals strip — always dark navy */}
+        <div className="card" style={{ marginBottom: 16, background: '#0d1a35', border: 'none' }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,0.5)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Team Totals</div>
+          <div style={{ display: 'flex', justifyContent: 'space-around', textAlign: 'center', flexWrap: 'wrap', gap: 4 }}>
             {[
-              { label: 'K', value: totals.kills },
-              { label: 'A', value: totals.aces },
-              { label: 'D', value: totals.digs },
-              { label: 'AST', value: totals.assists },
-              { label: 'B', value: totals.blocks },
-              { label: 'E', value: totals.errors },
-              { label: 'Hit%', value: n3(hpct(totals.kills, totals.errors, totals.attempts)), color: hcol(totals.kills, totals.errors, totals.attempts) },
+              { label: 'K',    value: totals.kills },
+              { label: 'E',    value: totals.errors },
+              { label: 'TA',   value: totals.attempts },
+              { label: 'K%',   value: n3(hpct(totals.kills, totals.errors, totals.attempts)), color: hcol(totals.kills, totals.errors, totals.attempts) },
+              { label: 'SA',   value: totals.aces },
+              { label: 'SE',   value: totals.serve_errors },
+              { label: 'Digs', value: totals.digs },
+              { label: 'BS',   value: totals.blocks },
+              { label: 'BA',   value: totals.block_assists },
             ].map((item, i) => (
-              <div key={i}>
-                <div style={{ fontSize: 10, fontWeight: 600, color: '#8892a4', textTransform: 'uppercase' }}>{item.label}</div>
-                <div style={{ fontSize: 16, fontWeight: 700, color: item.color || '#f0f4ff' }}>{item.value}</div>
+              <div key={i} style={{ minWidth: 36 }}>
+                <div style={{ fontSize: 10, fontWeight: 600, color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase' }}>{item.label}</div>
+                <div style={{ fontSize: 15, fontWeight: 700, color: item.color || '#ffffff' }}>{item.value}</div>
               </div>
             ))}
           </div>
         </div>
 
+        {isAdmin && (
+          <button
+            onClick={() => setEditingGame(game)}
+            className="modal-btn-primary"
+            style={{ width: '100%', marginBottom: 16 }}
+          >
+            Edit Stats
+          </button>
+        )}
+
         {/* Individual player stats */}
-        <div className="card" style={{ padding: 0, overflow: 'hidden', background: '#111827', border: '1px solid rgba(255,255,255,0.06)' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, color: '#f0f4ff' }}>
-            <thead>
-              <tr style={{ background: 'rgba(255,255,255,0.03)', textAlign: 'center' }}>
-                <th style={{ padding: '10px 8px', textAlign: 'left', fontWeight: 600 }}>Player</th>
-                <th style={{ padding: '10px 4px', fontWeight: 600 }}>SP</th>
-                <th style={{ padding: '10px 4px', fontWeight: 600 }}>K</th>
-                <th style={{ padding: '10px 4px', fontWeight: 600 }}>A</th>
-                <th style={{ padding: '10px 4px', fontWeight: 600 }}>D</th>
-                <th style={{ padding: '10px 4px', fontWeight: 600 }}>AST</th>
-                <th style={{ padding: '10px 4px', fontWeight: 600 }}>B</th>
-                <th style={{ padding: '10px 4px', fontWeight: 600 }}>E</th>
-                <th style={{ padding: '10px 4px', fontWeight: 600 }}>Hit%</th>
-              </tr>
-            </thead>
-            <tbody>
-              {teamPlayers.map((p, i) => {
-                const s = getPlayerStats(p.id);
-                if (s.sets_played === 0 && s.kills === 0 && s.aces === 0 && s.digs === 0) return null;
-                const colors = p.colors || pColors(p.player_index ?? i);
-                return (
-                  <tr
-                    key={p.id}
-                    style={{ borderTop: '1px solid rgba(255,255,255,0.06)', cursor: 'pointer' }}
-                    onClick={() => onSelectPlayer(p, game)}
-                  >
-                    <td style={{ padding: '8px', display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <span className="player-badge" style={{ background: colors.bg, color: colors.text, width: 28, height: 28, fontSize: 10 }}>
-                        {p.initials || mkInit(p.name)}
-                      </span>
-                      <span style={{ fontWeight: 600, fontSize: 12 }}>{p.name}</span>
-                    </td>
-                    <td style={{ textAlign: 'center', padding: '8px 4px' }}>{s.sets_played}</td>
-                    <td style={{ textAlign: 'center', padding: '8px 4px' }}>{s.kills}</td>
-                    <td style={{ textAlign: 'center', padding: '8px 4px' }}>{s.aces}</td>
-                    <td style={{ textAlign: 'center', padding: '8px 4px' }}>{s.digs}</td>
-                    <td style={{ textAlign: 'center', padding: '8px 4px' }}>{s.assists}</td>
-                    <td style={{ textAlign: 'center', padding: '8px 4px' }}>{s.blocks}</td>
-                    <td style={{ textAlign: 'center', padding: '8px 4px', color: '#C0392B' }}>{s.errors}</td>
-                    <td style={{ textAlign: 'center', padding: '8px 4px', color: hcol(s.kills, s.errors, s.attempts), fontWeight: 600 }}>
-                      {n3(hpct(s.kills, s.errors, s.attempts))}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+        <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, color: 'var(--text)' }}>
+              <thead>
+                <tr style={{ background: 'rgba(128,128,128,0.07)', textAlign: 'center' }}>
+                  <th style={{ padding: '10px 8px', textAlign: 'left', fontWeight: 600, whiteSpace: 'nowrap' }}>Player</th>
+                  <th style={{ padding: '10px 4px', fontWeight: 600 }}>SP</th>
+                  <th style={{ padding: '10px 4px', fontWeight: 600 }}>K</th>
+                  <th style={{ padding: '10px 4px', fontWeight: 600 }}>E</th>
+                  <th style={{ padding: '10px 4px', fontWeight: 600 }}>TA</th>
+                  <th style={{ padding: '10px 4px', fontWeight: 600 }}>K%</th>
+                  <th style={{ padding: '10px 4px', fontWeight: 600 }}>A</th>
+                  <th style={{ padding: '10px 4px', fontWeight: 600 }}>SA</th>
+                  <th style={{ padding: '10px 4px', fontWeight: 600 }}>SE</th>
+                  <th style={{ padding: '10px 4px', fontWeight: 600 }}>Digs</th>
+                  <th style={{ padding: '10px 4px', fontWeight: 600 }}>BS</th>
+                  <th style={{ padding: '10px 4px', fontWeight: 600 }}>BA</th>
+                </tr>
+              </thead>
+              <tbody>
+                {teamPlayers.map((p, i) => {
+                  const s = getPlayerStats(p.id);
+                  if (s.sets_played === 0 && s.kills === 0 && s.aces === 0 && s.digs === 0 && s.blocks === 0 && s.block_assists === 0) return null;
+                  const colors = p.colors || pColors(p.player_index ?? i);
+                  return (
+                    <tr
+                      key={p.id}
+                      style={{ borderTop: '1px solid var(--border)', cursor: 'pointer' }}
+                      onClick={() => onSelectPlayer(p, game)}
+                    >
+                      <td style={{ padding: '8px', display: 'flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap' }}>
+                        <span className="player-badge" style={{ background: colors.bg, color: colors.text, width: 28, height: 28, fontSize: 10 }}>
+                          {p.initials || mkInit(p.name)}
+                        </span>
+                        <span style={{ fontWeight: 600, fontSize: 12, color: 'var(--text)' }}>{p.name}</span>
+                      </td>
+                      <td style={{ textAlign: 'center', padding: '8px 4px' }}>{s.sets_played}</td>
+                      <td style={{ textAlign: 'center', padding: '8px 4px' }}>{s.kills}</td>
+                      <td style={{ textAlign: 'center', padding: '8px 4px', color: s.errors > 0 ? '#dc2626' : 'var(--text)' }}>{s.errors}</td>
+                      <td style={{ textAlign: 'center', padding: '8px 4px' }}>{s.attempts}</td>
+                      <td style={{ textAlign: 'center', padding: '8px 4px', color: hcol(s.kills, s.errors, s.attempts), fontWeight: 600 }}>
+                        {n3(hpct(s.kills, s.errors, s.attempts))}
+                      </td>
+                      <td style={{ textAlign: 'center', padding: '8px 4px' }}>{s.assists}</td>
+                      <td style={{ textAlign: 'center', padding: '8px 4px' }}>{s.aces}</td>
+                      <td style={{ textAlign: 'center', padding: '8px 4px', color: s.serve_errors > 0 ? '#dc2626' : 'var(--text)' }}>{s.serve_errors || 0}</td>
+                      <td style={{ textAlign: 'center', padding: '8px 4px' }}>{s.digs}</td>
+                      <td style={{ textAlign: 'center', padding: '8px 4px' }}>{s.blocks}</td>
+                      <td style={{ textAlign: 'center', padding: '8px 4px' }}>{s.block_assists || 0}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
+      {editingGame && (
+        <ManualResultModal
+          game={editingGame}
+          team={team}
+          players={players}
+          existingStats={playerGameStats.filter(s => s.game_id === editingGame.id)}
+          onClose={() => setEditingGame(null)}
+          onSaved={() => { setEditingGame(null); refresh(); }}
+        />
+      )}
     </div>
   );
 }

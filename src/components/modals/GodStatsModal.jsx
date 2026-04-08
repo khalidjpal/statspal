@@ -10,7 +10,7 @@ export default function GodStatsModal({ game, players, existingStats, onClose, o
       const existing = existingStats.find(s => s.player_id === p.id);
       init[p.id] = existing
         ? { ...existing }
-        : { kills: 0, aces: 0, digs: 0, assists: 0, blocks: 0, errors: 0, attempts: 0, sets_played: 0 };
+        : { kills: 0, aces: 0, digs: 0, assists: 0, blocks: 0, errors: 0, attempts: 0, sets_played: 0, block_assists: 0, serve_errors: 0 };
     });
     return init;
   });
@@ -49,7 +49,8 @@ export default function GodStatsModal({ game, players, existingStats, onClose, o
     onSaved();
   }
 
-  const fields = ['sets_played', 'kills', 'aces', 'digs', 'assists', 'blocks', 'errors', 'attempts'];
+  const fields = ['sets_played', 'kills', 'errors', 'attempts', 'assists', 'aces', 'serve_errors', 'digs', 'blocks', 'block_assists'];
+  const fieldLabels = { sets_played: 'SP', kills: 'K', errors: 'E', attempts: 'TA', assists: 'A', aces: 'SA', serve_errors: 'SE', digs: 'Digs', blocks: 'BS', block_assists: 'BA' };
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -66,7 +67,7 @@ export default function GodStatsModal({ game, players, existingStats, onClose, o
               <tr style={{ background: '#f8f9fa' }}>
                 <th style={{ padding: '6px 8px', textAlign: 'left' }}>Player</th>
                 {fields.map(f => (
-                  <th key={f} style={{ padding: '6px 4px', textAlign: 'center', textTransform: 'uppercase', fontSize: 10 }}>{f === 'sets_played' ? 'SP' : f.slice(0, 3)}</th>
+                  <th key={f} style={{ padding: '6px 4px', textAlign: 'center', textTransform: 'uppercase', fontSize: 10 }}>{fieldLabels[f] || f}</th>
                 ))}
               </tr>
             </thead>

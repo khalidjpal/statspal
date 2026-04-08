@@ -2,15 +2,24 @@ import { useState, useEffect } from 'react';
 import { useData } from '../contexts/DataContext';
 import { supabase } from '../supabase';
 import { hpct, n3, hcol, teamRecord } from '../utils/stats';
+import { mkInit } from '../utils/colors';
 import GodStatsModal from '../components/modals/GodStatsModal';
+import AddPlayerModal from '../components/modals/AddPlayerModal';
+import EditPlayerModal from '../components/modals/EditPlayerModal';
+import ManualResultModal from '../components/modals/ManualResultModal';
+import EditLeagueResultModal from '../components/modals/EditLeagueResultModal';
 
-const TABS = ['Teams', 'Players', 'Games', 'Stats', 'Accounts'];
+const TABS = ['Teams', 'Players', 'Games', 'Stats', 'League', 'Accounts'];
 
 export default function GodMode({ onBack }) {
   const data = useData();
-  const { teams, players, completedGames, playerGameStats, accounts, schedule, refresh } = data;
+  const { teams, players, completedGames, playerGameStats, accounts, schedule, leagueTeams, leagueResults, refresh } = data;
   const [tab, setTab] = useState('Teams');
   const [editStatsGame, setEditStatsGame] = useState(null);
+  const [addingPlayerTeam, setAddingPlayerTeam] = useState(null);
+  const [editingPlayer, setEditingPlayer] = useState(null);
+  const [editGameGod, setEditGameGod] = useState(null);
+  const [editingLeagueResult, setEditingLeagueResult] = useState(null);
 
   // Admin account creation
   const [accName, setAccName] = useState('');
@@ -67,7 +76,7 @@ export default function GodMode({ onBack }) {
   }
 
   return (
-    <div style={{ minHeight: '100vh', background: '#0a0f1e' }}>
+    <div style={{ minHeight: '100vh', background: 'var(--bg)' }}>
       <div style={{
         background: 'linear-gradient(135deg, #4a148c, #7b1fa2)',
         color: '#fff', padding: '16px 20px',
@@ -126,27 +135,84 @@ export default function GodMode({ onBack }) {
           <div>
             {teams.map(t => {
               const tp = players.filter(p => p.team_id === t.id);
-              if (tp.length === 0) return null;
+              const teamColor = t.color || '#1a3a8f';
               return (
-                <div key={t.id}>
-                  <h3 style={{ fontSize: 14, fontWeight: 700, margin: '12px 0 8px', color: '#7b1fa2' }}>{t.name}</h3>
-                  {tp.map(p => (
-                    <div key={p.id} className="game-row">
-                      <div>
-                        <div style={{ fontWeight: 600, color: '#f0f4ff' }}>{p.name}</div>
-                        <div style={{ fontSize: 12, color: '#8892a4' }}>
-                          {[p.jersey_number ? `#${p.jersey_number}` : null, p.position].filter(Boolean).join(' · ')}
-                        </div>
+                <div key={t.id} style={{ marginBottom: 20 }}>
+                  {/* Team color banner */}
+                  <div style={{
+                    background: teamColor,
+                    borderRadius: '12px 12px 0 0',
+                    padding: '12px 16px',
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  }}>
+                    <div>
+                      <div style={{ fontSize: 16, fontWeight: 800, color: '#fff', letterSpacing: '-0.01em' }}>{t.name}</div>
+                      <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.65)', marginTop: 2 }}>
+                        {tp.length} {tp.length === 1 ? 'player' : 'players'}
+                        {t.gender ? ` · ${t.gender}` : ''}
+                        {t.level ? ` · ${t.level}` : ''}
                       </div>
-                      <button onClick={async () => { if (confirm(`Delete ${p.name}?`)) { await supabase.from('player_game_stats').delete().eq('player_id', p.id); await supabase.from('players').delete().eq('id', p.id); refresh(); }}}
-                        style={{ background: 'rgba(239,68,68,0.1)', color: '#ef4444', padding: '4px 12px', borderRadius: 6, fontSize: 12, fontWeight: 600, border: 'none', cursor: 'pointer' }}>
-                        Delete
-                      </button>
                     </div>
-                  ))}
+                    <button
+                      onClick={() => setAddingPlayerTeam(t)}
+                      style={{ background: 'rgba(255,255,255,0.2)', color: '#fff', padding: '7px 14px', borderRadius: 8, fontSize: 12, fontWeight: 700, border: '1px solid rgba(255,255,255,0.35)', cursor: 'pointer' }}
+                    >
+                      + Add Player
+                    </button>
+                  </div>
+
+                  {/* Player rows with colored left border */}
+                  <div style={{ borderLeft: `4px solid ${teamColor}`, borderBottom: `1px solid var(--border)`, borderRight: `1px solid var(--border)`, borderRadius: '0 0 12px 12px', overflow: 'hidden', background: 'var(--card)' }}>
+                    {tp.length === 0 ? (
+                      <div style={{ padding: '20px', fontSize: 13, color: 'var(--text-muted)', textAlign: 'center' }}>
+                        No players yet — click + Add Player to get started
+                      </div>
+                    ) : (
+                      tp.map((p, pi) => (
+                        <div key={p.id} style={{
+                          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                          padding: '12px 14px',
+                          borderTop: pi > 0 ? '1px solid var(--border)' : 'none',
+                        }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                            <span style={{
+                              width: 34, height: 34, borderRadius: '50%',
+                              background: p.colors?.bg || teamColor,
+                              color: p.colors?.text || '#fff',
+                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              fontSize: 11, fontWeight: 800, flexShrink: 0,
+                            }}>
+                              {p.initials || mkInit(p.name)}
+                            </span>
+                            <div>
+                              <div style={{ fontWeight: 600, color: 'var(--text)' }}>{p.name}</div>
+                              <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+                                {[p.jersey_number ? `#${p.jersey_number}` : null, p.position, p.grade, p.height].filter(Boolean).join(' · ')}
+                              </div>
+                            </div>
+                          </div>
+                          <div style={{ display: 'flex', gap: 6 }}>
+                            <button
+                              onClick={() => setEditingPlayer(p)}
+                              style={{ background: `${teamColor}22`, color: teamColor, padding: '4px 12px', borderRadius: 6, fontSize: 12, fontWeight: 700, border: `1px solid ${teamColor}55`, cursor: 'pointer' }}
+                            >
+                              Edit
+                            </button>
+                            <button
+                              onClick={async () => { if (confirm(`Delete ${p.name}? This also deletes all their stats.`)) { await supabase.from('player_game_stats').delete().eq('player_id', p.id); await supabase.from('players').delete().eq('id', p.id); refresh(); }}}
+                              style={{ background: 'rgba(239,68,68,0.1)', color: '#ef4444', padding: '4px 12px', borderRadius: 6, fontSize: 12, fontWeight: 700, border: 'none', cursor: 'pointer' }}
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
                 </div>
               );
             })}
+            {teams.length === 0 && <div className="empty-state">No teams yet</div>}
           </div>
         )}
 
@@ -188,13 +254,29 @@ export default function GodMode({ onBack }) {
                       {g.result} {g.home_sets}-{g.away_sets} · {g.game_date}
                     </div>
                   </div>
-                  <div style={{ display: 'flex', gap: 8 }}>
+                  <div style={{ display: 'flex', gap: 6 }}>
                     <button onClick={() => setEditStatsGame(g)}
-                      style={{ background: 'rgba(123,31,162,0.15)', color: '#7b1fa2', padding: '4px 12px', borderRadius: 6, fontSize: 12, fontWeight: 600, border: 'none', cursor: 'pointer' }}>
+                      style={{ background: 'rgba(123,31,162,0.15)', color: '#7b1fa2', padding: '4px 10px', borderRadius: 6, fontSize: 12, fontWeight: 600, border: 'none', cursor: 'pointer' }}>
                       Stats
                     </button>
-                    <button onClick={async () => { if (confirm('Delete game?')) { await supabase.from('player_game_stats').delete().eq('game_id', g.id); await supabase.from('completed_games').delete().eq('id', g.id); refresh(); }}}
-                      style={{ background: 'rgba(239,68,68,0.1)', color: '#ef4444', padding: '4px 12px', borderRadius: 6, fontSize: 12, fontWeight: 600, border: 'none', cursor: 'pointer' }}>
+                    <button onClick={() => setEditGameGod(g)}
+                      style={{ background: 'rgba(26,58,143,0.15)', color: '#60a5fa', padding: '4px 10px', borderRadius: 6, fontSize: 12, fontWeight: 600, border: 'none', cursor: 'pointer' }}>
+                      Edit
+                    </button>
+                    <button onClick={async () => {
+                      if (!confirm('Delete game? This also deletes all player stats for this game.')) return;
+                      await supabase.from('player_game_stats').delete().eq('game_id', g.id);
+                      // Delete any associated league result
+                      if (g.is_league && g.league_team_id) {
+                        await supabase.from('league_results').delete()
+                          .eq('team_id', g.team_id)
+                          .eq('game_date', g.game_date)
+                          .or(`home_league_team_id.eq.${g.league_team_id},away_league_team_id.eq.${g.league_team_id}`);
+                      }
+                      await supabase.from('completed_games').delete().eq('id', g.id);
+                      refresh();
+                    }}
+                      style={{ background: 'rgba(239,68,68,0.1)', color: '#ef4444', padding: '4px 10px', borderRadius: 6, fontSize: 12, fontWeight: 600, border: 'none', cursor: 'pointer' }}>
                       Delete
                     </button>
                   </div>
@@ -232,6 +314,69 @@ export default function GodMode({ onBack }) {
                 </div>
               );
             })}
+          </div>
+        )}
+
+        {tab === 'League' && (
+          <div>
+            {teams.map(t => {
+              const teamLeagueTeams = leagueTeams.filter(lt => lt.team_id === t.id);
+              const teamLeagueResults = leagueResults.filter(lr => lr.team_id === t.id);
+              if (teamLeagueTeams.length === 0) return null;
+              const teamColor = t.color || '#1a3a8f';
+              const sorted = [...teamLeagueResults].sort((a, b) => a.game_date?.localeCompare(b.game_date));
+              return (
+                <div key={t.id} style={{ marginBottom: 24 }}>
+                  <div style={{ background: teamColor, borderRadius: '12px 12px 0 0', padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <div>
+                      <div style={{ fontSize: 15, fontWeight: 800, color: '#fff' }}>{t.name}</div>
+                      <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.65)', marginTop: 2 }}>{teamLeagueResults.length} results recorded</div>
+                    </div>
+                  </div>
+                  <div style={{ border: '1px solid var(--border)', borderTop: 'none', borderRadius: '0 0 12px 12px', background: 'var(--card)', overflow: 'hidden' }}>
+                    {sorted.length === 0 ? (
+                      <div style={{ padding: 20, textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>No league results recorded</div>
+                    ) : (
+                      sorted.map((lr, idx) => {
+                        const home = teamLeagueTeams.find(lt => lt.id === lr.home_league_team_id);
+                        const away = teamLeagueTeams.find(lt => lt.id === lr.away_league_team_id);
+                        return (
+                          <div key={lr.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', borderTop: idx > 0 ? '1px solid var(--border)' : 'none' }}>
+                            <div>
+                              <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--text)' }}>
+                                {home?.name || '?'} <span style={{ color: teamColor }}>{lr.home_sets}–{lr.away_sets}</span> {away?.name || '?'}
+                              </div>
+                              <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>{lr.game_date}</div>
+                            </div>
+                            <div style={{ display: 'flex', gap: 6 }}>
+                              <button
+                                onClick={() => setEditingLeagueResult(lr)}
+                                style={{ background: `${teamColor}22`, color: teamColor, padding: '4px 10px', borderRadius: 6, fontSize: 11, fontWeight: 600, border: `1px solid ${teamColor}44`, cursor: 'pointer' }}
+                              >
+                                Edit
+                              </button>
+                              <button
+                                onClick={async () => {
+                                  if (!confirm('Delete this league result? Standings will update immediately.')) return;
+                                  await supabase.from('league_results').delete().eq('id', lr.id);
+                                  refresh();
+                                }}
+                                style={{ background: 'rgba(239,68,68,0.1)', color: '#ef4444', padding: '4px 10px', borderRadius: 6, fontSize: 11, fontWeight: 600, border: 'none', cursor: 'pointer' }}
+                              >
+                                Delete
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+            {teams.filter(t => leagueTeams.some(lt => lt.team_id === t.id)).length === 0 && (
+              <div className="empty-state">No league teams set up yet</div>
+            )}
           </div>
         )}
 
@@ -310,6 +455,46 @@ export default function GodMode({ onBack }) {
           onSaved={() => { setEditStatsGame(null); refresh(); }}
         />
       )}
+
+      {addingPlayerTeam && (
+        <AddPlayerModal
+          teamId={addingPlayerTeam.id}
+          playerCount={players.filter(p => p.team_id === addingPlayerTeam.id).length}
+          onClose={() => setAddingPlayerTeam(null)}
+          onSaved={() => { setAddingPlayerTeam(null); refresh(); }}
+        />
+      )}
+
+      {editingPlayer && (
+        <EditPlayerModal
+          player={editingPlayer}
+          onClose={() => setEditingPlayer(null)}
+          onSaved={() => { setEditingPlayer(null); refresh(); }}
+        />
+      )}
+
+      {editingLeagueResult && (
+        <EditLeagueResultModal
+          result={editingLeagueResult}
+          allLeagueTeams={leagueTeams}
+          onClose={() => setEditingLeagueResult(null)}
+          onSaved={() => { setEditingLeagueResult(null); refresh(); }}
+        />
+      )}
+
+      {editGameGod && (() => {
+        const gameTeam = teams.find(t => t.id === editGameGod.team_id);
+        return gameTeam ? (
+          <ManualResultModal
+            game={editGameGod}
+            team={gameTeam}
+            players={players}
+            existingStats={playerGameStats.filter(s => s.game_id === editGameGod.id)}
+            onClose={() => setEditGameGod(null)}
+            onSaved={() => { setEditGameGod(null); refresh(); }}
+          />
+        ) : null;
+      })()}
     </div>
   );
 }

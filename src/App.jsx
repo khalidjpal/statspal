@@ -37,7 +37,7 @@ const SCREENS = {
 
 export default function App() {
   const { currentUser } = useAuth();
-  const { refresh } = useData();
+  const { teams, refresh } = useData();
   const { addToast } = useToast();
 
   const [screen, setScreen] = useState(SCREENS.LOGIN);
@@ -47,6 +47,7 @@ export default function App() {
   const [gameInfo, setGameInfo] = useState(null);
   const [scheduledGameForLive, setScheduledGameForLive] = useState(null);
   const [resumeSession, setResumeSession] = useState(null);
+  const [autoRouted, setAutoRouted] = useState(false);
 
   const nav = useCallback((s) => setScreen(s), []);
 
@@ -58,9 +59,38 @@ export default function App() {
 
   const effectiveScreen = !currentUser ? SCREENS.LOGIN : screen;
 
+  // Auto-route on login: players and single-team coaches go straight to team dashboard
   if (currentUser && screen === SCREENS.LOGIN) {
     const home = getHomeScreen();
     if (screen !== home) setScreen(home);
+  }
+
+  // After data loads, auto-route single-team users directly to dashboard
+  if (currentUser && !autoRouted && teams.length > 0) {
+    const role = currentUser.role;
+    const tids = currentUser.teamIds || [];
+    if (role === 'coach' && tids.length === 1) {
+      const t = teams.find(tm => tm.id === tids[0]);
+      if (t) {
+        setSelectedTeam(t);
+        setScreen(SCREENS.TEAM_DASHBOARD);
+        setAutoRouted(true);
+      }
+    } else if (role === 'player' && tids.length === 1) {
+      const t = teams.find(tm => tm.id === tids[0]);
+      if (t) {
+        setSelectedTeam(t);
+        setScreen(SCREENS.TEAM_DASHBOARD);
+        setAutoRouted(true);
+      }
+    } else {
+      setAutoRouted(true);
+    }
+  }
+
+  // Reset auto-route flag on logout
+  if (!currentUser && autoRouted) {
+    setAutoRouted(false);
   }
 
   // === HANDLERS ===

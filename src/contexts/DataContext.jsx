@@ -12,6 +12,7 @@ export function DataProvider({ children }) {
   const [leagueTeams, setLeagueTeams] = useState([]);
   const [leagueResults, setLeagueResults] = useState([]);
   const [accounts, setAccounts] = useState([]);
+  const [coachAssignments, setCoachAssignments] = useState([]);
   const [loading, setLoading] = useState(false);
 
   const refresh = useCallback(async () => {
@@ -26,6 +27,7 @@ export function DataProvider({ children }) {
       { data: lt, error: e6 },
       { data: lr, error: e7 },
       { data: acc, error: e8 },
+      { data: cta },
     ] = await Promise.all([
       supabase.from('teams').select('*').order('created_at'),
       supabase.from('players').select('*').order('player_index'),
@@ -35,6 +37,7 @@ export function DataProvider({ children }) {
       supabase.from('league_teams').select('*'),
       supabase.from('league_results').select('*').order('game_date'),
       supabase.from('accounts').select('*').order('created_at'),
+      supabase.from('coach_team_assignments').select('*'),
     ]);
     if (e1) console.error('[DataContext] teams fetch error:', e1.message);
     if (e2) console.error('[DataContext] players fetch error:', e2.message);
@@ -44,7 +47,6 @@ export function DataProvider({ children }) {
     if (e6) console.error('[DataContext] league_teams fetch error:', e6.message);
     if (e7) console.error('[DataContext] league_results fetch error:', e7.message);
     if (e8) console.error('[DataContext] accounts fetch error:', e8.message);
-    console.log('[DataContext] refresh() fetched — teams:', (t||[]).length, 'players:', (p||[]).length, 'games:', (cg||[]).length, 'playerGameStats:', (pgs||[]).length);
     setTeams(t || []);
     setPlayers(p || []);
     setSchedule(s || []);
@@ -53,16 +55,16 @@ export function DataProvider({ children }) {
     setLeagueTeams(lt || []);
     setLeagueResults(lr || []);
     setAccounts(acc || []);
+    setCoachAssignments(cta || []);
     setLoading(false);
-    console.log('[DataContext] refresh() DONE — state updated');
   }, []);
 
   return (
     <DataContext.Provider value={{
       teams, players, schedule, completedGames, playerGameStats,
-      leagueTeams, leagueResults, accounts, loading, refresh,
+      leagueTeams, leagueResults, accounts, coachAssignments, loading, refresh,
       setTeams, setPlayers, setSchedule, setCompletedGames,
-      setPlayerGameStats, setLeagueTeams, setLeagueResults, setAccounts,
+      setPlayerGameStats, setLeagueTeams, setLeagueResults, setAccounts, setCoachAssignments,
     }}>
       {children}
     </DataContext.Provider>

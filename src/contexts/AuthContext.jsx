@@ -33,7 +33,25 @@ export function AuthProvider({ children }) {
         return false;
       }
 
-      setCurrentUser(data);
+      // For coaches, fetch all team assignments
+      let teamIds = [];
+      if (data.role === 'coach') {
+        // Get assignments from coach_team_assignments table
+        const { data: assignments } = await supabase
+          .from('coach_team_assignments')
+          .select('team_id')
+          .eq('account_id', data.id);
+        const assignedIds = (assignments || []).map(a => a.team_id);
+        // Also include legacy accounts.team_id
+        if (data.team_id && !assignedIds.includes(data.team_id)) {
+          assignedIds.push(data.team_id);
+        }
+        teamIds = assignedIds;
+      } else if (data.role === 'player' && data.team_id) {
+        teamIds = [data.team_id];
+      }
+
+      setCurrentUser({ ...data, teamIds });
       setLoading(false);
       return true;
     } catch (e) {

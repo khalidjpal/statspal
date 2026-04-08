@@ -17,10 +17,11 @@ export default function Hub({ onSelectTeam, onGodMode }) {
 
   const isAdmin = currentUser?.role === 'admin';
 
-  // Coaches only see their assigned team
+  // Coaches see only their assigned teams, admin sees all
+  const coachTeamIds = currentUser?.teamIds || [];
   const visibleTeams = isAdmin
     ? teams
-    : teams.filter(t => t.id === currentUser?.team_id);
+    : teams.filter(t => coachTeamIds.includes(t.id));
 
   function getRecord(teamId) {
     const games = completedGames.filter(g => g.team_id === teamId);
@@ -73,7 +74,7 @@ export default function Hub({ onSelectTeam, onGodMode }) {
         )}
 
         <div className="hub-section-title">
-          {isAdmin ? 'All Teams' : 'Your Team'}
+          {isAdmin ? 'All Teams' : coachTeamIds.length > 1 ? 'Your Teams' : 'Your Team'}
         </div>
 
         {loading && visibleTeams.length === 0 ? (

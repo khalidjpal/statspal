@@ -14,7 +14,7 @@ const TABS = ['Teams', 'Players', 'Games', 'Stats', 'League', 'Accounts'];
 
 export default function GodMode({ onBack }) {
   const data = useData();
-  const { teams, players, completedGames, playerGameStats, accounts, schedule, leagueTeams, leagueResults, refresh } = data;
+  const { teams, players, completedGames, playerGameStats, accounts, coachAssignments, schedule, leagueTeams, leagueResults, refresh } = data;
   const { addToast } = useToast();
   const [tab, setTab] = useState('Teams');
   const [editStatsGame, setEditStatsGame] = useState(null);
@@ -428,30 +428,98 @@ export default function GodMode({ onBack }) {
             </div>
 
             <h3 style={{ fontSize: 14, fontWeight: 700, margin: '16px 0 8px', color: '#7b1fa2' }}>All Accounts</h3>
-            {accounts.map(acc => (
-              <div key={acc.id} className="game-row">
-                <div>
-                  <div style={{ fontWeight: 600, color: '#f0f4ff' }}>{acc.name}</div>
-                  <div style={{ fontSize: 12, color: '#8892a4' }}>
-                    @{acc.username} · {acc.role}
-                    {acc.team_id && ` · ${teams.find(t => t.id === acc.team_id)?.name || '?'}`}
+            {accounts.map(acc => {
+              const accTeamIds = (coachAssignments || []).filter(a => a.account_id === acc.id).map(a => a.team_id);
+              // Include legacy team_id
+              if (acc.team_id && !accTeamIds.includes(acc.team_id)) accTeamIds.push(acc.team_id);
+              const accTeams = teams.filter(t => accTeamIds.includes(t.id));
+
+              return (
+                <div key={acc.id} className="card" style={{ marginBottom: 8, padding: '12px 14px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: acc.role === 'coach' ? 8 : 0 }}>
+                    <div>
+                      <div style={{ fontWeight: 600, color: '#f0f4ff' }}>{acc.name}</div>
+                      <div style={{ fontSize: 12, color: '#8892a4' }}>
+                        @{acc.username} · {acc.role}
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                      <span style={{ fontSize: 11, padding: '3px 8px', borderRadius: 12, fontWeight: 600, background: acc.active ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.1)', color: acc.active ? '#10b981' : '#ef4444' }}>
+                        {acc.active ? 'Active' : 'Off'}
+                      </span>
+                      <button onClick={async () => { await supabase.from('accounts').update({ active: !acc.active }).eq('id', acc.id); await refresh(); }}
+                        style={{ background: 'rgba(123,31,162,0.15)', color: '#7b1fa2', padding: '4px 10px', borderRadius: 6, fontSize: 11, fontWeight: 600, border: 'none', cursor: 'pointer' }}>
+                        {acc.active ? 'Disable' : 'Enable'}
+                      </button>
+                      <button onClick={async () => { if (confirm(`Delete ${acc.name}?`)) { await supabase.from('coach_team_assignments').delete().eq('account_id', acc.id); await supabase.from('accounts').delete().eq('id', acc.id); await refresh(); }}}
+                        style={{ background: 'rgba(239,68,68,0.1)', color: '#ef4444', padding: '4px 10px', borderRadius: 6, fontSize: 11, fontWeight: 600, border: 'none', cursor: 'pointer' }}>
+                        Delete
+                      </button>
+                    </div>
                   </div>
+
+                  {/* Coach team assignments */}
+                  {acc.role === 'coach' && (
+                    <div style={{ borderTop: '1px solid var(--border)', paddingTop: 8 }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: '#8892a4', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Team Access</div>
+                      {accTeams.length === 0 && (
+                        <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 6 }}>No teams assigned</div>
+                      )}
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+                        {accTeams.map(t => (
+                          <span key={t.id} style={{
+                            display: 'inline-flex', alignItems: 'center', gap: 6,
+                            background: `${t.color || '#1a3a8f'}22`, color: t.color || '#6b8cff',
+                            padding: '4px 10px', borderRadius: 6, fontSize: 12, fontWeight: 600,
+                            border: `1px solid ${t.color || '#1a3a8f'}44`,
+                          }}>
+                            {t.name}
+                            <button
+                              onClick={async (e) => {
+                                e.stopPropagation();
+                                // Remove from coach_team_assignments
+                                await supabase.from('coach_team_assignments').delete()
+                                  .eq('account_id', acc.id).eq('team_id', t.id);
+                                // Also clear legacy team_id if it matches
+                                if (acc.team_id === t.id) {
+                                  await supabase.from('accounts').update({ team_id: null }).eq('id', acc.id);
+                                }
+                                addToast(`Removed ${t.name}`, 'success');
+                                await refresh();
+                              }}
+                              style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: 14, fontWeight: 700, padding: 0, lineHeight: 1 }}
+                            >
+                              ×
+                            </button>
+                          </span>
+                        ))}
+                      </div>
+                      <select
+                        value=""
+                        onChange={async (e) => {
+                          const tid = e.target.value;
+                          if (!tid) return;
+                          const { error } = await supabase.from('coach_team_assignments').insert({ account_id: acc.id, team_id: tid });
+                          if (error) {
+                            if (error.message.includes('duplicate')) addToast('Already assigned');
+                            else addToast('Failed: ' + error.message);
+                          } else {
+                            addToast(`Assigned to ${teams.find(t => t.id === tid)?.name}`, 'success');
+                          }
+                          await refresh();
+                        }}
+                        style={{ width: '100%', padding: '6px 10px', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 6, fontSize: 12, background: 'var(--card)', color: 'var(--text)' }}
+                      >
+                        <option value="">+ Assign team...</option>
+                        {teams.filter(t => !accTeamIds.includes(t.id)).map(t => (
+                          <option key={t.id} value={t.id}>{t.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
                 </div>
-                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                  <span style={{ fontSize: 11, padding: '3px 8px', borderRadius: 12, fontWeight: 600, background: acc.active ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.1)', color: acc.active ? '#10b981' : '#ef4444' }}>
-                    {acc.active ? 'Active' : 'Off'}
-                  </span>
-                  <button onClick={async () => { await supabase.from('accounts').update({ active: !acc.active }).eq('id', acc.id); refresh(); }}
-                    style={{ background: 'rgba(123,31,162,0.15)', color: '#7b1fa2', padding: '4px 10px', borderRadius: 6, fontSize: 11, fontWeight: 600, border: 'none', cursor: 'pointer' }}>
-                    {acc.active ? 'Disable' : 'Enable'}
-                  </button>
-                  <button onClick={async () => { if (confirm(`Delete ${acc.name}?`)) { await supabase.from('accounts').delete().eq('id', acc.id); refresh(); }}}
-                    style={{ background: 'rgba(239,68,68,0.1)', color: '#ef4444', padding: '4px 10px', borderRadius: 6, fontSize: 11, fontWeight: 600, border: 'none', cursor: 'pointer' }}>
-                    Delete
-                  </button>
-                </div>
-              </div>
-            ))}
+              );
+            })}
             {accounts.length === 0 && <div className="empty-state">No accounts</div>}
           </div>
         )}

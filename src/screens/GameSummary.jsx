@@ -19,7 +19,7 @@ export default function GameSummary({ game, team, onBack, onSelectPlayer }) {
   const totals = playerTotals(gameStats);
 
   return (
-    <div style={{ minHeight: '100vh', background: '#f0f2f5' }}>
+    <div style={{ minHeight: '100vh', background: '#0a0f1e' }}>
       <div style={{
         background: `linear-gradient(135deg, ${team.color || '#0d1f5c'}, ${team.color || '#1a3a8f'})`,
         color: '#fff', padding: '16px 20px',
@@ -48,8 +48,8 @@ export default function GameSummary({ game, team, onBack, onSelectPlayer }) {
 
       <div style={{ padding: '16px 20px', maxWidth: 800, margin: '0 auto' }}>
         {/* Team totals strip */}
-        <div className="card" style={{ marginBottom: 16 }}>
-          <div style={{ fontSize: 13, fontWeight: 600, color: '#888', marginBottom: 8 }}>Team Totals</div>
+        <div className="card" style={{ marginBottom: 16, background: '#111827', border: '1px solid rgba(255,255,255,0.06)' }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: '#8892a4', marginBottom: 8 }}>Team Totals</div>
           <div style={{ display: 'flex', justifyContent: 'space-around', textAlign: 'center' }}>
             {[
               { label: 'K', value: totals.kills },
@@ -61,18 +61,18 @@ export default function GameSummary({ game, team, onBack, onSelectPlayer }) {
               { label: 'Hit%', value: n3(hpct(totals.kills, totals.errors, totals.attempts)), color: hcol(totals.kills, totals.errors, totals.attempts) },
             ].map((item, i) => (
               <div key={i}>
-                <div style={{ fontSize: 10, fontWeight: 600, color: '#888', textTransform: 'uppercase' }}>{item.label}</div>
-                <div style={{ fontSize: 16, fontWeight: 700, color: item.color || '#333' }}>{item.value}</div>
+                <div style={{ fontSize: 10, fontWeight: 600, color: '#8892a4', textTransform: 'uppercase' }}>{item.label}</div>
+                <div style={{ fontSize: 16, fontWeight: 700, color: item.color || '#f0f4ff' }}>{item.value}</div>
               </div>
             ))}
           </div>
         </div>
 
         {/* Individual player stats */}
-        <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+        <div className="card" style={{ padding: 0, overflow: 'hidden', background: '#111827', border: '1px solid rgba(255,255,255,0.06)' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, color: '#f0f4ff' }}>
             <thead>
-              <tr style={{ background: '#f8f9fa', textAlign: 'center' }}>
+              <tr style={{ background: 'rgba(255,255,255,0.03)', textAlign: 'center' }}>
                 <th style={{ padding: '10px 8px', textAlign: 'left', fontWeight: 600 }}>Player</th>
                 <th style={{ padding: '10px 4px', fontWeight: 600 }}>SP</th>
                 <th style={{ padding: '10px 4px', fontWeight: 600 }}>K</th>
@@ -92,7 +92,7 @@ export default function GameSummary({ game, team, onBack, onSelectPlayer }) {
                 return (
                   <tr
                     key={p.id}
-                    style={{ borderTop: '1px solid #eee', cursor: 'pointer' }}
+                    style={{ borderTop: '1px solid rgba(255,255,255,0.06)', cursor: 'pointer' }}
                     onClick={() => onSelectPlayer(p, game)}
                   >
                     <td style={{ padding: '8px', display: 'flex', alignItems: 'center', gap: 6 }}>

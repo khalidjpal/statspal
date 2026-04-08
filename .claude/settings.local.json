@@ -5,7 +5,11 @@
       "Bash(npm run:*)",
       "Bash(npx kill-port:*)",
       "Bash(taskkill //F //IM node.exe)",
-      "Bash(npx vercel:*)"
+      "Bash(npx vercel:*)",
+      "Bash(gh repo:*)",
+      "Bash(where gh:*)",
+      "Bash(\"/c/Program Files/GitHub CLI/gh.exe\" --version)",
+      "Bash(\"/c/Program Files \\(x86\\)/GitHub CLI/gh.exe\" --version)"
     ]
   }
 }

@@ -52,7 +52,7 @@ export default function EditLeagueTeamModal({ leagueTeam, onClose, onSaved }) {
         <div className="modal-actions">
           <button
             onClick={handleDelete}
-            style={{ marginRight: 'auto', background: '#fdecea', color: '#8b1a1a', padding: '10px 16px', borderRadius: 8, fontSize: 13, fontWeight: 600, border: 'none', cursor: 'pointer' }}
+            style={{ marginRight: 'auto', background: 'rgba(239,68,68,0.1)', color: '#ef4444', padding: '10px 16px', borderRadius: 8, fontSize: 13, fontWeight: 600, border: 'none', cursor: 'pointer' }}
           >
             Delete Team
           </button>

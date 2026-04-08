@@ -48,7 +48,7 @@ export default function TeamAdmin({ team, onBack, onExport }) {
   }
 
   return (
-    <div style={{ minHeight: '100vh', background: '#f0f2f5' }}>
+    <div style={{ minHeight: '100vh', background: '#0a0f1e' }}>
       <div style={{
         background: `linear-gradient(135deg, ${team.color || '#0d1f5c'}, ${team.color || '#1a3a8f'})`,
         color: '#fff', padding: '16px 20px',
@@ -73,7 +73,7 @@ export default function TeamAdmin({ team, onBack, onExport }) {
         <div className="tab-bar">
           {TABS.map(t => (
             <button key={t} className={`tab-btn ${tab === t ? 'active' : ''}`} onClick={() => setTab(t)}
-              style={t === 'Danger' ? { color: tab === t ? '#C0392B' : '#888' } : undefined}>
+              style={t === 'Danger' ? { color: tab === t ? '#ef4444' : '#8892a4' } : undefined}>
               {t}
             </button>
           ))}
@@ -85,34 +85,34 @@ export default function TeamAdmin({ team, onBack, onExport }) {
 
         {tab === 'Schedule' && (
           <div>
-            <h3 style={{ fontSize: 14, fontWeight: 700, marginBottom: 8 }}>Upcoming Games</h3>
+            <h3 style={{ fontSize: 14, fontWeight: 700, marginBottom: 8, color: '#f0f4ff' }}>Upcoming Games</h3>
             {teamSchedule.map(g => (
               <div key={g.id} className="game-row">
                 <div>
-                  <div style={{ fontWeight: 600 }}>{g.opponent}</div>
-                  <div style={{ fontSize: 12, color: '#888' }}>
+                  <div style={{ fontWeight: 600, color: '#f0f4ff' }}>{g.opponent}</div>
+                  <div style={{ fontSize: 12, color: '#8892a4' }}>
                     {new Date(g.game_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} · {g.location}
                   </div>
                 </div>
                 <button onClick={() => deleteScheduleGame(g.id)}
-                  style={{ background: '#fdecea', color: '#8b1a1a', padding: '4px 12px', borderRadius: 6, fontSize: 12, fontWeight: 600, border: 'none', cursor: 'pointer' }}>
+                  style={{ background: 'rgba(239,68,68,0.1)', color: '#ef4444', padding: '4px 12px', borderRadius: 6, fontSize: 12, fontWeight: 600, border: 'none', cursor: 'pointer' }}>
                   Delete
                 </button>
               </div>
             ))}
             {teamSchedule.length === 0 && <div className="empty-state">No scheduled games</div>}
 
-            <h3 style={{ fontSize: 14, fontWeight: 700, marginBottom: 8, marginTop: 20 }}>Completed Games</h3>
+            <h3 style={{ fontSize: 14, fontWeight: 700, marginBottom: 8, marginTop: 20, color: '#f0f4ff' }}>Completed Games</h3>
             {teamGames.map(g => (
               <div key={g.id} className="game-row">
                 <div>
-                  <div style={{ fontWeight: 600 }}>{g.opponent}</div>
-                  <div style={{ fontSize: 12, color: '#888' }}>
+                  <div style={{ fontWeight: 600, color: '#f0f4ff' }}>{g.opponent}</div>
+                  <div style={{ fontSize: 12, color: '#8892a4' }}>
                     {g.result} {g.home_sets}-{g.away_sets} · {new Date(g.game_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                   </div>
                 </div>
                 <button onClick={() => deleteCompletedGame(g.id)}
-                  style={{ background: '#fdecea', color: '#8b1a1a', padding: '4px 12px', borderRadius: 6, fontSize: 12, fontWeight: 600, border: 'none', cursor: 'pointer' }}>
+                  style={{ background: 'rgba(239,68,68,0.1)', color: '#ef4444', padding: '4px 12px', borderRadius: 6, fontSize: 12, fontWeight: 600, border: 'none', cursor: 'pointer' }}>
                   Delete
                 </button>
               </div>
@@ -126,13 +126,13 @@ export default function TeamAdmin({ team, onBack, onExport }) {
             {teamPlayers.map(p => (
               <div key={p.id} className="game-row">
                 <div>
-                  <div style={{ fontWeight: 600 }}>{p.name}</div>
-                  <div style={{ fontSize: 12, color: '#888' }}>
+                  <div style={{ fontWeight: 600, color: '#f0f4ff' }}>{p.name}</div>
+                  <div style={{ fontSize: 12, color: '#8892a4' }}>
                     {[p.jersey_number ? `#${p.jersey_number}` : null, p.position].filter(Boolean).join(' · ')}
                   </div>
                 </div>
                 <button onClick={() => deletePlayer(p.id)}
-                  style={{ background: '#fdecea', color: '#8b1a1a', padding: '4px 12px', borderRadius: 6, fontSize: 12, fontWeight: 600, border: 'none', cursor: 'pointer' }}>
+                  style={{ background: 'rgba(239,68,68,0.1)', color: '#ef4444', padding: '4px 12px', borderRadius: 6, fontSize: 12, fontWeight: 600, border: 'none', cursor: 'pointer' }}>
                   Delete
                 </button>
               </div>
@@ -143,12 +143,12 @@ export default function TeamAdmin({ team, onBack, onExport }) {
 
         {tab === 'Danger' && (
           <div className="card" style={{ textAlign: 'center' }}>
-            <h3 style={{ color: '#C0392B', marginBottom: 8 }}>Danger Zone</h3>
-            <p style={{ fontSize: 13, color: '#888', marginBottom: 16 }}>
+            <h3 style={{ color: '#ef4444', marginBottom: 8 }}>Danger Zone</h3>
+            <p style={{ fontSize: 13, color: '#8892a4', marginBottom: 16 }}>
               Permanently delete this team and all associated data.
             </p>
             <button onClick={deleteTeam}
-              style={{ background: '#C0392B', color: '#fff', padding: '12px 32px', borderRadius: 8, fontSize: 14, fontWeight: 700, border: 'none', cursor: 'pointer' }}>
+              style={{ background: '#ef4444', color: '#fff', padding: '12px 32px', borderRadius: 8, fontSize: 14, fontWeight: 700, border: 'none', cursor: 'pointer' }}>
               Delete Entire Team
             </button>
           </div>

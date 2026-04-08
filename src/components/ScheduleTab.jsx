@@ -80,15 +80,15 @@ export default function ScheduleTab({ team, schedule, completedGames, players, p
       {/* Past unplayed games (need results) */}
       {pastUnplayed.length > 0 && (
         <>
-          <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 8, color: '#C0392B' }}>Needs Result</h3>
+          <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 8, color: '#ef4444' }}>Needs Result</h3>
           {pastUnplayed.map(g => (
             <div key={g.id} className="game-row">
               <div>
                 <div style={{ fontWeight: 600 }}>
                   {g.opponent}
-                  {g.is_league && <span style={{ fontSize: 10, background: '#e8f0fe', color: '#1a3a8f', padding: '2px 6px', borderRadius: 4, marginLeft: 8, fontWeight: 700 }}>LEAGUE</span>}
+                  {g.is_league && <span style={{ fontSize: 10, background: 'rgba(26,58,143,0.15)', color: '#1a3a8f', padding: '2px 6px', borderRadius: 4, marginLeft: 8, fontWeight: 700 }}>LEAGUE</span>}
                 </div>
-                <div style={{ fontSize: 12, color: '#888' }}>
+                <div style={{ fontSize: 12, color: '#8892a4' }}>
                   {formatDate(g.game_date)} · {g.location}
                 </div>
               </div>
@@ -115,10 +115,10 @@ export default function ScheduleTab({ team, schedule, completedGames, players, p
             <div>
               <div style={{ fontWeight: 600 }}>
                 {g.opponent}
-                {g.is_league && <span style={{ fontSize: 10, background: '#e8f0fe', color: '#1a3a8f', padding: '2px 6px', borderRadius: 4, marginLeft: 8, fontWeight: 700 }}>LEAGUE</span>}
-                {isToday && <span style={{ fontSize: 10, background: '#e8f5e9', color: '#1a5c2a', padding: '2px 6px', borderRadius: 4, marginLeft: 8, fontWeight: 700 }}>TODAY</span>}
+                {g.is_league && <span style={{ fontSize: 10, background: 'rgba(26,58,143,0.15)', color: '#1a3a8f', padding: '2px 6px', borderRadius: 4, marginLeft: 8, fontWeight: 700 }}>LEAGUE</span>}
+                {isToday && <span style={{ fontSize: 10, background: 'rgba(16,185,129,0.1)', color: '#10b981', padding: '2px 6px', borderRadius: 4, marginLeft: 8, fontWeight: 700 }}>TODAY</span>}
               </div>
-              <div style={{ fontSize: 12, color: '#888' }}>
+              <div style={{ fontSize: 12, color: '#8892a4' }}>
                 {formatDate(g.game_date)} · {g.location}
               </div>
             </div>
@@ -142,16 +142,16 @@ export default function ScheduleTab({ team, schedule, completedGames, players, p
           <div>
             <div style={{ fontWeight: 600 }}>
               {g.opponent}
-              {g.is_league && <span style={{ fontSize: 10, background: '#e8f0fe', color: '#1a3a8f', padding: '2px 6px', borderRadius: 4, marginLeft: 8, fontWeight: 700 }}>LEAGUE</span>}
+              {g.is_league && <span style={{ fontSize: 10, background: 'rgba(26,58,143,0.15)', color: '#1a3a8f', padding: '2px 6px', borderRadius: 4, marginLeft: 8, fontWeight: 700 }}>LEAGUE</span>}
             </div>
-            <div style={{ fontSize: 12, color: '#888' }}>
+            <div style={{ fontSize: 12, color: '#8892a4' }}>
               {formatDate(g.game_date)} · {g.location}
             </div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             {g.result ? (
               <>
-                <span style={{ fontSize: 13, color: '#888' }}>{g.home_sets}-{g.away_sets}</span>
+                <span style={{ fontSize: 13, color: '#8892a4' }}>{g.home_sets}-{g.away_sets}</span>
                 <span className={`game-result-badge ${g.result === 'W' ? 'win' : 'loss'}`}>
                   {g.result}
                 </span>

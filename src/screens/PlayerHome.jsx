@@ -53,7 +53,7 @@ export default function PlayerHome({ onSelectGame }) {
   const standings = computeStandings(myLeagueTeams, myLeagueResults);
 
   return (
-    <div style={{ minHeight: '100vh', background: '#f0f2f5' }}>
+    <div style={{ minHeight: '100vh', background: '#0a0f1e' }}>
       <div style={{
         background: `linear-gradient(135deg, ${team.color || '#0d1f5c'}, ${team.color || '#1a3a8f'})`,
         color: '#fff', padding: '16px 20px',
@@ -93,7 +93,7 @@ export default function PlayerHome({ onSelectGame }) {
               </div>
             </div>
             <div className="card">
-              <div style={{ fontSize: 13, fontWeight: 600, color: '#888', marginBottom: 12 }}>Per Set Averages</div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: '#8892a4', marginBottom: 12 }}>Per Set Averages</div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, textAlign: 'center' }}>
                 {[
                   { label: 'K/S', value: n2(sp > 0 ? totals.kills / sp : null) },
@@ -104,8 +104,8 @@ export default function PlayerHome({ onSelectGame }) {
                   { label: 'Sets', value: sp },
                 ].map((item, i) => (
                   <div key={i}>
-                    <div style={{ fontSize: 10, fontWeight: 600, color: '#888', textTransform: 'uppercase' }}>{item.label}</div>
-                    <div style={{ fontSize: 20, fontWeight: 700 }}>{item.value}</div>
+                    <div style={{ fontSize: 10, fontWeight: 600, color: '#8892a4', textTransform: 'uppercase' }}>{item.label}</div>
+                    <div style={{ fontSize: 20, fontWeight: 700, color: '#fff' }}>{item.value}</div>
                   </div>
                 ))}
               </div>
@@ -120,11 +120,11 @@ export default function PlayerHome({ onSelectGame }) {
               return (
                 <div key={field} className="card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div>
-                    <div style={{ fontSize: 12, fontWeight: 600, color: '#888', textTransform: 'uppercase' }}>{field}</div>
-                    <div style={{ fontSize: 28, fontWeight: 700 }}>{best.value}</div>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: '#8892a4', textTransform: 'uppercase' }}>{field}</div>
+                    <div style={{ fontSize: 28, fontWeight: 700, color: '#fff' }}>{best.value}</div>
                   </div>
                   {best.game && (
-                    <div style={{ textAlign: 'right', fontSize: 12, color: '#888' }}>
+                    <div style={{ textAlign: 'right', fontSize: 12, color: '#8892a4' }}>
                       vs {best.game.opponent}<br />
                       {new Date(best.game.game_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                     </div>
@@ -144,12 +144,12 @@ export default function PlayerHome({ onSelectGame }) {
                 <div key={g.id} className="game-row" onClick={() => onSelectGame && onSelectGame(player, g)}>
                   <div>
                     <div style={{ fontWeight: 600 }}>vs {g.opponent}</div>
-                    <div style={{ fontSize: 12, color: '#888' }}>
+                    <div style={{ fontSize: 12, color: '#8892a4' }}>
                       {new Date(g.game_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                     </div>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    {gs && <span style={{ fontSize: 12, color: '#888' }}>{gs.kills}K {gs.digs}D</span>}
+                    {gs && <span style={{ fontSize: 12, color: '#8892a4' }}>{gs.kills}K {gs.digs}D</span>}
                     <span className={`game-result-badge ${g.result === 'W' ? 'win' : 'loss'}`}>{g.result}</span>
                   </div>
                 </div>
@@ -161,23 +161,23 @@ export default function PlayerHome({ onSelectGame }) {
         {tab === 'Efficiency' && (
           <div>
             <div className="card" style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: 13, fontWeight: 600, color: '#888', marginBottom: 8 }}>Season Hitting %</div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: '#8892a4', marginBottom: 8 }}>Season Hitting %</div>
               <div style={{ fontSize: 48, fontWeight: 700, color: hcol(totals.kills, totals.errors, totals.attempts) }}>
                 {n3(h)}
               </div>
-              <div style={{ fontSize: 12, color: '#888', marginTop: 8 }}>
+              <div style={{ fontSize: 12, color: '#8892a4', marginTop: 8 }}>
                 {totals.kills}K - {totals.errors}E / {totals.attempts} Att
               </div>
             </div>
             {/* Per-game hitting chart */}
             <div className="card">
-              <div style={{ fontSize: 13, fontWeight: 600, color: '#888', marginBottom: 8 }}>Game-by-Game</div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: '#8892a4', marginBottom: 8 }}>Game-by-Game</div>
               {myGames.map(g => {
                 const gs = myStats.find(s => s.game_id === g.id);
                 if (!gs) return null;
                 const gh = hpct(gs.kills, gs.errors, gs.attempts);
                 return (
-                  <div key={g.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderBottom: '1px solid #f0f2f5' }}>
+                  <div key={g.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
                     <span style={{ fontSize: 12 }}>vs {g.opponent}</span>
                     <span style={{ fontWeight: 700, color: hcol(gs.kills, gs.errors, gs.attempts) }}>{n3(gh)}</span>
                   </div>
@@ -195,7 +195,7 @@ export default function PlayerHome({ onSelectGame }) {
               <div key={g.id} className="game-row">
                 <div>
                   <div style={{ fontWeight: 600 }}>{g.opponent}</div>
-                  <div style={{ fontSize: 12, color: '#888' }}>
+                  <div style={{ fontSize: 12, color: '#8892a4' }}>
                     {new Date(g.game_date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })} · {g.location}
                   </div>
                 </div>
@@ -206,14 +206,14 @@ export default function PlayerHome({ onSelectGame }) {
 
         {tab === 'Standings' && (
           <div>
-            {team.league_name && <div style={{ fontSize: 14, fontWeight: 600, color: '#888', marginBottom: 12 }}>{team.league_name}</div>}
+            {team.league_name && <div style={{ fontSize: 14, fontWeight: 600, color: '#8892a4', marginBottom: 12 }}>{team.league_name}</div>}
             {standings.length === 0 ? (
               <div className="empty-state">No league data</div>
             ) : (
               <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
                   <thead>
-                    <tr style={{ background: '#f8f9fa' }}>
+                    <tr style={{ background: 'rgba(255,255,255,0.03)' }}>
                       <th style={{ padding: '10px 12px', textAlign: 'left' }}>#</th>
                       <th style={{ padding: '10px 12px', textAlign: 'left' }}>Team</th>
                       <th style={{ padding: '10px 8px', textAlign: 'center' }}>W</th>
@@ -222,7 +222,7 @@ export default function PlayerHome({ onSelectGame }) {
                   </thead>
                   <tbody>
                     {standings.map((t, i) => (
-                      <tr key={t.id} style={{ borderTop: '1px solid #eee', fontWeight: t.is_us ? 700 : 400 }}>
+                      <tr key={t.id} style={{ borderTop: '1px solid rgba(255,255,255,0.06)', fontWeight: t.is_us ? 700 : 400 }}>
                         <td style={{ padding: '10px 12px' }}>{i + 1}</td>
                         <td style={{ padding: '10px 12px' }}>
                           <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: t.dot_color, marginRight: 8 }} />

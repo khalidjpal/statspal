@@ -35,7 +35,7 @@ export default function AveragesTab({ players, playerGameStats, completedGames, 
         <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
             <thead>
-              <tr style={{ background: '#f8f9fa', textAlign: 'center' }}>
+              <tr style={{ background: 'rgba(255,255,255,0.03)', textAlign: 'center' }}>
                 <th style={{ padding: '10px 8px', textAlign: 'left', fontWeight: 600 }}>Player</th>
                 <th style={{ padding: '10px 4px', fontWeight: 600 }}>SP</th>
                 <th style={{ padding: '10px 4px', fontWeight: 600 }}>K/S</th>
@@ -52,7 +52,7 @@ export default function AveragesTab({ players, playerGameStats, completedGames, 
                 return (
                   <tr
                     key={p.id}
-                    style={{ borderTop: '1px solid #eee', cursor: 'pointer' }}
+                    style={{ borderTop: '1px solid rgba(255,255,255,0.06)', cursor: 'pointer' }}
                     onClick={() => onSelectPlayer(p)}
                   >
                     <td style={{ padding: '8px', display: 'flex', alignItems: 'center', gap: 8 }}>

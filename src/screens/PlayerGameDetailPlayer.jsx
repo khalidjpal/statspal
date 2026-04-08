@@ -13,7 +13,7 @@ export default function PlayerGameDetailPlayer({ player, game, onBack }) {
   const h = hpct(stats.kills, stats.errors, stats.attempts);
 
   return (
-    <div style={{ minHeight: '100vh', background: '#f0f2f5' }}>
+    <div style={{ minHeight: '100vh', background: '#0a0f1e' }}>
       <div style={{
         background: `linear-gradient(135deg, ${team?.color || '#0d1f5c'}, ${team?.color || '#1a3a8f'})`,
         color: '#fff', padding: '16px 20px',
@@ -36,20 +36,20 @@ export default function PlayerGameDetailPlayer({ player, game, onBack }) {
 
       <div style={{ padding: '16px 20px', maxWidth: 600, margin: '0 auto' }}>
         <div className="card" style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: 13, fontWeight: 600, color: '#888', marginBottom: 8 }}>Hitting Efficiency</div>
+          <div style={{ fontSize: 13, fontWeight: 600, color: '#8892a4', marginBottom: 8 }}>Hitting Efficiency</div>
           <div style={{ fontSize: 40, fontWeight: 700, color: hcol(stats.kills, stats.errors, stats.attempts) }}>
             {n3(h)}
           </div>
           <div style={{ fontSize: 13, color: hcol(stats.kills, stats.errors, stats.attempts), fontWeight: 600 }}>
             {hlbl(stats.kills, stats.errors, stats.attempts)}
           </div>
-          <div style={{ fontSize: 12, color: '#888', marginTop: 8 }}>
+          <div style={{ fontSize: 12, color: '#8892a4', marginTop: 8 }}>
             {stats.kills}K - {stats.errors}E / {stats.attempts} Att
           </div>
         </div>
 
         <div className="card">
-          <div style={{ fontSize: 13, fontWeight: 600, color: '#888', marginBottom: 12 }}>Game Stats ({stats.sets_played} sets)</div>
+          <div style={{ fontSize: 13, fontWeight: 600, color: '#8892a4', marginBottom: 12 }}>Game Stats ({stats.sets_played} sets)</div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, textAlign: 'center' }}>
             {[
               { label: 'Kills', value: stats.kills },
@@ -57,18 +57,18 @@ export default function PlayerGameDetailPlayer({ player, game, onBack }) {
               { label: 'Digs', value: stats.digs },
               { label: 'Assists', value: stats.assists },
               { label: 'Blocks', value: stats.blocks },
-              { label: 'Errors', value: stats.errors, color: '#C0392B' },
+              { label: 'Errors', value: stats.errors, color: '#ef4444' },
             ].map((item, i) => (
               <div key={i}>
-                <div style={{ fontSize: 10, fontWeight: 600, color: '#888', textTransform: 'uppercase' }}>{item.label}</div>
-                <div style={{ fontSize: 20, fontWeight: 700, color: item.color || '#333' }}>{item.value}</div>
+                <div style={{ fontSize: 10, fontWeight: 600, color: '#8892a4', textTransform: 'uppercase' }}>{item.label}</div>
+                <div style={{ fontSize: 20, fontWeight: 700, color: item.color || '#f0f4ff' }}>{item.value}</div>
               </div>
             ))}
           </div>
         </div>
 
         <div className="card">
-          <div style={{ fontSize: 13, fontWeight: 600, color: '#888', marginBottom: 12 }}>Per Set</div>
+          <div style={{ fontSize: 13, fontWeight: 600, color: '#8892a4', marginBottom: 12 }}>Per Set</div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, textAlign: 'center' }}>
             {[
               { label: 'K/S', value: n2(stats.kills / sp) },
@@ -79,8 +79,8 @@ export default function PlayerGameDetailPlayer({ player, game, onBack }) {
               { label: 'E/S', value: n2(stats.errors / sp) },
             ].map((item, i) => (
               <div key={i}>
-                <div style={{ fontSize: 10, fontWeight: 600, color: '#888', textTransform: 'uppercase' }}>{item.label}</div>
-                <div style={{ fontSize: 20, fontWeight: 700 }}>{item.value}</div>
+                <div style={{ fontSize: 10, fontWeight: 600, color: '#8892a4', textTransform: 'uppercase' }}>{item.label}</div>
+                <div style={{ fontSize: 20, fontWeight: 700, color: '#f0f4ff' }}>{item.value}</div>
               </div>
             ))}
           </div>

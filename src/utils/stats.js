@@ -1,16 +1,26 @@
-// Hitting percentage
+// Hitting percentage: (K - E) / Att, clamped to [-1, +1]
 export function hpct(k, e, att) {
-  return att > 0 ? (k - e) / att : null;
+  if (att <= 0) return null;
+  const h = (k - e) / att;
+  return Math.max(-1, Math.min(1, h));
 }
 
-// Hitting % as display string
-export function hstr(k, e, att) {
+// Hitting % as signed display string: "+.312", "-.045", "+.000"
+export function hfmt(k, e, att) {
   const h = hpct(k, e, att);
   if (h === null) return '—';
-  return h.toFixed(3).replace(/^0/, '');
+  const sign = h >= 0 ? '+' : '-';
+  const abs = Math.abs(h).toFixed(3);
+  // Remove leading zero: "0.312" → ".312"
+  return sign + abs.replace(/^0/, '');
 }
 
-// Hitting % color scale
+// Legacy alias — use hfmt instead in new code
+export function hstr(k, e, att) {
+  return hfmt(k, e, att);
+}
+
+// Hitting % color scale (based on signed value)
 export function hcol(k, e, att) {
   const h = hpct(k, e, att);
   if (h === null) return '#888';
@@ -26,12 +36,30 @@ export function hcol(k, e, att) {
 export function hlbl(k, e, att) {
   const h = hpct(k, e, att);
   if (h === null) return 'N/A';
+  if (h <= 0.000) return 'Poor';
   if (h <= 0.100) return 'Poor';
   if (h <= 0.150) return 'Below Avg';
   if (h <= 0.200) return 'Average';
   if (h <= 0.250) return 'Good';
   if (h <= 0.300) return 'Very Good';
   return 'Excellent';
+}
+
+// Validate stat line: returns error string or null if valid
+export function validateStats(k, e, att) {
+  k = Number(k) || 0;
+  e = Number(e) || 0;
+  att = Number(att) || 0;
+  if (att < k) {
+    return `Attempts (${att}) must be at least as high as Kills (${k}).`;
+  }
+  if (att < e) {
+    return `Attempts (${att}) must be at least as high as Errors (${e}).`;
+  }
+  if (k + e > att) {
+    return `Kills (${k}) + Errors (${e}) = ${k + e} exceeds Attempts (${att}). Please increase attempts to at least ${k + e}.`;
+  }
+  return null;
 }
 
 // Black or white text for contrast
@@ -49,9 +77,13 @@ export function n2(v) {
   return v != null ? v.toFixed(2) : '—';
 }
 
-// Format number to 3 decimal places
+// Format hitting % with sign: "+.312" / "-.045" / "—"
 export function n3(v) {
-  return v != null ? v.toFixed(3).replace(/^0/, '') : '—';
+  if (v == null) return '—';
+  const clamped = Math.max(-1, Math.min(1, v));
+  const sign = clamped >= 0 ? '+' : '-';
+  const abs = Math.abs(clamped).toFixed(3);
+  return sign + abs.replace(/^0/, '');
 }
 
 // Compute totals for a single player across games

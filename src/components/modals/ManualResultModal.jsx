@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../../supabase';
+import { validateStats } from '../../utils/stats';
 
 export default function ManualResultModal({ game, team, players, existingStats, onClose, onSaved }) {
   const teamPlayers = players.filter(p => p.team_id === team.id);
@@ -25,6 +26,7 @@ export default function ManualResultModal({ game, team, players, existingStats, 
   });
   const [saving, setSaving] = useState(false);
   const [tab, setTab] = useState('score');
+  const [validationError, setValidationError] = useState('');
 
   // Update set scores array when set counts change
   useEffect(() => {
@@ -54,6 +56,17 @@ export default function ManualResultModal({ game, team, players, existingStats, 
   }
 
   async function handleSave() {
+    // Validate all player stats
+    setValidationError('');
+    for (const p of teamPlayers) {
+      const s = stats[p.id];
+      if (!s) continue;
+      const err = validateStats(s.kills, s.errors, s.attempts);
+      if (err) {
+        setValidationError(`${p.name}: ${err}`);
+        return;
+      }
+    }
     setSaving(true);
 
     // Update the completed game record
@@ -119,17 +132,23 @@ export default function ManualResultModal({ game, team, players, existingStats, 
       <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: 700, maxHeight: '90vh', overflow: 'auto' }}>
         <h2>{isNew ? 'Enter Result' : 'Edit Result'} — vs {game.opponent}</h2>
 
+        {validationError && (
+          <div style={{ background: 'rgba(239,68,68,0.1)', color: '#ef4444', padding: '10px 12px', borderRadius: 8, fontSize: 13, marginBottom: 12, fontWeight: 500 }}>
+            {validationError}
+          </div>
+        )}
+
         {/* Tab toggle */}
-        <div style={{ display: 'flex', gap: 0, marginBottom: 16, borderRadius: 8, overflow: 'hidden', border: '1px solid #e4e6ea' }}>
+        <div style={{ display: 'flex', gap: 0, marginBottom: 16, borderRadius: 8, overflow: 'hidden', border: '1px solid rgba(255,255,255,0.06)' }}>
           <button
             onClick={() => setTab('score')}
-            style={{ flex: 1, padding: '10px', fontSize: 13, fontWeight: 600, background: tab === 'score' ? '#1a3a8f' : '#fff', color: tab === 'score' ? '#fff' : '#555', border: 'none', cursor: 'pointer' }}
+            style={{ flex: 1, padding: '10px', fontSize: 13, fontWeight: 600, background: tab === 'score' ? '#1a3a8f' : 'rgba(255,255,255,0.04)', color: tab === 'score' ? '#fff' : '#8892a4', border: 'none', cursor: 'pointer' }}
           >
             Score
           </button>
           <button
             onClick={() => setTab('stats')}
-            style={{ flex: 1, padding: '10px', fontSize: 13, fontWeight: 600, background: tab === 'stats' ? '#1a3a8f' : '#fff', color: tab === 'stats' ? '#fff' : '#555', border: 'none', cursor: 'pointer' }}
+            style={{ flex: 1, padding: '10px', fontSize: 13, fontWeight: 600, background: tab === 'stats' ? '#1a3a8f' : 'rgba(255,255,255,0.04)', color: tab === 'stats' ? '#fff' : '#8892a4', border: 'none', cursor: 'pointer' }}
           >
             Player Stats
           </button>
@@ -141,13 +160,13 @@ export default function ManualResultModal({ game, team, players, existingStats, 
             <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
               <button
                 onClick={() => setResult('W')}
-                style={{ flex: 1, padding: 10, borderRadius: 8, border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: 14, background: result === 'W' ? '#e8f5e9' : '#f0f2f5', color: result === 'W' ? '#1a5c2a' : '#888' }}
+                style={{ flex: 1, padding: 10, borderRadius: 8, border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: 14, background: result === 'W' ? 'rgba(16,185,129,0.1)' : 'rgba(255,255,255,0.04)', color: result === 'W' ? '#10b981' : '#8892a4' }}
               >
                 Win
               </button>
               <button
                 onClick={() => setResult('L')}
-                style={{ flex: 1, padding: 10, borderRadius: 8, border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: 14, background: result === 'L' ? '#fdecea' : '#f0f2f5', color: result === 'L' ? '#8b1a1a' : '#888' }}
+                style={{ flex: 1, padding: 10, borderRadius: 8, border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: 14, background: result === 'L' ? 'rgba(239,68,68,0.1)' : 'rgba(255,255,255,0.04)', color: result === 'L' ? '#ef4444' : '#8892a4' }}
               >
                 Loss
               </button>
@@ -167,10 +186,10 @@ export default function ManualResultModal({ game, team, players, existingStats, 
             <label>Set Scores</label>
             {setScores.slice(0, homeSets + awaySets).map((s, i) => (
               <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 }}>
-                <span style={{ fontSize: 13, fontWeight: 600, color: '#888', width: 50 }}>Set {i + 1}</span>
+                <span style={{ fontSize: 13, fontWeight: 600, color: '#8892a4', width: 50 }}>Set {i + 1}</span>
                 <input type="number" min={0} value={s.home} onChange={e => updateSetScore(i, 'home', e.target.value)}
                   style={{ width: 60, textAlign: 'center' }} />
-                <span style={{ color: '#888' }}>-</span>
+                <span style={{ color: '#8892a4' }}>-</span>
                 <input type="number" min={0} value={s.away} onChange={e => updateSetScore(i, 'away', e.target.value)}
                   style={{ width: 60, textAlign: 'center' }} />
               </div>
@@ -182,7 +201,7 @@ export default function ManualResultModal({ game, team, players, existingStats, 
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
               <thead>
-                <tr style={{ background: '#f8f9fa' }}>
+                <tr style={{ background: 'rgba(255,255,255,0.03)' }}>
                   <th style={{ padding: '6px 8px', textAlign: 'left', fontSize: 11 }}>Player</th>
                   {statFields.map(f => (
                     <th key={f} style={{ padding: '6px 3px', textAlign: 'center', fontSize: 10, textTransform: 'uppercase' }}>
@@ -193,7 +212,7 @@ export default function ManualResultModal({ game, team, players, existingStats, 
               </thead>
               <tbody>
                 {teamPlayers.map(p => (
-                  <tr key={p.id} style={{ borderTop: '1px solid #eee' }}>
+                  <tr key={p.id} style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
                     <td style={{ padding: '4px 8px', fontWeight: 600, fontSize: 12, whiteSpace: 'nowrap' }}>{p.name}</td>
                     {statFields.map(f => (
                       <td key={f} style={{ padding: '2px' }}>
@@ -202,7 +221,7 @@ export default function ManualResultModal({ game, team, players, existingStats, 
                           min={0}
                           value={stats[p.id]?.[f] || 0}
                           onChange={e => updateStat(p.id, f, e.target.value)}
-                          style={{ width: 42, textAlign: 'center', padding: '4px 2px', border: '1px solid #ddd', borderRadius: 4, fontSize: 12 }}
+                          style={{ width: 42, textAlign: 'center', padding: '4px 2px', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 4, fontSize: 12 }}
                         />
                       </td>
                     ))}

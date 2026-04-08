@@ -61,7 +61,7 @@ export default function PreGame({ team, scheduledGame, onBack, onStartGame }) {
   }
 
   return (
-    <div style={{ minHeight: '100vh', background: '#f0f2f5' }}>
+    <div style={{ minHeight: '100vh', background: '#0a0f1e' }}>
       <div style={{
         background: `linear-gradient(135deg, ${team.color || '#0d1f5c'}, ${team.color || '#1a3a8f'})`,
         color: '#fff', padding: '16px 20px',
@@ -85,25 +85,25 @@ export default function PreGame({ team, scheduledGame, onBack, onStartGame }) {
         {step === 'setup' && (
           <>
             <div className="card">
-              <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#555', marginBottom: 4 }}>Opponent</label>
+              <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#8892a4', marginBottom: 4 }}>Opponent</label>
               <input
                 value={opponent} onChange={e => setOpponent(e.target.value)} placeholder="Opponent name"
-                style={{ width: '100%', padding: '10px 12px', border: '1px solid #ccc', borderRadius: 8, fontSize: 15, marginBottom: 12 }}
+                style={{ width: '100%', padding: '10px 12px', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 8, fontSize: 15, marginBottom: 12 }}
               />
               <div style={{ display: 'flex', gap: 12 }}>
                 <div style={{ flex: 1 }}>
-                  <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#555', marginBottom: 4 }}>Location</label>
-                  <select value={location} onChange={e => setLocation(e.target.value)} style={{ width: '100%', padding: '10px 12px', border: '1px solid #ccc', borderRadius: 8, fontSize: 15, marginBottom: 12 }}>
+                  <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#8892a4', marginBottom: 4 }}>Location</label>
+                  <select value={location} onChange={e => setLocation(e.target.value)} style={{ width: '100%', padding: '10px 12px', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 8, fontSize: 15, marginBottom: 12 }}>
                     <option>Home</option><option>Away</option><option>Neutral</option>
                   </select>
                 </div>
                 <div style={{ flex: 1 }}>
-                  <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#555', marginBottom: 4 }}>Date</label>
-                  <input type="date" value={gameDate} onChange={e => setGameDate(e.target.value)} style={{ width: '100%', padding: '10px 12px', border: '1px solid #ccc', borderRadius: 8, fontSize: 15, marginBottom: 12 }} />
+                  <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#8892a4', marginBottom: 4 }}>Date</label>
+                  <input type="date" value={gameDate} onChange={e => setGameDate(e.target.value)} style={{ width: '100%', padding: '10px 12px', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 8, fontSize: 15, marginBottom: 12 }} />
                 </div>
               </div>
               {isLeague && (
-                <div style={{ fontSize: 12, background: '#e8f0fe', color: '#1a3a8f', padding: '6px 10px', borderRadius: 6, fontWeight: 600 }}>
+                <div style={{ fontSize: 12, background: 'rgba(26,58,143,0.15)', color: '#6b8cff', padding: '6px 10px', borderRadius: 6, fontWeight: 600 }}>
                   League Game — standings will update automatically
                 </div>
               )}
@@ -121,14 +121,14 @@ export default function PreGame({ team, scheduledGame, onBack, onStartGame }) {
         {step === 'format' && (
           <>
             <div className="card" style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 16 }}>Match Format</div>
+              <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 16, color: '#f0f4ff' }}>Match Format</div>
               <div style={{ display: 'flex', gap: 12, justifyContent: 'center' }}>
                 {[3, 5].map(n => (
                   <button key={n} onClick={() => setBestOf(n)}
                     style={{
                       padding: '20px 32px', borderRadius: 12, border: 'none', cursor: 'pointer',
-                      background: bestOf === n ? (team.color || '#1a3a8f') : '#f0f2f5',
-                      color: bestOf === n ? '#fff' : '#333',
+                      background: bestOf === n ? (team.color || '#1a3a8f') : 'rgba(255,255,255,0.06)',
+                      color: bestOf === n ? '#fff' : '#f0f4ff',
                       fontSize: 18, fontWeight: 700,
                       boxShadow: bestOf === n ? '0 4px 12px rgba(0,0,0,0.2)' : 'none',
                     }}
@@ -137,7 +137,7 @@ export default function PreGame({ team, scheduledGame, onBack, onStartGame }) {
                   </button>
                 ))}
               </div>
-              <div style={{ fontSize: 13, color: '#888', marginTop: 12 }}>
+              <div style={{ fontSize: 13, color: '#8892a4', marginTop: 12 }}>
                 {bestOf === 3 ? 'First to win 2 sets' : 'First to win 3 sets'}
               </div>
             </div>
@@ -153,7 +153,7 @@ export default function PreGame({ team, scheduledGame, onBack, onStartGame }) {
         {/* Step 3: Lineup */}
         {step === 'lineup' && (
           <>
-            <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 8 }}>
+            <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 8, color: '#f0f4ff' }}>
               Active Roster ({selectedPlayers.length}/{teamPlayers.length})
             </h3>
             {teamPlayers.map((p, i) => {
@@ -166,13 +166,13 @@ export default function PreGame({ team, scheduledGame, onBack, onStartGame }) {
                       {p.initials || mkInit(p.name)}
                     </span>
                     <div>
-                      <div style={{ fontWeight: 600 }}>{p.name}</div>
-                      <div style={{ fontSize: 12, color: '#888' }}>
+                      <div style={{ fontWeight: 600, color: '#f0f4ff' }}>{p.name}</div>
+                      <div style={{ fontSize: 12, color: '#8892a4' }}>
                         {[p.jersey_number ? `#${p.jersey_number}` : null, p.position].filter(Boolean).join(' · ')}
                       </div>
                     </div>
                   </div>
-                  <div style={{ width: 24, height: 24, borderRadius: 6, border: selected ? 'none' : '2px solid #ccc', background: selected ? (team.color || '#1a3a8f') : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 14 }}>
+                  <div style={{ width: 24, height: 24, borderRadius: 6, border: selected ? 'none' : '2px solid rgba(255,255,255,0.08)', background: selected ? (team.color || '#1a3a8f') : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 14 }}>
                     {selected && '✓'}
                   </div>
                 </div>
@@ -180,7 +180,7 @@ export default function PreGame({ team, scheduledGame, onBack, onStartGame }) {
             })}
             <button
               onClick={handleStart} disabled={selectedPlayers.length === 0}
-              style={{ width: '100%', padding: 16, marginTop: 16, background: '#c9a84c', color: '#000', borderRadius: 12, fontSize: 18, fontWeight: 700, border: 'none', cursor: 'pointer', opacity: selectedPlayers.length === 0 ? 0.5 : 1 }}
+              style={{ width: '100%', padding: 16, marginTop: 16, background: '#c9a84c', color: '#f0f4ff', borderRadius: 12, fontSize: 18, fontWeight: 700, border: 'none', cursor: 'pointer', opacity: selectedPlayers.length === 0 ? 0.5 : 1 }}
             >
               Start Match
             </button>

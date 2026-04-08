@@ -51,7 +51,7 @@ export default function App() {
     return SCREENS.HUB;
   };
 
-  const effectiveScreen = !currentUser && screen !== SCREENS.GOD_MODE ? SCREENS.LOGIN : screen;
+  const effectiveScreen = !currentUser ? SCREENS.LOGIN : screen;
 
   if (currentUser && screen === SCREENS.LOGIN) {
     const home = getHomeScreen();
@@ -203,10 +203,10 @@ export default function App() {
 
   switch (effectiveScreen) {
     case SCREENS.LOGIN:
-      return <Login onGodMode={handleGodMode} />;
+      return <Login />;
 
     case SCREENS.HUB:
-      return <Hub onSelectTeam={handleSelectTeam} />;
+      return <Hub onSelectTeam={handleSelectTeam} onGodMode={handleGodMode} />;
 
     case SCREENS.TEAM_DASHBOARD:
       return (
@@ -290,10 +290,7 @@ export default function App() {
     case SCREENS.GOD_MODE:
       return (
         <GodMode
-          onBack={() => {
-            if (currentUser) nav(getHomeScreen());
-            else nav(SCREENS.LOGIN);
-          }}
+          onBack={() => nav(SCREENS.HUB)}
         />
       );
 

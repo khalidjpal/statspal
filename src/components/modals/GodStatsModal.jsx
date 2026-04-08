@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { supabase } from '../../supabase';
+import { validateStats } from '../../utils/stats';
 
 export default function GodStatsModal({ game, players, existingStats, onClose, onSaved }) {
   const gamePlayers = players.filter(p => p.team_id === game.team_id);
@@ -14,6 +15,7 @@ export default function GodStatsModal({ game, players, existingStats, onClose, o
     return init;
   });
   const [saving, setSaving] = useState(false);
+  const [validationError, setValidationError] = useState('');
 
   function updateStat(playerId, field, value) {
     setStats(prev => ({
@@ -23,6 +25,13 @@ export default function GodStatsModal({ game, players, existingStats, onClose, o
   }
 
   async function handleSave() {
+    setValidationError('');
+    for (const p of gamePlayers) {
+      const s = stats[p.id];
+      if (!s) continue;
+      const err = validateStats(s.kills, s.errors, s.attempts);
+      if (err) { setValidationError(`${p.name}: ${err}`); return; }
+    }
     setSaving(true);
     // Delete existing stats for this game
     await supabase.from('player_game_stats').delete().eq('game_id', game.id);
@@ -46,6 +55,11 @@ export default function GodStatsModal({ game, players, existingStats, onClose, o
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: 700, maxHeight: '90vh', overflow: 'auto' }}>
         <h2>Edit Stats — vs {game.opponent}</h2>
+        {validationError && (
+          <div style={{ background: '#fdecea', color: '#8b1a1a', padding: '10px 12px', borderRadius: 8, fontSize: 13, marginBottom: 12, fontWeight: 500 }}>
+            {validationError}
+          </div>
+        )}
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
             <thead>

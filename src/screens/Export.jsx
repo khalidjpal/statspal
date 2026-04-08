@@ -17,7 +17,7 @@ export default function Export({ team, onBack }) {
       const h = hpct(t.kills, t.errors, t.attempts);
       return [
         p.name, t.sets_played, t.kills, t.aces, t.digs, t.assists, t.blocks, t.errors, t.attempts,
-        h !== null ? h.toFixed(3) : '',
+        h !== null ? (h >= 0 ? '+' : '') + h.toFixed(3) : '',
         n2(t.kills / sp), n2(t.aces / sp), n2(t.digs / sp), n2(t.assists / sp), n2(t.blocks / sp),
       ];
     });
@@ -43,7 +43,7 @@ export default function Export({ team, onBack }) {
   }
 
   return (
-    <div style={{ minHeight: '100vh', background: '#f0f2f5' }}>
+    <div style={{ minHeight: '100vh', background: '#0a0f1e' }}>
       <div style={{
         background: `linear-gradient(135deg, ${team.color || '#0d1f5c'}, ${team.color || '#1a3a8f'})`,
         color: '#fff', padding: '16px 20px',
@@ -56,8 +56,8 @@ export default function Export({ team, onBack }) {
 
       <div style={{ padding: '16px 20px', maxWidth: 600, margin: '0 auto' }}>
         <div className="card" style={{ textAlign: 'center' }}>
-          <h3 style={{ marginBottom: 8 }}>Season Stats</h3>
-          <p style={{ fontSize: 13, color: '#888', marginBottom: 16 }}>Download player season averages and totals as CSV</p>
+          <h3 style={{ marginBottom: 8, color: '#f0f4ff' }}>Season Stats</h3>
+          <p style={{ fontSize: 13, color: '#8892a4', marginBottom: 16 }}>Download player season averages and totals as CSV</p>
           <button
             className="modal-btn-primary"
             onClick={() => download(buildCSV(), `${team.name.replace(/\s+/g, '_')}_season_stats.csv`)}
@@ -67,8 +67,8 @@ export default function Export({ team, onBack }) {
         </div>
 
         <div className="card" style={{ textAlign: 'center' }}>
-          <h3 style={{ marginBottom: 8 }}>Game Log</h3>
-          <p style={{ fontSize: 13, color: '#888', marginBottom: 16 }}>Download all game results as CSV</p>
+          <h3 style={{ marginBottom: 8, color: '#f0f4ff' }}>Game Log</h3>
+          <p style={{ fontSize: 13, color: '#8892a4', marginBottom: 16 }}>Download all game results as CSV</p>
           <button
             className="modal-btn-primary"
             onClick={() => download(buildGameLogCSV(), `${team.name.replace(/\s+/g, '_')}_game_log.csv`)}

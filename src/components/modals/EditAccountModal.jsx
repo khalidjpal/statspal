@@ -26,7 +26,7 @@ export default function EditAccountModal({ account, onClose, onSaved }) {
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-content" onClick={e => e.stopPropagation()}>
         <h2>Edit Account</h2>
-        <div style={{ fontSize: 12, color: '#888', marginBottom: 16 }}>@{account.username} · {account.role}</div>
+        <div style={{ fontSize: 12, color: '#8892a4', marginBottom: 16 }}>@{account.username} · {account.role}</div>
         <label>Name</label>
         <input value={name} onChange={e => setName(e.target.value)} />
         <label>New Password (leave blank to keep)</label>
@@ -38,7 +38,7 @@ export default function EditAccountModal({ account, onClose, onSaved }) {
         <div className="modal-actions">
           <button
             onClick={handleDelete}
-            style={{ marginRight: 'auto', background: '#fdecea', color: '#8b1a1a', padding: '10px 16px', borderRadius: 8, fontSize: 13, fontWeight: 600, border: 'none', cursor: 'pointer' }}
+            style={{ marginRight: 'auto', background: 'rgba(239,68,68,0.1)', color: '#ef4444', padding: '10px 16px', borderRadius: 8, fontSize: 13, fontWeight: 600, border: 'none', cursor: 'pointer' }}
           >
             Delete
           </button>

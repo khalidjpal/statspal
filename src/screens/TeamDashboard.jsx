@@ -29,7 +29,7 @@ export default function TeamDashboard({ team, onBack, onSelectGame, onSelectPlay
   const isCoachOrAdmin = isAdmin || currentUser?.role === 'coach';
 
   return (
-    <div style={{ minHeight: '100vh', background: '#f0f2f5' }}>
+    <div style={{ minHeight: '100vh', background: '#0a0f1e' }}>
       {/* Header */}
       <div style={{
         background: `linear-gradient(135deg, ${team.color || '#0d1f5c'}, ${team.color || '#1a3a8f'})`,

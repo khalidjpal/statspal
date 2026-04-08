@@ -93,6 +93,11 @@ export default function App() {
     setAutoRouted(false);
   }
 
+  // Route guard: players cannot access live tracking screens
+  if (currentUser?.role === 'player' && (screen === SCREENS.PRE_GAME || screen === SCREENS.LIVE_GAME)) {
+    setScreen(SCREENS.TEAM_DASHBOARD);
+  }
+
   // === HANDLERS ===
 
   function handleSelectTeam(team) {

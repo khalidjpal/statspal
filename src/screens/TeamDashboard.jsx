@@ -71,7 +71,7 @@ export default function TeamDashboard({ team, onBack, onSelectGame, onSelectPlay
           team={team}
           schedule={schedule}
           completedGames={completedGames}
-          onResumeGame={onResumeGame}
+          onResumeGame={isCoachOrAdmin ? onResumeGame : undefined}
         />
 
         {/* Tab bar */}
@@ -94,8 +94,8 @@ export default function TeamDashboard({ team, onBack, onSelectGame, onSelectPlay
             leagueTeams={leagueTeams}
             isAdmin={isCoachOrAdmin}
             onSelectGame={onSelectGame}
-            onStartLive={onStartLive}
-            onResumeGame={onResumeGame}
+            onStartLive={isCoachOrAdmin ? onStartLive : undefined}
+            onResumeGame={isCoachOrAdmin ? onResumeGame : undefined}
             refresh={refresh}
           />
         )}

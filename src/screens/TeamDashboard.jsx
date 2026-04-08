@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useData } from '../contexts/DataContext';
-import StatsStrip from '../components/StatsStrip';
+import NextGameBar from '../components/NextGameBar';
 import ScheduleTab from '../components/ScheduleTab';
 import StandingsTab from '../components/StandingsTab';
 import AveragesTab from '../components/AveragesTab';
@@ -37,7 +37,7 @@ export default function TeamDashboard({ team, onBack, onSelectGame, onSelectPlay
           </button>
           <div style={{ display: 'flex', gap: 8 }}>
             <button
-              onClick={() => { console.log('[TeamDashboard] Manual refresh clicked'); refresh(); }}
+              onClick={() => { refresh(); }}
               style={{ background: 'rgba(255,255,255,0.15)', color: '#fff', padding: '6px 10px', borderRadius: 8, fontSize: 13, fontWeight: 600, border: 'none', cursor: 'pointer' }}
             >
               ↻
@@ -67,12 +67,11 @@ export default function TeamDashboard({ team, onBack, onSelectGame, onSelectPlay
       </div>
 
       <div style={{ padding: '16px 20px', maxWidth: 800, margin: '0 auto' }}>
-        <StatsStrip
-          players={players}
-          playerGameStats={playerGameStats}
+        <NextGameBar
+          team={team}
+          schedule={schedule}
           completedGames={completedGames}
-          teamId={team.id}
-          currentUser={currentUser}
+          onResumeGame={onResumeGame}
         />
 
         {/* Tab bar */}

@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../../supabase';
-import { validateStats } from '../../utils/stats';
+import { validateStats, cleanStatRow, hasStats } from '../../utils/stats';
+import { useToast } from '../../contexts/ToastContext';
 
 export default function ManualResultModal({ game, team, players, existingStats, onClose, onSaved }) {
+  const { addToast } = useToast();
   const teamPlayers = players.filter(p => p.team_id === team.id);
   const isNew = !game.result; // No result yet = entering fresh
 
@@ -70,25 +72,39 @@ export default function ManualResultModal({ game, team, players, existingStats, 
     setSaving(true);
 
     // Update the completed game record
-    await supabase.from('completed_games').update({
+    const updRes = await supabase.from('completed_games').update({
       result,
       home_sets: homeSets,
       away_sets: awaySets,
       set_scores: setScores.slice(0, homeSets + awaySets),
     }).eq('id', game.id);
+    if (updRes.error) addToast('Failed to update game: ' + updRes.error.message);
 
-    // Delete existing stats and insert new ones
+    // Delete existing stats and insert new ones — cleanStatRow strips DB-only fields
     await supabase.from('player_game_stats').delete().eq('game_id', game.id);
+
     const rows = teamPlayers
       .map(p => ({
         game_id: game.id,
         player_id: p.id,
-        ...stats[p.id],
+        ...cleanStatRow(stats[p.id] || {}),
       }))
-      .filter(r => r.sets_played > 0 || r.kills > 0 || r.aces > 0 || r.digs > 0 || r.assists > 0 || r.blocks > 0 || r.block_assists > 0 || r.serve_errors > 0 || r.errors > 0);
+      .filter(r => hasStats(r));
 
     if (rows.length > 0) {
-      await supabase.from('player_game_stats').insert(rows);
+      let insRes = await supabase.from('player_game_stats').insert(rows);
+      if (insRes.error) {
+        // Fallback without block_assists/serve_errors
+        const fallback = rows.map(({ block_assists, serve_errors, ...rest }) => rest);
+        insRes = await supabase.from('player_game_stats').insert(fallback);
+      }
+      if (insRes.error) {
+        addToast('Failed to save stats: ' + insRes.error.message);
+      } else {
+        addToast('Result saved', 'success');
+      }
+    } else {
+      addToast('Result saved', 'success');
     }
 
     // If league game, auto-sync standings

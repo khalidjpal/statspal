@@ -547,6 +547,43 @@ select option { background: var(--card); color: var(--text); }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 3px; }
 
+/* ===== TOAST ===== */
+@keyframes toast-in { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
+
+/* ===== RESUME GAME BUTTON ===== */
+.resume-game-btn {
+  width: 100%;
+  padding: 14px 16px;
+  margin-bottom: 16px;
+  background: linear-gradient(135deg, #c9a84c, #e0c068);
+  color: #000;
+  border: none;
+  border-radius: 12px;
+  cursor: pointer;
+  text-align: left;
+  animation: resume-pulse 2s infinite;
+}
+.resume-game-label {
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  margin-bottom: 4px;
+}
+.resume-game-detail {
+  font-size: 15px;
+  font-weight: 700;
+}
+.resume-game-sets {
+  font-size: 12px;
+  font-weight: 600;
+  opacity: 0.7;
+  margin-top: 2px;
+}
+@keyframes resume-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(201,168,76,0.4); }
+  50% { box-shadow: 0 0 0 6px rgba(201,168,76,0); }
+}
+
 /* ===== RESPONSIVE ===== */
 @media (max-width: 600px) {
   .hub-body { padding: 16px; }

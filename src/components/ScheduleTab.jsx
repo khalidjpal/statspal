@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { supabase } from '../supabase';
 import { sortedUpcoming, sortedCompleted } from '../utils/sort';
+import { getActiveSession } from '../utils/liveSession';
 import AddGameModal from './modals/AddGameModal';
 import ManualResultModal from './modals/ManualResultModal';
 
@@ -8,13 +9,25 @@ function getToday() {
   return new Date().toISOString().slice(0, 10);
 }
 
-export default function ScheduleTab({ team, schedule, completedGames, players, playerGameStats, leagueTeams, isAdmin, onSelectGame, onStartLive, refresh }) {
+export default function ScheduleTab({ team, schedule, completedGames, players, playerGameStats, leagueTeams, isAdmin, onSelectGame, onStartLive, onResumeGame, refresh }) {
   const [showAdd, setShowAdd] = useState(false);
   const [manualGame, setManualGame] = useState(null);
+  const [activeSession, setActiveSession] = useState(null);
 
   const today = getToday();
   const teamSchedule = schedule.filter(g => g.team_id === team.id);
   const teamCompleted = completedGames.filter(g => g.team_id === team.id);
+
+  // Check for active live session
+  useEffect(() => {
+    let cancelled = false;
+    async function check() {
+      const { data } = await getActiveSession(team.id);
+      if (!cancelled) setActiveSession(data || null);
+    }
+    check();
+    return () => { cancelled = true; };
+  }, [team.id]);
 
   // Split schedule into past (no result yet), today, and future
   const pastUnplayed = teamSchedule.filter(g => g.game_date < today);
@@ -71,6 +84,22 @@ export default function ScheduleTab({ team, schedule, completedGames, players, p
 
   return (
     <div>
+      {/* Resume Game Banner */}
+      {activeSession && onResumeGame && (
+        <button
+          className="resume-game-btn"
+          onClick={() => onResumeGame(activeSession)}
+        >
+          <div className="resume-game-label">RESUME GAME</div>
+          <div className="resume-game-detail">
+            vs. {activeSession.opponent} — Set {activeSession.current_set} — {activeSession.home_score}-{activeSession.away_score}
+          </div>
+          <div className="resume-game-sets">
+            Sets: {activeSession.home_sets}-{activeSession.away_sets}
+          </div>
+        </button>
+      )}
+
       {isAdmin && (
         <button className="modal-btn-primary mb-16" onClick={() => setShowAdd(true)} style={{ width: '100%' }}>
           + Add Game

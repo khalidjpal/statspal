@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useData } from '../contexts/DataContext';
+import { useToast } from '../contexts/ToastContext';
 import { supabase } from '../supabase';
 import { hpct, n3, hcol, teamRecord } from '../utils/stats';
 import { mkInit } from '../utils/colors';
@@ -14,6 +15,7 @@ const TABS = ['Teams', 'Players', 'Games', 'Stats', 'League', 'Accounts'];
 export default function GodMode({ onBack }) {
   const data = useData();
   const { teams, players, completedGames, playerGameStats, accounts, schedule, leagueTeams, leagueResults, refresh } = data;
+  const { addToast } = useToast();
   const [tab, setTab] = useState('Teams');
   const [editStatsGame, setEditStatsGame] = useState(null);
   const [addingPlayerTeam, setAddingPlayerTeam] = useState(null);
@@ -49,9 +51,11 @@ export default function GodMode({ onBack }) {
   const [newTeam, setNewTeam] = useState('');
   async function addTeam() {
     if (!newTeam.trim()) return;
-    await supabase.from('teams').insert({ name: newTeam.trim() });
+    const r = await supabase.from('teams').insert({ name: newTeam.trim() });
+    if (r.error) addToast('Failed to add team: ' + r.error.message);
+    else addToast('Team added', 'success');
     setNewTeam('');
-    refresh();
+    await refresh();
   }
 
   // Quick add completed game
@@ -63,7 +67,7 @@ export default function GodMode({ onBack }) {
   const [gameAS, setGameAS] = useState(0);
   async function addGame() {
     if (!gameTeamId || !gameOpp.trim() || !gameDate) return;
-    await supabase.from('completed_games').insert({
+    const r = await supabase.from('completed_games').insert({
       team_id: gameTeamId,
       opponent: gameOpp.trim(),
       game_date: gameDate,
@@ -71,8 +75,10 @@ export default function GodMode({ onBack }) {
       home_sets: gameHS,
       away_sets: gameAS,
     });
+    if (r.error) addToast('Failed to add game: ' + r.error.message);
+    else addToast('Game added', 'success');
     setGameOpp('');
-    refresh();
+    await refresh();
   }
 
   return (
@@ -121,7 +127,7 @@ export default function GodMode({ onBack }) {
                       {[t.gender, t.level, t.season].filter(Boolean).join(' · ')} · {record.w}-{record.l}
                     </div>
                   </div>
-                  <button onClick={async () => { if (confirm(`Delete ${t.name}?`)) { await supabase.from('teams').delete().eq('id', t.id); refresh(); }}}
+                  <button onClick={async () => { if (confirm(`Delete ${t.name}?`)) { const r = await supabase.from('teams').delete().eq('id', t.id); if (r.error) addToast('Failed: ' + r.error.message); else addToast('Team deleted', 'success'); await refresh(); }}}
                     style={{ background: 'rgba(239,68,68,0.1)', color: '#ef4444', padding: '4px 12px', borderRadius: 6, fontSize: 12, fontWeight: 600, border: 'none', cursor: 'pointer' }}>
                     Delete
                   </button>
@@ -199,7 +205,7 @@ export default function GodMode({ onBack }) {
                               Edit
                             </button>
                             <button
-                              onClick={async () => { if (confirm(`Delete ${p.name}? This also deletes all their stats.`)) { await supabase.from('player_game_stats').delete().eq('player_id', p.id); await supabase.from('players').delete().eq('id', p.id); refresh(); }}}
+                              onClick={async () => { if (confirm(`Delete ${p.name}? This also deletes all their stats.`)) { await supabase.from('player_game_stats').delete().eq('player_id', p.id); const r = await supabase.from('players').delete().eq('id', p.id); if (r.error) addToast('Failed: ' + r.error.message); else addToast('Player deleted', 'success'); await refresh(); }}}
                               style={{ background: 'rgba(239,68,68,0.1)', color: '#ef4444', padding: '4px 12px', borderRadius: 6, fontSize: 12, fontWeight: 700, border: 'none', cursor: 'pointer' }}
                             >
                               Delete
@@ -265,7 +271,8 @@ export default function GodMode({ onBack }) {
                     </button>
                     <button onClick={async () => {
                       if (!confirm('Delete game? This also deletes all player stats for this game.')) return;
-                      await supabase.from('player_game_stats').delete().eq('game_id', g.id);
+                      const r1 = await supabase.from('player_game_stats').delete().eq('game_id', g.id);
+                      if (r1.error) addToast('Failed to delete player stats: ' + r1.error.message);
                       // Delete any associated league result
                       if (g.is_league && g.league_team_id) {
                         await supabase.from('league_results').delete()
@@ -273,8 +280,10 @@ export default function GodMode({ onBack }) {
                           .eq('game_date', g.game_date)
                           .or(`home_league_team_id.eq.${g.league_team_id},away_league_team_id.eq.${g.league_team_id}`);
                       }
-                      await supabase.from('completed_games').delete().eq('id', g.id);
-                      refresh();
+                      const r2 = await supabase.from('completed_games').delete().eq('id', g.id);
+                      if (r2.error) addToast('Failed to delete game: ' + r2.error.message);
+                      else addToast('Game deleted', 'success');
+                      await refresh();
                     }}
                       style={{ background: 'rgba(239,68,68,0.1)', color: '#ef4444', padding: '4px 10px', borderRadius: 6, fontSize: 12, fontWeight: 600, border: 'none', cursor: 'pointer' }}>
                       Delete
@@ -358,8 +367,10 @@ export default function GodMode({ onBack }) {
                               <button
                                 onClick={async () => {
                                   if (!confirm('Delete this league result? Standings will update immediately.')) return;
-                                  await supabase.from('league_results').delete().eq('id', lr.id);
-                                  refresh();
+                                  const r = await supabase.from('league_results').delete().eq('id', lr.id);
+                                  if (r.error) addToast('Failed: ' + r.error.message);
+                                  else addToast('League result deleted', 'success');
+                                  await refresh();
                                 }}
                                 style={{ background: 'rgba(239,68,68,0.1)', color: '#ef4444', padding: '4px 10px', borderRadius: 6, fontSize: 11, fontWeight: 600, border: 'none', cursor: 'pointer' }}
                               >

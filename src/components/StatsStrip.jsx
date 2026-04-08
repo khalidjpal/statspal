@@ -16,9 +16,12 @@ export default function StatsStrip({ players, playerGameStats, completedGames, t
   const record = teamRecord(teamGames);
 
   // Compute totals from raw data — always live
-  const totals = selectedPlayerId
-    ? playerTotals(playerGameStats.filter(s => s.player_id === selectedPlayerId))
-    : playerTotals(playerGameStats.filter(s => teamGameIds.has(s.game_id)));
+  const relevantStats = selectedPlayerId
+    ? playerGameStats.filter(s => s.player_id === selectedPlayerId)
+    : playerGameStats.filter(s => teamGameIds.has(s.game_id));
+  const totals = playerTotals(relevantStats);
+
+  console.log('[StatsStrip] render — games:', teamGames.length, 'statRows:', relevantStats.length, 'record:', record.w + '-' + record.l, 'kills:', totals.kills);
 
   const sp = totals.sets_played || 0;
   const h = hpct(totals.kills, totals.errors, totals.attempts);

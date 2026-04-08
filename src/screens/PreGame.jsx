@@ -2,10 +2,11 @@ import { useState, useEffect } from 'react';
 import { useData } from '../contexts/DataContext';
 import { sortedUpcoming } from '../utils/sort';
 import { pColors, mkInit } from '../utils/colors';
+import { getActiveSession } from '../utils/liveSession';
 
 const STEPS = ['setup', 'format', 'lineup'];
 
-export default function PreGame({ team, scheduledGame, onBack, onStartGame }) {
+export default function PreGame({ team, scheduledGame, onBack, onStartGame, onResumeGame }) {
   const { players, schedule, refresh } = useData();
   const [step, setStep] = useState('setup');
   const [opponent, setOpponent] = useState(scheduledGame?.opponent || '');
@@ -15,8 +16,20 @@ export default function PreGame({ team, scheduledGame, onBack, onStartGame }) {
   const [leagueTeamId, setLeagueTeamId] = useState(scheduledGame?.league_team_id || null);
   const [bestOf, setBestOf] = useState(5);
   const [selectedPlayers, setSelectedPlayers] = useState([]);
+  const [activeSession, setActiveSession] = useState(null);
 
   useEffect(() => { refresh(); }, [refresh]);
+
+  // Check for active session
+  useEffect(() => {
+    let cancelled = false;
+    async function check() {
+      const { data } = await getActiveSession(team.id);
+      if (!cancelled) setActiveSession(data || null);
+    }
+    check();
+    return () => { cancelled = true; };
+  }, [team.id]);
 
   const teamPlayers = players.filter(p => p.team_id === team.id);
   const upcoming = sortedUpcoming(schedule.filter(s => s.team_id === team.id));
@@ -81,6 +94,23 @@ export default function PreGame({ team, scheduledGame, onBack, onStartGame }) {
       </div>
 
       <div style={{ padding: '16px 20px', maxWidth: 600, margin: '0 auto' }}>
+        {/* Resume active session banner */}
+        {activeSession && onResumeGame && step === 'setup' && (
+          <button
+            className="resume-game-btn"
+            style={{ marginBottom: 16 }}
+            onClick={() => onResumeGame(activeSession)}
+          >
+            <div className="resume-game-label">RESUME IN-PROGRESS GAME</div>
+            <div className="resume-game-detail">
+              vs. {activeSession.opponent} — Set {activeSession.current_set} — {activeSession.home_score}-{activeSession.away_score}
+            </div>
+            <div className="resume-game-sets">
+              Sets: {activeSession.home_sets}-{activeSession.away_sets}
+            </div>
+          </button>
+        )}
+
         {/* Step 1: Game setup */}
         {step === 'setup' && (
           <>

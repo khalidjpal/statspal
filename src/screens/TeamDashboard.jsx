@@ -9,7 +9,7 @@ import RosterTab from '../components/RosterTab';
 
 const TABS = ['Schedule', 'Standings', 'Averages', 'Roster'];
 
-export default function TeamDashboard({ team, onBack, onSelectGame, onSelectPlayer, onPreGame, onStartLive, onTeamAdmin }) {
+export default function TeamDashboard({ team, onBack, onSelectGame, onSelectPlayer, onPreGame, onStartLive, onResumeGame, onTeamAdmin }) {
   const { currentUser } = useAuth();
   const data = useData();
   const { players, schedule, completedGames, playerGameStats, leagueTeams, leagueResults, refresh } = data;
@@ -36,6 +36,12 @@ export default function TeamDashboard({ team, onBack, onSelectGame, onSelectPlay
             Back
           </button>
           <div style={{ display: 'flex', gap: 8 }}>
+            <button
+              onClick={() => { console.log('[TeamDashboard] Manual refresh clicked'); refresh(); }}
+              style={{ background: 'rgba(255,255,255,0.15)', color: '#fff', padding: '6px 10px', borderRadius: 8, fontSize: 13, fontWeight: 600, border: 'none', cursor: 'pointer' }}
+            >
+              ↻
+            </button>
             {isCoachOrAdmin && (
               <button
                 onClick={() => onPreGame(team)}
@@ -90,6 +96,7 @@ export default function TeamDashboard({ team, onBack, onSelectGame, onSelectPlay
             isAdmin={isCoachOrAdmin}
             onSelectGame={onSelectGame}
             onStartLive={onStartLive}
+            onResumeGame={onResumeGame}
             refresh={refresh}
           />
         )}

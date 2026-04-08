@@ -1,6 +1,7 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { pColors, mkInit } from '../utils/colors';
 import { hpct, n3, hcol } from '../utils/stats';
+import { saveSession, abandonSession } from '../utils/liveSession';
 
 const GOOD_ACTIONS = [
   { key: 'kill',         label: 'Kill',         stat: 'kills',         autoAtt: true },
@@ -18,18 +19,24 @@ const ERROR_ACTIONS = [
   { key: 'recv_error',   label: 'Recv Error',   stat: 'digs' },
 ];
 
-export default function LiveGame({ team, gameInfo, onEndMatch }) {
+export default function LiveGame({ team, gameInfo, onEndMatch, onAbandon, resumeSession }) {
   const { roster, bestOf } = gameInfo;
   const setsToWin = bestOf === 3 ? 2 : 3;
 
-  const [homeScore,    setHomeScore]    = useState(0);
-  const [awayScore,    setAwayScore]    = useState(0);
-  const [currentSet,   setCurrentSet]   = useState(1);
-  const [homeSetsWon,  setHomeSetsWon]  = useState(0);
-  const [awaySetsWon,  setAwaySetsWon]  = useState(0);
-  const [sets,         setSets]         = useState([]);
+  // Initialize from resumeSession if available
+  const rs = resumeSession;
+
+  const [homeScore,    setHomeScore]    = useState(rs ? rs.home_score : 0);
+  const [awayScore,    setAwayScore]    = useState(rs ? rs.away_score : 0);
+  const [currentSet,   setCurrentSet]   = useState(rs ? rs.current_set : 1);
+  const [homeSetsWon,  setHomeSetsWon]  = useState(rs ? rs.home_sets : 0);
+  const [awaySetsWon,  setAwaySetsWon]  = useState(rs ? rs.away_sets : 0);
+  const [sets,         setSets]         = useState(rs ? (rs.set_history || []) : []);
 
   const [stats, setStats] = useState(() => {
+    if (rs && rs.player_stats && Object.keys(rs.player_stats).length > 0) {
+      return rs.player_stats;
+    }
     const o = {};
     roster.forEach(p => {
       o[p.id] = { kills: 0, aces: 0, digs: 0, assists: 0, blocks: 0, errors: 0, attempts: 0, sets_played: 0, block_assists: 0, serve_errors: 0 };
@@ -39,17 +46,49 @@ export default function LiveGame({ team, gameInfo, onEndMatch }) {
 
   const [selectedPlayer, setSelectedPlayer] = useState(null);
   const [view,           setView]           = useState('track');
-  const [history,        setHistory]        = useState([]);
+  const [history,        setHistory]        = useState(rs ? (rs.history || []) : []);
   const [lastAction,     setLastAction]     = useState('');
   const [flashKey,       setFlashKey]       = useState(0);
   const [flashId,        setFlashId]        = useState(null);
   const [showSetOver,    setShowSetOver]    = useState(false);
   const [showMatchOver,  setShowMatchOver]  = useState(false);
   const [pendingSet,     setPendingSet]     = useState(null);
+  const [showAbandonConfirm, setShowAbandonConfirm] = useState(false);
 
   const isFinalSet = currentSet === bestOf;
   const target     = isFinalSet ? 15 : 25;
   const isDeuce    = homeScore >= target - 1 && awayScore >= target - 1 && homeScore > 0;
+
+  // === AUTO-SAVE ===
+  const saveTimer = useRef(null);
+  const triggerSave = useCallback(() => {
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => {
+      saveSession(team.id, {
+        opponent: gameInfo.opponent,
+        bestOf: gameInfo.bestOf,
+        currentSet,
+        homeScore,
+        awayScore,
+        homeSetsWon,
+        awaySetsWon,
+        sets,
+        stats,
+        lineup: roster.map(p => ({ id: p.id, name: p.name, jersey_number: p.jersey_number, position: p.position, colors: p.colors, player_index: p.player_index, initials: p.initials })),
+        isLeague: gameInfo.isLeague,
+        leagueTeamId: gameInfo.leagueTeamId,
+        scheduledGameId: gameInfo.scheduledGameId,
+        gameDate: gameInfo.gameDate,
+        location: gameInfo.location,
+        history,
+      });
+    }, 300);
+  }, [team.id, gameInfo, currentSet, homeScore, awayScore, homeSetsWon, awaySetsWon, sets, stats, roster, history]);
+
+  useEffect(() => {
+    triggerSave();
+    return () => { if (saveTimer.current) clearTimeout(saveTimer.current); };
+  }, [triggerSave]);
 
   function isSetDone(hs, as) {
     const t = currentSet >= bestOf ? 15 : 25;
@@ -150,11 +189,24 @@ export default function LiveGame({ team, gameInfo, onEndMatch }) {
   }
 
   function handleMatchConfirm() {
-    onEndMatch({
+    const payload = {
       homeSetsWon, awaySetsWon, sets,
       result: homeSetsWon > awaySetsWon ? 'W' : 'L',
       stats: { ...stats },
+    };
+    console.log('[LiveGame] handleMatchConfirm — sending to onEndMatch:');
+    console.log('[LiveGame] result:', payload.result, 'sets:', payload.homeSetsWon, '-', payload.awaySetsWon);
+    console.log('[LiveGame] set scores:', JSON.stringify(payload.sets));
+    Object.entries(payload.stats).forEach(([pid, s]) => {
+      console.log('[LiveGame] Player', pid, '— K:', s.kills, 'A:', s.aces, 'D:', s.digs, 'SP:', s.sets_played, 'E:', s.errors, 'TA:', s.attempts, 'BS:', s.blocks, 'BA:', s.block_assists, 'SE:', s.serve_errors);
     });
+    onEndMatch(payload);
+  }
+
+  async function handleAbandon() {
+    await abandonSession(team.id);
+    setShowAbandonConfirm(false);
+    if (onAbandon) onAbandon();
   }
 
   const selPlayer = roster.find(p => p.id === selectedPlayer);
@@ -218,6 +270,13 @@ export default function LiveGame({ team, gameInfo, onEndMatch }) {
         </button>
         <button className={`nlg-tab ${view === 'stats' ? 'active' : ''}`} onClick={() => setView('stats')}>
           Stats
+        </button>
+        <button
+          className="nlg-tab"
+          style={{ color: '#ef4444', marginLeft: 'auto', fontSize: 12 }}
+          onClick={() => setShowAbandonConfirm(true)}
+        >
+          Abandon
         </button>
       </div>
 
@@ -388,6 +447,28 @@ export default function LiveGame({ team, gameInfo, onEndMatch }) {
             <button className="modal-btn-primary" onClick={handleMatchConfirm} style={{ marginTop: 20, width: '100%', padding: 14, fontSize: 16 }}>
               Save &amp; Finish
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── ABANDON CONFIRM POPUP ──────────────────────────────────────── */}
+      {showAbandonConfirm && (
+        <div className="modal-overlay">
+          <div className="modal-content" style={{ textAlign: 'center' }}>
+            <h2>Abandon Game?</h2>
+            <p style={{ color: 'var(--text-secondary)', fontSize: 14, marginBottom: 20 }}>
+              This will discard all tracking progress for this game. This cannot be undone.
+            </p>
+            <div style={{ display: 'flex', gap: 12, justifyContent: 'center' }}>
+              <button className="modal-btn-cancel" onClick={() => setShowAbandonConfirm(false)}>Cancel</button>
+              <button
+                className="modal-btn-primary"
+                style={{ background: '#dc2626' }}
+                onClick={handleAbandon}
+              >
+                Abandon Game
+              </button>
+            </div>
           </div>
         </div>
       )}

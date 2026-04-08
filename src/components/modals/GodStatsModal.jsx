@@ -1,8 +1,10 @@
 import { useState } from 'react';
 import { supabase } from '../../supabase';
-import { validateStats } from '../../utils/stats';
+import { validateStats, cleanStatRow, hasStats } from '../../utils/stats';
+import { useToast } from '../../contexts/ToastContext';
 
 export default function GodStatsModal({ game, players, existingStats, onClose, onSaved }) {
+  const { addToast } = useToast();
   const gamePlayers = players.filter(p => p.team_id === game.team_id);
   const [stats, setStats] = useState(() => {
     const init = {};
@@ -34,16 +36,28 @@ export default function GodStatsModal({ game, players, existingStats, onClose, o
     }
     setSaving(true);
     // Delete existing stats for this game
-    await supabase.from('player_game_stats').delete().eq('game_id', game.id);
-    // Insert new stats
+    const delRes = await supabase.from('player_game_stats').delete().eq('game_id', game.id);
+    if (delRes.error) { addToast('Failed to clear old stats: ' + delRes.error.message); }
+
+    // Insert new stats — cleanStatRow strips DB-only fields (id, created_at, etc.)
     const rows = gamePlayers.map(p => ({
       game_id: game.id,
       player_id: p.id,
-      ...stats[p.id],
-    })).filter(r => r.sets_played > 0 || r.kills > 0 || r.aces > 0 || r.digs > 0);
+      ...cleanStatRow(stats[p.id] || {}),
+    })).filter(r => hasStats(r));
 
     if (rows.length > 0) {
-      await supabase.from('player_game_stats').insert(rows);
+      let insRes = await supabase.from('player_game_stats').insert(rows);
+      if (insRes.error) {
+        // Fallback without block_assists/serve_errors
+        const fallback = rows.map(({ block_assists, serve_errors, ...rest }) => rest);
+        insRes = await supabase.from('player_game_stats').insert(fallback);
+      }
+      if (insRes.error) {
+        addToast('Failed to save stats: ' + insRes.error.message);
+      } else {
+        addToast('Stats saved', 'success');
+      }
     }
     setSaving(false);
     onSaved();

@@ -1,7 +1,10 @@
 import { useState, useCallback } from 'react';
 import { useAuth } from './contexts/AuthContext';
 import { useData } from './contexts/DataContext';
+import { useToast } from './contexts/ToastContext';
 import { supabase } from './supabase';
+import { completeSession } from './utils/liveSession';
+import { cleanStatRow, hasStats } from './utils/stats';
 import Login from './screens/Login';
 import Hub from './screens/Hub';
 import TeamDashboard from './screens/TeamDashboard';
@@ -35,6 +38,7 @@ const SCREENS = {
 export default function App() {
   const { currentUser } = useAuth();
   const { refresh } = useData();
+  const { addToast } = useToast();
 
   const [screen, setScreen] = useState(SCREENS.LOGIN);
   const [selectedTeam, setSelectedTeam] = useState(null);
@@ -42,6 +46,7 @@ export default function App() {
   const [selectedPlayer, setSelectedPlayer] = useState(null);
   const [gameInfo, setGameInfo] = useState(null);
   const [scheduledGameForLive, setScheduledGameForLive] = useState(null);
+  const [resumeSession, setResumeSession] = useState(null);
 
   const nav = useCallback((s) => setScreen(s), []);
 
@@ -101,8 +106,33 @@ export default function App() {
   }
 
   function handleStartGame(info) {
+    setResumeSession(null);
     setGameInfo(info);
     nav(SCREENS.LIVE_GAME);
+  }
+
+  function handleResumeGame(session) {
+    // Reconstruct gameInfo from saved session
+    const lineup = session.lineup || [];
+    setGameInfo({
+      opponent: session.opponent,
+      location: session.location || 'Home',
+      gameDate: session.game_date,
+      isLeague: session.is_league || false,
+      leagueTeamId: session.league_team_id || null,
+      bestOf: session.game_format || 3,
+      roster: lineup,
+      scheduledGameId: session.schedule_game_id || null,
+    });
+    setResumeSession(session);
+    nav(SCREENS.LIVE_GAME);
+  }
+
+  function handleAbandonGame() {
+    setGameInfo(null);
+    setResumeSession(null);
+    setScheduledGameForLive(null);
+    nav(SCREENS.TEAM_DASHBOARD);
   }
 
   // League sync helper
@@ -129,8 +159,14 @@ export default function App() {
   }
 
   async function handleEndMatch(matchResult) {
-    // Save completed game
-    const { data: newGame, error } = await supabase.from('completed_games').insert({
+    console.log('[handleEndMatch] START', { result: matchResult.result, playerCount: gameInfo.roster.length });
+
+    // Step 0: Mark live session as completed
+    await completeSession(selectedTeam.id);
+
+    // Step 1: Save completed game — try full payload, fallback without optional columns
+    let newGame = null;
+    const fullPayload = {
       team_id: selectedTeam.id,
       opponent: gameInfo.opponent,
       game_date: gameInfo.gameDate,
@@ -141,40 +177,84 @@ export default function App() {
       set_scores: matchResult.sets,
       is_league: gameInfo.isLeague || false,
       league_team_id: gameInfo.leagueTeamId || null,
-    }).select().single();
+    };
 
-    if (!error && newGame) {
-      // Save player stats
-      if (matchResult.stats) {
-        const rows = gameInfo.roster
-          .map(p => ({
-            game_id: newGame.id,
-            player_id: p.id,
-            ...(matchResult.stats[p.id] || { kills: 0, aces: 0, digs: 0, assists: 0, blocks: 0, errors: 0, attempts: 0, sets_played: 0 }),
-          }))
-          .filter(r => r.sets_played > 0 || r.kills > 0 || r.aces > 0 || r.digs > 0);
+    let res = await supabase.from('completed_games').insert(fullPayload).select().single();
+    if (res.error) {
+      console.warn('[handleEndMatch] Full game insert failed:', res.error.message);
+      // Fallback without optional columns
+      res = await supabase.from('completed_games').insert({
+        team_id: selectedTeam.id,
+        opponent: gameInfo.opponent,
+        game_date: gameInfo.gameDate,
+        location: gameInfo.location,
+        result: matchResult.result,
+        home_sets: matchResult.homeSetsWon,
+        away_sets: matchResult.awaySetsWon,
+      }).select().single();
+    }
 
-        if (rows.length > 0) {
-          await supabase.from('player_game_stats').insert(rows);
+    if (res.error) {
+      addToast('Failed to save game: ' + res.error.message);
+      console.error('[handleEndMatch] Game insert FAILED:', res.error.message);
+    } else {
+      newGame = res.data;
+      console.log('[handleEndMatch] Game saved:', newGame.id);
+    }
+
+    // Step 2: Save player stats
+    if (newGame && matchResult.stats) {
+      const rows = gameInfo.roster
+        .map(p => {
+          const raw = matchResult.stats[p.id];
+          if (!raw) return null;
+          return { game_id: newGame.id, player_id: p.id, ...cleanStatRow(raw) };
+        })
+        .filter(Boolean)
+        .filter(r => hasStats(r));
+
+      console.log('[handleEndMatch] Saving', rows.length, 'player stat rows');
+
+      if (rows.length > 0) {
+        let statsRes = await supabase.from('player_game_stats').insert(rows);
+        if (statsRes.error) {
+          console.warn('[handleEndMatch] Stats insert failed:', statsRes.error.message, '— trying without block_assists/serve_errors');
+          const fallbackRows = rows.map(({ block_assists, serve_errors, ...rest }) => rest);
+          statsRes = await supabase.from('player_game_stats').insert(fallbackRows);
+        }
+        if (statsRes.error) {
+          addToast('Failed to save player stats: ' + statsRes.error.message);
+          console.error('[handleEndMatch] Stats insert FAILED:', statsRes.error.message);
+        } else {
+          console.log('[handleEndMatch] Player stats saved OK:', rows.length, 'rows');
+          addToast('Game saved with ' + rows.length + ' player stats', 'success');
         }
       }
+    } else if (!newGame) {
+      addToast('Game could not be saved — check console for details');
+    }
 
-      // Remove from schedule
-      if (gameInfo.scheduledGameId) {
-        await supabase.from('schedule').delete().eq('id', gameInfo.scheduledGameId);
-      }
+    // Step 3: Remove from schedule
+    if (gameInfo.scheduledGameId) {
+      await supabase.from('schedule').delete().eq('id', gameInfo.scheduledGameId);
+    }
 
-      // Auto-sync league standings
-      await syncLeagueStandings(selectedTeam.id, {
-        isLeague: gameInfo.isLeague,
-        leagueTeamId: gameInfo.leagueTeamId,
-        location: gameInfo.location,
-        homeSetsWon: matchResult.homeSetsWon,
-        awaySetsWon: matchResult.awaySetsWon,
-        gameDate: gameInfo.gameDate,
-      });
+    // Step 4: Sync league standings
+    await syncLeagueStandings(selectedTeam.id, {
+      isLeague: gameInfo.isLeague,
+      leagueTeamId: gameInfo.leagueTeamId,
+      location: gameInfo.location,
+      homeSetsWon: matchResult.homeSetsWon,
+      awaySetsWon: matchResult.awaySetsWon,
+      gameDate: gameInfo.gameDate,
+    });
 
-      await refresh();
+    // Step 5: Refresh ALL data from Supabase
+    await refresh();
+    console.log('[handleEndMatch] DONE — refresh complete');
+
+    // Step 6: Navigate
+    if (newGame) {
       setSelectedGame(newGame);
       nav(SCREENS.GAME_SUMMARY);
     } else {
@@ -183,6 +263,7 @@ export default function App() {
 
     setGameInfo(null);
     setScheduledGameForLive(null);
+    setResumeSession(null);
   }
 
   function handleTeamAdmin(team) {
@@ -217,6 +298,7 @@ export default function App() {
           onSelectPlayer={handleSelectPlayer}
           onPreGame={handlePreGame}
           onStartLive={handleStartLive}
+          onResumeGame={handleResumeGame}
           onTeamAdmin={() => handleTeamAdmin(selectedTeam)}
         />
       );
@@ -228,6 +310,7 @@ export default function App() {
           scheduledGame={scheduledGameForLive}
           onBack={() => nav(SCREENS.TEAM_DASHBOARD)}
           onStartGame={handleStartGame}
+          onResumeGame={handleResumeGame}
         />
       );
 
@@ -237,6 +320,8 @@ export default function App() {
           team={selectedTeam}
           gameInfo={gameInfo}
           onEndMatch={handleEndMatch}
+          onAbandon={handleAbandonGame}
+          resumeSession={resumeSession}
         />
       );
 

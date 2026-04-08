@@ -86,6 +86,25 @@ export function n3(v) {
   return sign + abs.replace(/^0/, '');
 }
 
+// Stat fields that belong in player_game_stats rows
+const STAT_FIELDS = ['kills', 'aces', 'digs', 'assists', 'blocks', 'errors', 'attempts', 'sets_played', 'block_assists', 'serve_errors'];
+
+// Extract only valid stat fields from an object, coerce to integer, default 0.
+// Use this before inserting into player_game_stats to prevent DB row field leaks
+// (id, created_at, etc.) and ensure all values are non-null integers.
+export function cleanStatRow(raw) {
+  const out = {};
+  for (const f of STAT_FIELDS) {
+    out[f] = Math.max(0, parseInt(raw[f]) || 0);
+  }
+  return out;
+}
+
+// Returns true if a stat row has any meaningful data worth saving
+export function hasStats(row) {
+  return STAT_FIELDS.some(f => (parseInt(row[f]) || 0) > 0);
+}
+
 // Compute totals for a single player across games
 export function playerTotals(statsRows) {
   const t = { kills: 0, aces: 0, digs: 0, assists: 0, blocks: 0, errors: 0, attempts: 0, sets_played: 0, block_assists: 0, serve_errors: 0 };

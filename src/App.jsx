@@ -163,11 +163,13 @@ export default function App() {
     nav(SCREENS.LIVE_GAME);
   }
 
-  function handleAbandonGame() {
+  async function handleAbandonGame() {
     setGameInfo(null);
     setResumeSession(null);
     setScheduledGameForLive(null);
     nav(SCREENS.TEAM_DASHBOARD);
+    addToast('Game abandoned. No stats were saved.', 'success');
+    await refresh();
   }
 
   // League sync helper
@@ -251,12 +253,7 @@ export default function App() {
       console.log('[handleEndMatch] Saving', rows.length, 'player stat rows');
 
       if (rows.length > 0) {
-        let statsRes = await supabase.from('player_game_stats').insert(rows);
-        if (statsRes.error) {
-          console.warn('[handleEndMatch] Stats insert failed:', statsRes.error.message, '— trying without block_assists/serve_errors');
-          const fallbackRows = rows.map(({ block_assists, serve_errors, ...rest }) => rest);
-          statsRes = await supabase.from('player_game_stats').insert(fallbackRows);
-        }
+        const statsRes = await supabase.from('player_game_stats').insert(rows);
         if (statsRes.error) {
           addToast('Failed to save player stats: ' + statsRes.error.message);
           console.error('[handleEndMatch] Stats insert FAILED:', statsRes.error.message);

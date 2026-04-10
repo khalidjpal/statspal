@@ -10,7 +10,8 @@
       "Bash(where gh:*)",
       "Bash(\"/c/Program Files/GitHub CLI/gh.exe\" --version)",
       "Bash(\"/c/Program Files \\(x86\\)/GitHub CLI/gh.exe\" --version)",
-      "Bash(grep -r \"from\\('\\\\\\\\|from\\(\\\\\"\" /c/Users/kpal/statspal/src --include=\"*.js\" --include=\"*.jsx\")"
+      "Bash(grep -r \"from\\('\\\\\\\\|from\\(\\\\\"\" /c/Users/kpal/statspal/src --include=\"*.js\" --include=\"*.jsx\")",
+      "Bash(awk 'NR<367 || NR>571' \"C:/Users/kpal/statspal/src/styles.css\")"
     ]
   }
 }

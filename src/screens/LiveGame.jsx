@@ -110,6 +110,7 @@ export default function LiveGame({ team, gameInfo, onEndMatch, onAbandon, resume
       <div className="lv-top">
         <div className="lv-sb">
           <div className="lv-sb-row1">
+            <button className="lv-sb-pill lv-sb-pill-abandon" onClick={()=>setShowAbandonConfirm(true)} title="Abandon game" aria-label="Abandon game">✕</button>
             <button className="lv-sb-pill" onClick={handleUndo} disabled={!history.length}>↩</button>
             <div className="lv-sb-set">SET {currentSet}</div>
             <div className="lv-sb-tabs">
@@ -189,7 +190,30 @@ export default function LiveGame({ team, gameInfo, onEndMatch, onAbandon, resume
       {/* Modals */}
       {showSetOver&&pendingSet&&(<div className="modal-overlay"><div className="modal-content" style={{textAlign:'center'}}><h2>Set {currentSet} Over!</h2><div style={{fontSize:40,fontWeight:900,margin:'12px 0',color:'var(--text)',fontFamily:'var(--mono)'}}>{pendingSet.home} – {pendingSet.away}</div><div style={{fontSize:13,color:'var(--text-secondary)',marginBottom:20}}>Sets: {pendingSet.nhs} – {pendingSet.nas}</div><div style={{display:'flex',gap:12,justifyContent:'center'}}><button className="modal-btn-cancel" onClick={keepPlaying}>Keep Playing</button><button className="modal-btn-primary" onClick={confirmEndSet}>End Set</button></div></div></div>)}
       {showMatchOver&&(<div className="modal-overlay"><div className="modal-content" style={{textAlign:'center'}}><h2>Match Over!</h2><div style={{fontSize:52,fontWeight:900,margin:'12px 0',color:'var(--text)',fontFamily:'var(--mono)'}}>{homeSetsWon} – {awaySetsWon}</div><div style={{fontSize:18,fontWeight:700,marginBottom:16,color:homeSetsWon>awaySetsWon?'#3fb950':'#f85149'}}>{homeSetsWon>awaySetsWon?'Victory!':'Defeat'}</div>{sets.map((s,i)=><div key={i} style={{fontSize:13,color:'var(--text-secondary)',marginBottom:4,fontFamily:'var(--mono)'}}>Set {i+1}: {s.home}–{s.away}</div>)}<button className="modal-btn-primary" onClick={handleMatchConfirm} style={{marginTop:20,width:'100%',padding:14,fontSize:16}}>Save &amp; Finish</button></div></div>)}
-      {showAbandonConfirm&&(<div className="modal-overlay"><div className="modal-content" style={{textAlign:'center'}}><h2>Abandon Game?</h2><p style={{color:'var(--text-secondary)',fontSize:14,marginBottom:20}}>Discard all tracking progress?</p><div style={{display:'flex',gap:12,justifyContent:'center'}}><button className="modal-btn-cancel" onClick={()=>setShowAbandonConfirm(false)}>Cancel</button><button className="modal-btn-primary" style={{background:'#f85149'}} onClick={handleAbandon}>Abandon</button></div></div></div>)}
+      {showAbandonConfirm && (
+        <div className="modal-overlay" onClick={()=>setShowAbandonConfirm(false)}>
+          <div className="modal-content" style={{ textAlign: 'center', maxWidth: 420 }} onClick={e=>e.stopPropagation()}>
+            <h2>Abandon Game?</h2>
+            <p style={{ color: 'var(--text-secondary)', fontSize: 14, marginBottom: 20, lineHeight: 1.5 }}>
+              All tracked stats will be deleted and this session will be removed. This cannot be undone.
+            </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <button
+                onClick={handleAbandon}
+                style={{ background: '#f85149', color: '#fff', padding: '12px 16px', borderRadius: 10, fontSize: 14, fontWeight: 700, border: 'none', cursor: 'pointer' }}
+              >
+                Yes, Abandon Game
+              </button>
+              <button
+                onClick={()=>setShowAbandonConfirm(false)}
+                style={{ background: 'transparent', color: 'var(--text-secondary)', padding: '12px 16px', borderRadius: 10, fontSize: 14, fontWeight: 600, border: '1px solid var(--border)', cursor: 'pointer' }}
+              >
+                Keep Tracking
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

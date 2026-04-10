@@ -1,12 +1,38 @@
+import { useMemo, useState } from 'react';
 import { hpct, n3, hcol } from '../utils/stats';
 import { pColors, mkInit } from '../utils/colors';
 import { sortByJersey } from '../utils/sort';
 
 export default function AveragesTab({ players, playerGameStats, completedGames, teamId, onSelectPlayer }) {
   const teamPlayers = sortByJersey(players.filter(p => p.team_id === teamId));
+  const [scope, setScope] = useState('all'); // 'all' | 'league'
+
+  // Games for this team
+  const teamGames = useMemo(
+    () => (completedGames || []).filter(g => g.team_id === teamId),
+    [completedGames, teamId]
+  );
+  const leagueGames = useMemo(
+    () => teamGames.filter(g => g.is_league),
+    [teamGames]
+  );
+
+  // Set of game ids included in the current scope
+  const scopedGameIds = useMemo(() => {
+    const src = scope === 'league' ? leagueGames : teamGames;
+    return new Set(src.map(g => g.id));
+  }, [scope, teamGames, leagueGames]);
+
+  const scopedStats = useMemo(
+    () => (playerGameStats || []).filter(s => scopedGameIds.has(s.game_id)),
+    [playerGameStats, scopedGameIds]
+  );
+
+  const gameCount = scope === 'league' ? leagueGames.length : teamGames.length;
 
   function getPlayerAvgs(player) {
-    const stats = playerGameStats.filter(s => s.player_id === player.id);
+    const stats = scopedStats.filter(s => s.player_id === player.id);
+    if (stats.length === 0) return null;
     const sp = stats.reduce((a, s) => a + (s.sets_played || 0), 0);
     const k = stats.reduce((a, s) => a + (s.kills || 0), 0);
     const e = stats.reduce((a, s) => a + (s.errors || 0), 0);
@@ -22,6 +48,28 @@ export default function AveragesTab({ players, playerGameStats, completedGames, 
 
   return (
     <div>
+      <div className="avg-scope-bar">
+        <div className="avg-seg">
+          <button
+            type="button"
+            className={`avg-seg-btn${scope === 'all' ? ' on' : ''}`}
+            onClick={() => setScope('all')}
+          >
+            All Games
+          </button>
+          <button
+            type="button"
+            className={`avg-seg-btn${scope === 'league' ? ' on' : ''}`}
+            onClick={() => setScope('league')}
+          >
+            League Only
+          </button>
+        </div>
+        <div className="avg-scope-meta">
+          Based on {gameCount} {scope === 'league' ? 'league' : 'total'} {gameCount === 1 ? 'game' : 'games'}
+        </div>
+      </div>
+
       {teamPlayers.length === 0 ? (
         <div className="empty-state">No players on roster</div>
       ) : (
@@ -48,6 +96,7 @@ export default function AveragesTab({ players, playerGameStats, completedGames, 
                 {teamPlayers.map((p, i) => {
                   const a = getPlayerAvgs(p);
                   const colors = p.colors || pColors(p.player_index ?? i);
+                  const dash = <span style={{ color: 'var(--text-muted)' }}>—</span>;
                   return (
                     <tr
                       key={p.id}
@@ -63,19 +112,19 @@ export default function AveragesTab({ players, playerGameStats, completedGames, 
                         </span>
                         <span style={{ fontWeight: 600, fontSize: 13, color: 'var(--text)' }}>{p.name}</span>
                       </td>
-                      <td style={{ textAlign: 'center', padding: '8px 4px', color: 'var(--text)' }}>{a.sp}</td>
-                      <td style={{ textAlign: 'center', padding: '8px 4px', color: 'var(--text)' }}>{a.k}</td>
-                      <td style={{ textAlign: 'center', padding: '8px 4px', color: a.e > 0 ? '#dc2626' : 'var(--text)' }}>{a.e}</td>
-                      <td style={{ textAlign: 'center', padding: '8px 4px', color: 'var(--text)' }}>{a.att}</td>
-                      <td style={{ textAlign: 'center', padding: '8px 4px', color: hcol(a.k, a.e, a.att), fontWeight: 600 }}>
-                        {n3(a.h)}
+                      <td style={{ textAlign: 'center', padding: '8px 4px', color: 'var(--text)' }}>{a ? a.sp : dash}</td>
+                      <td style={{ textAlign: 'center', padding: '8px 4px', color: 'var(--text)' }}>{a ? a.k : dash}</td>
+                      <td style={{ textAlign: 'center', padding: '8px 4px', color: a && a.e > 0 ? '#dc2626' : 'var(--text)' }}>{a ? a.e : dash}</td>
+                      <td style={{ textAlign: 'center', padding: '8px 4px', color: 'var(--text)' }}>{a ? a.att : dash}</td>
+                      <td style={{ textAlign: 'center', padding: '8px 4px', color: a ? hcol(a.k, a.e, a.att) : 'var(--text-muted)', fontWeight: 600 }}>
+                        {a ? n3(a.h) : '—'}
                       </td>
-                      <td style={{ textAlign: 'center', padding: '8px 4px', color: 'var(--text)' }}>{a.ast}</td>
-                      <td style={{ textAlign: 'center', padding: '8px 4px', color: 'var(--text)' }}>{a.sa}</td>
-                      <td style={{ textAlign: 'center', padding: '8px 4px', color: a.se > 0 ? '#dc2626' : 'var(--text)' }}>{a.se}</td>
-                      <td style={{ textAlign: 'center', padding: '8px 4px', color: 'var(--text)' }}>{a.digs}</td>
-                      <td style={{ textAlign: 'center', padding: '8px 4px', color: 'var(--text)' }}>{a.bs}</td>
-                      <td style={{ textAlign: 'center', padding: '8px 4px', color: 'var(--text)' }}>{a.ba}</td>
+                      <td style={{ textAlign: 'center', padding: '8px 4px', color: 'var(--text)' }}>{a ? a.ast : dash}</td>
+                      <td style={{ textAlign: 'center', padding: '8px 4px', color: 'var(--text)' }}>{a ? a.sa : dash}</td>
+                      <td style={{ textAlign: 'center', padding: '8px 4px', color: a && a.se > 0 ? '#dc2626' : 'var(--text)' }}>{a ? a.se : dash}</td>
+                      <td style={{ textAlign: 'center', padding: '8px 4px', color: 'var(--text)' }}>{a ? a.digs : dash}</td>
+                      <td style={{ textAlign: 'center', padding: '8px 4px', color: 'var(--text)' }}>{a ? a.bs : dash}</td>
+                      <td style={{ textAlign: 'center', padding: '8px 4px', color: 'var(--text)' }}>{a ? a.ba : dash}</td>
                     </tr>
                   );
                 })}

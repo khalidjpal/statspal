@@ -61,6 +61,21 @@ export default function ManualResultModal({ game, team, players, existingStats, 
     }));
   }
 
+  function handleStatKeyDown(e, rowIdx, colIdx) {
+    const key = e.key;
+    if (key !== 'ArrowUp' && key !== 'ArrowDown' && key !== 'ArrowLeft' && key !== 'ArrowRight') return;
+    e.preventDefault();
+    const rows = teamPlayers.length;
+    const cols = STAT_FIELDS.length;
+    let r = rowIdx, c = colIdx;
+    if (key === 'ArrowUp')    r = Math.max(0, r - 1);
+    if (key === 'ArrowDown')  r = Math.min(rows - 1, r + 1);
+    if (key === 'ArrowLeft')  { if (c > 0) c--; else if (r > 0) { r--; c = cols - 1; } }
+    if (key === 'ArrowRight') { if (c < cols - 1) c++; else if (r < rows - 1) { r++; c = 0; } }
+    const next = e.currentTarget.closest('table')?.querySelector(`input[data-row="${r}"][data-col="${c}"]`);
+    if (next) { next.focus(); next.select?.(); }
+  }
+
   async function handleSave() {
     setValidationError('');
     for (const p of teamPlayers) {
@@ -223,10 +238,10 @@ export default function ManualResultModal({ game, team, players, existingStats, 
                 </tr>
               </thead>
               <tbody>
-                {teamPlayers.map(p => (
+                {teamPlayers.map((p, rIdx) => (
                   <tr key={p.id} style={{ borderTop: '1px solid var(--border)' }}>
                     <td style={{ padding: '4px 8px', fontWeight: 600, fontSize: 12, whiteSpace: 'nowrap', color: 'var(--text)' }}>{p.name}</td>
-                    {STAT_FIELDS.map(f => {
+                    {STAT_FIELDS.map((f, cIdx) => {
                       const v = stats[p.id]?.[f] || 0;
                       return (
                         <td key={f} style={{ padding: '2px' }}>
@@ -236,7 +251,11 @@ export default function ManualResultModal({ game, team, players, existingStats, 
                             inputMode="numeric"
                             value={v === 0 ? '' : v}
                             placeholder="0"
+                            data-row={rIdx}
+                            data-col={cIdx}
                             onChange={e => updateStat(p.id, f, e.target.value)}
+                            onKeyDown={e => handleStatKeyDown(e, rIdx, cIdx)}
+                            className="stat-cell-input"
                             style={{ width: 42, textAlign: 'center', padding: '4px 2px', borderRadius: 4, fontSize: 12 }}
                           />
                         </td>

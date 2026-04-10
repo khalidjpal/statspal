@@ -11,6 +11,71 @@ input, select { font-family: inherit; background: rgba(88,166,255,0.04); color: 
 input::placeholder { color: var(--text-muted); }
 select option { background: var(--card); color: var(--text); }
 
+/* Hide browser default number-input spinner arrows globally */
+input[type=number]::-webkit-inner-spin-button,
+input[type=number]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type=number] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+/* Averages tab — scope segmented control */
+.avg-scope-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+.avg-seg {
+  display: inline-flex;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 10px;
+  padding: 3px;
+  gap: 2px;
+}
+.avg-seg-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  padding: 8px 16px;
+  border-radius: 7px;
+  cursor: pointer;
+  transition: background 0.18s ease, color 0.18s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+.avg-seg-btn:hover { color: var(--text); }
+.avg-seg-btn.on {
+  background: #1f6feb;
+  color: #fff;
+  box-shadow: 0 1px 4px rgba(31,111,235,0.4);
+}
+.avg-scope-meta {
+  font-size: 11px;
+  color: var(--text-secondary);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+/* Stat-entry cell focus glow */
+.stat-cell-input {
+  outline: none;
+  transition: border-color 0.12s ease, box-shadow 0.12s ease, background 0.12s ease;
+}
+.stat-cell-input:focus {
+  border-color: rgba(88,166,255,0.7) !important;
+  box-shadow: 0 0 0 2px rgba(88,166,255,0.25);
+  background: rgba(88,166,255,0.12);
+}
+
 /* ===== DESIGN TOKENS ===== */
 :root {
   --bg: #06090f;

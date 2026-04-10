@@ -1,8 +1,25 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
+import { supabase } from '../supabase';
 import { computeStandings } from '../utils/stats';
 import AddLeagueTeamModal from './modals/AddLeagueTeamModal';
 import AddResultModal from './modals/AddResultModal';
 import EditLeagueTeamModal from './modals/EditLeagueTeamModal';
+
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+function fmtDate(s) {
+  if (!s) return '';
+  const [y, m, d] = s.split('-');
+  if (!y || !m || !d) return s;
+  return `${MONTHS[+m - 1]} ${+d}`;
+}
+
+function rankClass(i) {
+  if (i === 0) return 'lb-rank lb-rank-gold';
+  if (i === 1) return 'lb-rank lb-rank-silver';
+  if (i === 2) return 'lb-rank lb-rank-bronze';
+  return 'lb-rank';
+}
 
 export default function StandingsTab({ team, leagueTeams, leagueResults, isAdmin, refresh }) {
   const [showAddTeam, setShowAddTeam] = useState(false);
@@ -13,55 +30,125 @@ export default function StandingsTab({ team, leagueTeams, leagueResults, isAdmin
   const myLeagueResults = leagueResults.filter(lr => lr.team_id === team.id);
   const standings = computeStandings(myLeagueTeams, myLeagueResults);
 
+  const teamById = useMemo(() => {
+    const m = {};
+    for (const lt of myLeagueTeams) m[lt.id] = lt;
+    return m;
+  }, [myLeagueTeams]);
+
+  const recent = useMemo(() => {
+    return [...myLeagueResults]
+      .filter(r => r.game_date)
+      .sort((a, b) => (b.game_date || '').localeCompare(a.game_date || ''))
+      .slice(0, 5);
+  }, [myLeagueResults]);
+
+  async function handleRemoveTeam(lt) {
+    if (!confirm(`Remove "${lt.name}" from the league? This also deletes their results.`)) return;
+    await supabase.from('league_results').delete().or(`home_league_team_id.eq.${lt.id},away_league_team_id.eq.${lt.id}`);
+    await supabase.from('league_teams').delete().eq('id', lt.id);
+    refresh();
+  }
+
   return (
-    <div>
-      {isAdmin && (
-        <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-          <button className="modal-btn-primary" onClick={() => setShowAddTeam(true)} style={{ flex: 1 }}>+ League Team</button>
-          <button className="modal-btn-primary" onClick={() => setShowAddResult(true)} style={{ flex: 1 }}>+ Result</button>
+    <div className="lb-wrap">
+      <div className="lb-card">
+        <div className="lb-table" role="table">
+          <div className="lb-header" role="row">
+            <div className="lb-h-rank">RANK</div>
+            <div className="lb-h-team">TEAM</div>
+            <div className="lb-h-stat">W</div>
+            <div className="lb-h-stat">L</div>
+            <div className="lb-h-stat">SW</div>
+            <div className="lb-h-stat">SL</div>
+            <div className="lb-h-stat">PCT</div>
+          </div>
+
+          {standings.length === 0 ? (
+            <div className="lb-empty">No league teams added yet</div>
+          ) : (
+            standings.map((t, i) => {
+              const totalSets = t.setsWon + t.setsLost;
+              const pct = totalSets > 0 ? Math.round((t.setsWon / totalSets) * 100) : null;
+              const dot = t.dot_color || '#58a6ff';
+              const rowClass = ['lb-row'];
+              if (t.is_us) rowClass.push('lb-row-us');
+              if (i === 0) rowClass.push('lb-row-first');
+              return (
+                <div key={t.id} className={rowClass.join(' ')} role="row">
+                  <div className="lb-h-rank">
+                    <span className={rankClass(i)}>{i + 1}</span>
+                  </div>
+                  <div className="lb-h-team lb-team-cell">
+                    <span className="lb-dot" style={{ background: dot }} />
+                    <span className="lb-name">{t.name}</span>
+                    {t.is_us && <span className="lb-us-badge">★ Us</span>}
+                  </div>
+                  <div className="lb-h-stat lb-w">{t.wins}</div>
+                  <div className="lb-h-stat lb-l">{t.losses}</div>
+                  <div className="lb-h-stat lb-mono">{t.setsWon}</div>
+                  <div className="lb-h-stat lb-mono">{t.setsLost}</div>
+                  <div className="lb-h-stat lb-mono">{pct == null ? '—' : `${pct}%`}</div>
+                </div>
+              );
+            })
+          )}
+        </div>
+      </div>
+
+      {recent.length > 0 && (
+        <div className="lb-card lb-recent-card">
+          <div className="lb-section-title">RECENT RESULTS</div>
+          <div className="lb-recent-list">
+            {recent.map(r => {
+              const home = teamById[r.home_league_team_id];
+              const away = teamById[r.away_league_team_id];
+              if (!home || !away) return null;
+              const homeWon = (r.home_sets || 0) > (r.away_sets || 0);
+              const usPlayed = home.is_us || away.is_us;
+              const usWon = (home.is_us && homeWon) || (away.is_us && !homeWon);
+              const isWin = usPlayed ? usWon : homeWon;
+              return (
+                <div key={r.id} className="lb-recent-row">
+                  <span className={`lb-result-dot ${isWin ? 'win' : 'loss'}`} />
+                  <span className="lb-recent-text">
+                    <span className={home.is_us ? 'lb-recent-us' : ''}>{home.name}</span>
+                    <span className="lb-recent-score"> {r.home_sets} — {r.away_sets} </span>
+                    <span className={away.is_us ? 'lb-recent-us' : ''}>{away.name}</span>
+                  </span>
+                  <span className="lb-recent-date">{fmtDate(r.game_date)}</span>
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
 
-      {standings.length === 0 ? (
-        <div className="empty-state">No league teams added yet</div>
-      ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          {standings.map((t, i) => {
-            const total = t.wins + t.losses;
-            const pct = total > 0 ? t.wins / total : 0;
-            const barColor = t.dot_color || '#58a6ff';
-            return (
-              <div key={t.id} className="stb-row" style={t.is_us ? { border: `1px solid ${barColor}40`, background: '#0d1117' } : undefined}>
-                <div className="stb-rank">{i + 1}</div>
-                <div className="stb-info">
-                  <div className="stb-name-row">
-                    <span className="stb-dot" style={{ background: barColor }} />
-                    <span className="stb-name" style={{ color: t.text_color || 'var(--text)', fontWeight: t.is_us ? 700 : 500 }}>{t.name}</span>
-                    {isAdmin && (
-                      <button className="stb-edit" onClick={() => {
-                        const full = myLeagueTeams.find(lt => lt.id === t.id);
-                        if (full) setEditingTeam(full);
-                      }}>Edit</button>
-                    )}
-                  </div>
-                  <div className="stb-bar-track">
-                    <div className="stb-bar-fill" style={{
-                      width: `${Math.max(pct * 100, 2)}%`,
-                      background: `linear-gradient(90deg, ${barColor}, ${barColor}80)`,
-                      boxShadow: pct > 0 ? `0 0 12px ${barColor}30` : 'none',
-                    }} />
-                  </div>
-                  <div className="stb-stats">
-                    <span><b>{t.wins}</b>W</span>
-                    <span><b>{t.losses}</b>L</span>
-                    <span className="stb-sets">{t.setsWon}-{t.setsLost} sets</span>
-                  </div>
+      {isAdmin && (
+        <div className="lb-card lb-admin-card">
+          <div className="lb-section-title">ADMIN</div>
+          <div className="lb-admin-actions">
+            <button className="lb-btn-outline" onClick={() => setShowAddResult(true)}>+ Enter Result</button>
+            <button className="lb-btn-outline" onClick={() => setShowAddTeam(true)}>+ Add Team</button>
+          </div>
+          {myLeagueTeams.length > 0 && (
+            <div className="lb-admin-teams">
+              {myLeagueTeams.map(lt => (
+                <div key={lt.id} className="lb-admin-team-row">
+                  <span className="lb-dot" style={{ background: lt.dot_color || '#58a6ff' }} />
+                  <span className="lb-admin-team-name">{lt.name}{lt.is_us && <span className="lb-us-badge"> ★ Us</span>}</span>
+                  <button className="lb-btn-mini" onClick={() => setEditingTeam(lt)}>Edit</button>
+                  <button className="lb-btn-mini lb-btn-danger" onClick={() => handleRemoveTeam(lt)}>Remove</button>
                 </div>
-              </div>
-            );
-          })}
+              ))}
+            </div>
+          )}
         </div>
       )}
+
+      <div className="lb-legend">
+        W = Wins · L = Losses · SW = Sets Won · SL = Sets Lost · PCT = Set Win %
+      </div>
 
       {showAddTeam && <AddLeagueTeamModal teamId={team.id} onClose={() => setShowAddTeam(false)} onSaved={() => { setShowAddTeam(false); refresh(); }} />}
       {showAddResult && <AddResultModal teamId={team.id} leagueTeams={myLeagueTeams} onClose={() => setShowAddResult(false)} onSaved={() => { setShowAddResult(false); refresh(); }} />}

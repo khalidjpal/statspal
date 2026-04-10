@@ -4,6 +4,7 @@ import { useToast } from '../contexts/ToastContext';
 import { supabase } from '../supabase';
 import { hpct, n3, hcol, teamRecord } from '../utils/stats';
 import { mkInit } from '../utils/colors';
+import { sortByJersey, sortedCompleted } from '../utils/sort';
 import GodStatsModal from '../components/modals/GodStatsModal';
 import AddPlayerModal from '../components/modals/AddPlayerModal';
 import EditPlayerModal from '../components/modals/EditPlayerModal';
@@ -140,7 +141,7 @@ export default function GodMode({ onBack }) {
         {tab === 'Players' && (
           <div>
             {teams.map(t => {
-              const tp = players.filter(p => p.team_id === t.id);
+              const tp = sortByJersey(players.filter(p => p.team_id === t.id));
               const teamColor = t.color || '#1a3a8f';
               return (
                 <div key={t.id} style={{ marginBottom: 20 }}>
@@ -250,7 +251,7 @@ export default function GodMode({ onBack }) {
               <button onClick={addGame} className="modal-btn-primary" style={{ background: '#7b1fa2', width: '100%' }}>Add Game</button>
             </div>
 
-            {completedGames.map(g => {
+            {sortedCompleted(completedGames).map(g => {
               const t = teams.find(t => t.id === g.team_id);
               return (
                 <div key={g.id} className="game-row">
@@ -298,7 +299,7 @@ export default function GodMode({ onBack }) {
         {tab === 'Stats' && (
           <div>
             <div style={{ fontSize: 13, color: '#8892a4', marginBottom: 12 }}>Select a game from the Games tab to edit stats, or browse stats below.</div>
-            {completedGames.map(g => {
+            {sortedCompleted(completedGames).map(g => {
               const t = teams.find(t => t.id === g.team_id);
               const gameStats = playerGameStats.filter(s => s.game_id === g.id);
               if (gameStats.length === 0) return null;

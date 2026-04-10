@@ -3,6 +3,7 @@ import { useData } from '../contexts/DataContext';
 import { useAuth } from '../contexts/AuthContext';
 import { hpct, n3, hcol, playerTotals } from '../utils/stats';
 import { pColors, mkInit } from '../utils/colors';
+import { sortByJersey } from '../utils/sort';
 import ManualResultModal from '../components/modals/ManualResultModal';
 
 export default function GameSummary({ game, team, onBack, onSelectPlayer }) {
@@ -13,7 +14,7 @@ export default function GameSummary({ game, team, onBack, onSelectPlayer }) {
 
   useEffect(() => { refresh(); }, [refresh]);
 
-  const teamPlayers = players.filter(p => p.team_id === team.id);
+  const teamPlayers = sortByJersey(players.filter(p => p.team_id === team.id));
   const gameStats = playerGameStats.filter(s => s.game_id === game.id);
 
   function getPlayerStats(playerId) {

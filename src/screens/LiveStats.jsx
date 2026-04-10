@@ -1,10 +1,12 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { pColors, mkInit } from '../utils/colors';
 import { hpct, n3, hcol } from '../utils/stats';
+import { sortByJersey } from '../utils/sort';
 
 const STAT_TYPES = ['kills', 'aces', 'digs', 'assists', 'blocks', 'errors', 'attempts'];
 
-export default function LiveStats({ team, roster, onBack, onSave }) {
+export default function LiveStats({ team, roster: rosterProp, onBack, onSave }) {
+  const roster = useMemo(() => sortByJersey(rosterProp || []), [rosterProp]);
   const [stats, setStats] = useState(() => {
     const init = {};
     roster.forEach(p => {

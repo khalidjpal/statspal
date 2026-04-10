@@ -1,8 +1,9 @@
 import { hpct, n3, hcol } from '../utils/stats';
 import { pColors, mkInit } from '../utils/colors';
+import { sortByJersey } from '../utils/sort';
 
 export default function AveragesTab({ players, playerGameStats, completedGames, teamId, onSelectPlayer }) {
-  const teamPlayers = players.filter(p => p.team_id === teamId);
+  const teamPlayers = sortByJersey(players.filter(p => p.team_id === teamId));
 
   function getPlayerAvgs(player) {
     const stats = playerGameStats.filter(s => s.player_id === player.id);

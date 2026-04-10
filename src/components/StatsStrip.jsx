@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { hpct, n2, n3, hcol, playerTotals, teamRecord } from '../utils/stats';
+import { sortByJersey } from '../utils/sort';
 
 export default function StatsStrip({ players, playerGameStats, completedGames, teamId, currentUser }) {
   const isPlayerRole = currentUser?.role === 'player';
@@ -10,7 +11,7 @@ export default function StatsStrip({ players, playerGameStats, completedGames, t
   const flashTimeout = useRef(null);
   const prevStr = useRef(null);
 
-  const teamPlayers = players.filter(p => p.team_id === teamId);
+  const teamPlayers = sortByJersey(players.filter(p => p.team_id === teamId));
   const teamGames = completedGames.filter(g => g.team_id === teamId);
   const teamGameIds = new Set(teamGames.map(g => g.id));
   const record = teamRecord(teamGames);

@@ -3,6 +3,7 @@ import { useData } from '../contexts/DataContext';
 import { supabase } from '../supabase';
 import AccountsTab from '../components/AccountsTab';
 import EditTeamModal from '../components/modals/EditTeamModal';
+import { sortByJersey, sortedCompleted, sortedUpcoming } from '../utils/sort';
 
 const TABS = ['Accounts', 'Schedule', 'Players', 'Danger'];
 
@@ -13,9 +14,9 @@ export default function TeamAdmin({ team, onBack, onExport }) {
 
   useEffect(() => { refresh(); }, [refresh]);
 
-  const teamSchedule = schedule.filter(s => s.team_id === team.id);
-  const teamGames = completedGames.filter(g => g.team_id === team.id);
-  const teamPlayers = players.filter(p => p.team_id === team.id);
+  const teamSchedule = sortedUpcoming(schedule.filter(s => s.team_id === team.id));
+  const teamGames = sortedCompleted(completedGames.filter(g => g.team_id === team.id));
+  const teamPlayers = sortByJersey(players.filter(p => p.team_id === team.id));
 
   async function deleteScheduleGame(id) {
     if (!confirm('Delete this scheduled game?')) return;

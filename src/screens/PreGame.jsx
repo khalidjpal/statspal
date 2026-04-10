@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useData } from '../contexts/DataContext';
-import { sortedUpcoming } from '../utils/sort';
+import { sortedUpcoming, sortByJersey } from '../utils/sort';
 import { pColors, mkInit } from '../utils/colors';
 import { getActiveSession } from '../utils/liveSession';
 
@@ -31,7 +31,7 @@ export default function PreGame({ team, scheduledGame, onBack, onStartGame, onRe
     return () => { cancelled = true; };
   }, [team.id]);
 
-  const teamPlayers = players.filter(p => p.team_id === team.id);
+  const teamPlayers = sortByJersey(players.filter(p => p.team_id === team.id));
   const upcoming = sortedUpcoming(schedule.filter(s => s.team_id === team.id));
 
   // Auto-fill from scheduled game or next upcoming

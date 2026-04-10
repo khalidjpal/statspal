@@ -12,6 +12,7 @@ export default function PlayerHome({ onSelectGame }) {
   const data = useData();
   const { players, completedGames, playerGameStats, schedule, leagueTeams, leagueResults, refresh } = data;
   const [tab, setTab] = useState('Season');
+  const [completedExpanded, setCompletedExpanded] = useState(false);
 
   useEffect(() => { refresh(); }, [refresh]);
 
@@ -48,6 +49,7 @@ export default function PlayerHome({ onSelectGame }) {
   }
 
   const upcoming = sortedUpcoming(schedule.filter(s => s.team_id === team.id));
+  const teamCompleted = sortedCompleted(completedGames.filter(g => g.team_id === team.id));
   const myLeagueTeams = leagueTeams.filter(lt => lt.team_id === team.id);
   const myLeagueResults = leagueResults.filter(lr => lr.team_id === team.id);
   const standings = computeStandings(myLeagueTeams, myLeagueResults);
@@ -201,8 +203,8 @@ export default function PlayerHome({ onSelectGame }) {
           <div>
             <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 8 }}>Upcoming</h3>
             {upcoming.length === 0 && <div className="empty-state">No upcoming games</div>}
-            {upcoming.map(g => (
-              <div key={g.id} className="game-row">
+            {upcoming.map((g, i) => (
+              <div key={g.id} className={`game-row${i === 0 ? ' game-row-next' : ''}`}>
                 <div>
                   <div style={{ fontWeight: 600 }}>{g.opponent}</div>
                   <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
@@ -211,6 +213,39 @@ export default function PlayerHome({ onSelectGame }) {
                 </div>
               </div>
             ))}
+
+            <button
+              type="button"
+              className="collapsible-header"
+              onClick={() => setCompletedExpanded(v => !v)}
+              aria-expanded={completedExpanded}
+            >
+              <span className="collapsible-title">Completed ({teamCompleted.length})</span>
+              <span className={`collapsible-chevron${completedExpanded ? ' open' : ''}`} aria-hidden="true">▾</span>
+            </button>
+            <div className={`collapsible-body${completedExpanded ? ' open' : ''}`}>
+              <div className="collapsible-inner">
+                {teamCompleted.length === 0 && <div className="empty-state">No completed games</div>}
+                {teamCompleted.map(g => (
+                  <div key={g.id} className="game-row">
+                    <div>
+                      <div style={{ fontWeight: 600 }}>{g.opponent}</div>
+                      <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+                        {new Date(g.game_date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })} · {g.location}
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      {g.result && (
+                        <>
+                          <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>{g.home_sets}-{g.away_sets}</span>
+                          <span className={`game-result-badge ${g.result === 'W' ? 'win' : 'loss'}`}>{g.result}</span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
         )}
 

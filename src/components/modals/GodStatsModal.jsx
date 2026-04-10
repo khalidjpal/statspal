@@ -1,11 +1,13 @@
 import { useState } from 'react';
 import { supabase } from '../../supabase';
 import { validateStats, cleanStatRow, hasStats } from '../../utils/stats';
+import { sortByJersey } from '../../utils/sort';
 import { useToast } from '../../contexts/ToastContext';
+import PlayerStatsEntry from '../PlayerStatsEntry';
 
 export default function GodStatsModal({ game, players, existingStats, onClose, onSaved }) {
   const { addToast } = useToast();
-  const gamePlayers = players.filter(p => p.team_id === game.team_id);
+  const gamePlayers = sortByJersey(players.filter(p => p.team_id === game.team_id));
   const [stats, setStats] = useState(() => {
     const init = {};
     gamePlayers.forEach(p => {
@@ -18,21 +20,40 @@ export default function GodStatsModal({ game, players, existingStats, onClose, o
   });
   const [saving, setSaving] = useState(false);
   const [validationError, setValidationError] = useState('');
+  const [fieldErrors, setFieldErrors] = useState({});
 
   function updateStat(playerId, field, value) {
     setStats(prev => ({
       ...prev,
       [playerId]: { ...prev[playerId], [field]: Math.max(0, parseInt(value) || 0) },
     }));
+    setFieldErrors(prev => {
+      if (!prev[playerId]) return prev;
+      const next = { ...prev };
+      delete next[playerId];
+      return next;
+    });
   }
 
   async function handleSave() {
     setValidationError('');
+    setFieldErrors({});
+    const errs = {};
+    let firstErrName = null;
     for (const p of gamePlayers) {
       const s = stats[p.id];
       if (!s) continue;
       const err = validateStats(s.kills, s.errors, s.attempts);
-      if (err) { setValidationError(`${p.name}: ${err}`); return; }
+      if (err) {
+        errs[p.id] = { field: 'attempts', message: err };
+        if (!firstErrName) firstErrName = p.name;
+      }
+    }
+    if (Object.keys(errs).length > 0) {
+      setFieldErrors(errs);
+      setValidationError(`Fix invalid hitting stats for ${firstErrName}${Object.keys(errs).length > 1 ? ` and ${Object.keys(errs).length - 1} other(s)` : ''}.`);
+      addToast('Cannot save — invalid stats highlighted', 'error');
+      return;
     }
     setSaving(true);
     // Delete existing stats for this game
@@ -63,47 +84,26 @@ export default function GodStatsModal({ game, players, existingStats, onClose, o
     onSaved();
   }
 
-  const fields = ['sets_played', 'kills', 'errors', 'attempts', 'assists', 'aces', 'serve_errors', 'digs', 'blocks', 'block_assists'];
-  const fieldLabels = { sets_played: 'SP', kills: 'K', errors: 'E', attempts: 'TA', assists: 'A', aces: 'SA', serve_errors: 'SE', digs: 'Digs', blocks: 'BS', block_assists: 'BA' };
-
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: 700, maxHeight: '90vh', overflow: 'auto' }}>
         <h2>Edit Stats — vs {game.opponent}</h2>
         {validationError && (
-          <div style={{ background: '#fdecea', color: '#8b1a1a', padding: '10px 12px', borderRadius: 8, fontSize: 13, marginBottom: 12, fontWeight: 500 }}>
+          <div style={{ background: 'rgba(239,68,68,0.1)', color: '#ef4444', padding: '10px 12px', borderRadius: 8, fontSize: 13, marginBottom: 12, fontWeight: 500 }}>
             {validationError}
           </div>
         )}
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-            <thead>
-              <tr style={{ background: '#f8f9fa' }}>
-                <th style={{ padding: '6px 8px', textAlign: 'left' }}>Player</th>
-                {fields.map(f => (
-                  <th key={f} style={{ padding: '6px 4px', textAlign: 'center', textTransform: 'uppercase', fontSize: 10 }}>{fieldLabels[f] || f}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {gamePlayers.map(p => (
-                <tr key={p.id} style={{ borderTop: '1px solid #eee' }}>
-                  <td style={{ padding: '4px 8px', fontWeight: 600, fontSize: 12 }}>{p.name}</td>
-                  {fields.map(f => (
-                    <td key={f} style={{ padding: '2px' }}>
-                      <input
-                        type="number"
-                        min={0}
-                        value={stats[p.id]?.[f] || 0}
-                        onChange={e => updateStat(p.id, f, e.target.value)}
-                        style={{ width: 44, textAlign: 'center', padding: '4px 2px', border: '1px solid #ddd', borderRadius: 4, fontSize: 12 }}
-                      />
-                    </td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="pse-list">
+          {gamePlayers.map(p => (
+            <PlayerStatsEntry
+              key={p.id}
+              player={p}
+              stats={stats[p.id]}
+              onUpdate={updateStat}
+              errorField={fieldErrors[p.id]?.field}
+              errorMessage={fieldErrors[p.id]?.message}
+            />
+          ))}
         </div>
         <div className="modal-actions" style={{ marginTop: 16 }}>
           <button className="modal-btn-cancel" onClick={onClose}>Cancel</button>

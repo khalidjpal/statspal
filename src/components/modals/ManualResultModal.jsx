@@ -1,11 +1,13 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../../supabase';
 import { validateStats, cleanStatRow, hasStats } from '../../utils/stats';
+import { sortByJersey } from '../../utils/sort';
 import { useToast } from '../../contexts/ToastContext';
+import PlayerStatsEntry from '../PlayerStatsEntry';
 
 export default function ManualResultModal({ game, team, players, existingStats, onClose, onSaved }) {
   const { addToast } = useToast();
-  const teamPlayers = players.filter(p => p.team_id === team.id);
+  const teamPlayers = sortByJersey(players.filter(p => p.team_id === team.id));
   const isNew = !game.result; // No result yet = entering fresh
 
   const [result, setResult] = useState(game.result || 'W');
@@ -29,6 +31,8 @@ export default function ManualResultModal({ game, team, players, existingStats, 
   const [saving, setSaving] = useState(false);
   const [tab, setTab] = useState('score');
   const [validationError, setValidationError] = useState('');
+  // { [playerId]: { field: 'attempts', message: '...' } }
+  const [fieldErrors, setFieldErrors] = useState({});
 
   // Update set scores array when set counts change
   useEffect(() => {
@@ -55,19 +59,35 @@ export default function ManualResultModal({ game, team, players, existingStats, 
       ...prev,
       [playerId]: { ...prev[playerId], [field]: Math.max(0, parseInt(value) || 0) },
     }));
+    // Clear any error on this player as they edit
+    setFieldErrors(prev => {
+      if (!prev[playerId]) return prev;
+      const next = { ...prev };
+      delete next[playerId];
+      return next;
+    });
   }
 
   async function handleSave() {
-    // Validate all player stats
     setValidationError('');
+    setFieldErrors({});
+    const errs = {};
+    let firstErrName = null;
     for (const p of teamPlayers) {
       const s = stats[p.id];
       if (!s) continue;
       const err = validateStats(s.kills, s.errors, s.attempts);
       if (err) {
-        setValidationError(`${p.name}: ${err}`);
-        return;
+        errs[p.id] = { field: 'attempts', message: err };
+        if (!firstErrName) firstErrName = p.name;
       }
+    }
+    if (Object.keys(errs).length > 0) {
+      setFieldErrors(errs);
+      setValidationError(`Fix invalid hitting stats for ${firstErrName}${Object.keys(errs).length > 1 ? ` and ${Object.keys(errs).length - 1} other(s)` : ''}.`);
+      setTab('stats');
+      addToast('Cannot save — invalid stats highlighted', 'error');
+      return;
     }
     setSaving(true);
 
@@ -140,9 +160,6 @@ export default function ManualResultModal({ game, team, players, existingStats, 
     onSaved();
   }
 
-  const statFields = ['sets_played', 'kills', 'errors', 'attempts', 'assists', 'aces', 'serve_errors', 'digs', 'blocks', 'block_assists'];
-  const statLabels = { sets_played: 'SP', kills: 'K', errors: 'E', attempts: 'TA', assists: 'A', aces: 'SA', serve_errors: 'SE', digs: 'Digs', blocks: 'BS', block_assists: 'BA' };
-
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: 700, maxHeight: '90vh', overflow: 'auto' }}>
@@ -214,37 +231,17 @@ export default function ManualResultModal({ game, team, players, existingStats, 
         )}
 
         {tab === 'stats' && (
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-              <thead>
-                <tr style={{ background: 'rgba(128,128,128,0.06)' }}>
-                  <th style={{ padding: '6px 8px', textAlign: 'left', fontSize: 11, color: 'var(--text-secondary)' }}>Player</th>
-                  {statFields.map(f => (
-                    <th key={f} style={{ padding: '6px 3px', textAlign: 'center', fontSize: 10, textTransform: 'uppercase', color: 'var(--text-secondary)' }}>
-                      {statLabels[f]}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {teamPlayers.map(p => (
-                  <tr key={p.id} style={{ borderTop: '1px solid var(--border)' }}>
-                    <td style={{ padding: '4px 8px', fontWeight: 600, fontSize: 12, whiteSpace: 'nowrap', color: 'var(--text)' }}>{p.name}</td>
-                    {statFields.map(f => (
-                      <td key={f} style={{ padding: '2px' }}>
-                        <input
-                          type="number"
-                          min={0}
-                          value={stats[p.id]?.[f] || 0}
-                          onChange={e => updateStat(p.id, f, e.target.value)}
-                          style={{ width: 42, textAlign: 'center', padding: '4px 2px', borderRadius: 4, fontSize: 12 }}
-                        />
-                      </td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="pse-list">
+            {teamPlayers.map(p => (
+              <PlayerStatsEntry
+                key={p.id}
+                player={p}
+                stats={stats[p.id]}
+                onUpdate={updateStat}
+                errorField={fieldErrors[p.id]?.field}
+                errorMessage={fieldErrors[p.id]?.message}
+              />
+            ))}
           </div>
         )}
 

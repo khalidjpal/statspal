@@ -13,6 +13,7 @@ export default function ScheduleTab({ team, schedule, completedGames, players, p
   const [showAdd, setShowAdd] = useState(false);
   const [manualGame, setManualGame] = useState(null);
   const [activeSession, setActiveSession] = useState(null);
+  const [completedExpanded, setCompletedExpanded] = useState(false);
 
   const today = getToday();
   const teamSchedule = schedule.filter(g => g.team_id === team.id);
@@ -134,13 +135,14 @@ export default function ScheduleTab({ team, schedule, completedGames, players, p
         </>
       )}
 
-      {/* Upcoming games */}
+      {/* Upcoming games (soonest first) — always visible */}
       <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 8, marginTop: pastUnplayed.length > 0 ? 20 : 0 }}>Upcoming</h3>
       {upcoming.length === 0 && <div className="empty-state">No upcoming games</div>}
-      {upcoming.map(g => {
+      {upcoming.map((g, i) => {
         const isToday = g.game_date === today;
+        const isNext = i === 0;
         return (
-          <div key={g.id} className="game-row">
+          <div key={g.id} className={`game-row${isNext ? ' game-row-next' : ''}`}>
             <div>
               <div style={{ fontWeight: 600 }}>
                 {g.opponent}
@@ -163,49 +165,61 @@ export default function ScheduleTab({ team, schedule, completedGames, players, p
         );
       })}
 
-      {/* Completed games */}
-      <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 8, marginTop: 20 }}>Completed</h3>
-      {completed.length === 0 && <div className="empty-state">No completed games</div>}
-      {completed.map(g => (
-        <div key={g.id} className="game-row" onClick={() => onSelectGame(g)} style={{ cursor: 'pointer' }}>
-          <div>
-            <div style={{ fontWeight: 600 }}>
-              {g.opponent}
-              {g.is_league && <span style={{ fontSize: 10, background: 'rgba(26,58,143,0.15)', color: '#1a3a8f', padding: '2px 6px', borderRadius: 4, marginLeft: 8, fontWeight: 700 }}>LEAGUE</span>}
-            </div>
-            <div style={{ fontSize: 12, color: '#8892a4' }}>
-              {formatDate(g.game_date)} · {g.location}
-            </div>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            {g.result ? (
-              <>
-                <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>{g.home_sets}-{g.away_sets}</span>
-                <span className={`game-result-badge ${g.result === 'W' ? 'win' : 'loss'}`}>
-                  {g.result}
-                </span>
-                {isAdmin && (
-                  <button
-                    onClick={(e) => { e.stopPropagation(); setManualGame(g); }}
-                    style={{ background: 'rgba(128,128,128,0.1)', color: 'var(--text-secondary)', padding: '4px 10px', borderRadius: 6, fontSize: 11, fontWeight: 600, border: 'none', cursor: 'pointer' }}
-                  >
-                    Edit
-                  </button>
+      {/* Completed games — collapsible, starts collapsed */}
+      <button
+        type="button"
+        className="collapsible-header"
+        onClick={() => setCompletedExpanded(v => !v)}
+        aria-expanded={completedExpanded}
+      >
+        <span className="collapsible-title">Completed ({completed.length})</span>
+        <span className={`collapsible-chevron${completedExpanded ? ' open' : ''}`} aria-hidden="true">▾</span>
+      </button>
+      <div className={`collapsible-body${completedExpanded ? ' open' : ''}`}>
+        <div className="collapsible-inner">
+          {completed.length === 0 && <div className="empty-state">No completed games</div>}
+          {completed.map(g => (
+            <div key={g.id} className="game-row" onClick={() => onSelectGame(g)} style={{ cursor: 'pointer' }}>
+              <div>
+                <div style={{ fontWeight: 600 }}>
+                  {g.opponent}
+                  {g.is_league && <span style={{ fontSize: 10, background: 'rgba(26,58,143,0.15)', color: '#1a3a8f', padding: '2px 6px', borderRadius: 4, marginLeft: 8, fontWeight: 700 }}>LEAGUE</span>}
+                </div>
+                <div style={{ fontSize: 12, color: '#8892a4' }}>
+                  {formatDate(g.game_date)} · {g.location}
+                </div>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                {g.result ? (
+                  <>
+                    <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>{g.home_sets}-{g.away_sets}</span>
+                    <span className={`game-result-badge ${g.result === 'W' ? 'win' : 'loss'}`}>
+                      {g.result}
+                    </span>
+                    {isAdmin && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setManualGame(g); }}
+                        style={{ background: 'rgba(128,128,128,0.1)', color: 'var(--text-secondary)', padding: '4px 10px', borderRadius: 6, fontSize: 11, fontWeight: 600, border: 'none', cursor: 'pointer' }}
+                      >
+                        Edit
+                      </button>
+                    )}
+                  </>
+                ) : (
+                  isAdmin && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setManualGame(g); }}
+                      style={{ background: '#c9a84c', color: '#000', padding: '4px 10px', borderRadius: 6, fontSize: 11, fontWeight: 700, border: 'none', cursor: 'pointer' }}
+                    >
+                      Enter Result
+                    </button>
+                  )
                 )}
-              </>
-            ) : (
-              isAdmin && (
-                <button
-                  onClick={(e) => { e.stopPropagation(); setManualGame(g); }}
-                  style={{ background: '#c9a84c', color: '#000', padding: '4px 10px', borderRadius: 6, fontSize: 11, fontWeight: 700, border: 'none', cursor: 'pointer' }}
-                >
-                  Enter Result
-                </button>
-              )
-            )}
-          </div>
+              </div>
+            </div>
+          ))}
         </div>
-      ))}
+      </div>
 
       {showAdd && (
         <AddGameModal

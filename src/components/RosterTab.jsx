@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import { pColors, mkInit } from '../utils/colors';
+import { sortByJersey } from '../utils/sort';
 import AddPlayerModal from './modals/AddPlayerModal';
 
 export default function RosterTab({ team, players, isAdmin, refresh, onSelectPlayer }) {
   const [showAdd, setShowAdd] = useState(false);
-  const teamPlayers = players.filter(p => p.team_id === team.id);
+  const teamPlayers = sortByJersey(players.filter(p => p.team_id === team.id));
 
   return (
     <div>

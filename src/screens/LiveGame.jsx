@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { pColors, mkInit } from '../utils/colors';
 import { hpct, n3, hcol } from '../utils/stats';
 import { saveSession, abandonSession } from '../utils/liveSession';
+import { sortByJersey } from '../utils/sort';
 
 const GOOD = [
   { key:'kill', abbr:'K', label:'Kill', stat:'kills', autoAtt:true, big:true },
@@ -101,7 +102,7 @@ export default function LiveGame({ team, gameInfo, onEndMatch, onAbandon, resume
 
   const selPlayer=roster.find(p=>p.id===selectedPlayer);
   const selStats=selectedPlayer?stats[selectedPlayer]:null;
-  const sortedRoster=[...roster].sort((a,b)=>(stats[b.id]?.kills||0)-(stats[a.id]?.kills||0));
+  const sortedRoster=sortByJersey(roster);
 
   return (
     <div className="lv">
@@ -140,7 +141,7 @@ export default function LiveGame({ team, gameInfo, onEndMatch, onAbandon, resume
         <div className="lv-split">
           {/* LEFT SIDEBAR */}
           <div className="lv-left">
-            {roster.map((p) => {
+            {sortedRoster.map((p) => {
               const sel = p.id === selectedPlayer;
               const s = stats[p.id];
               return (

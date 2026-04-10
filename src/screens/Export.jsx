@@ -1,11 +1,11 @@
 import { useData } from '../contexts/DataContext';
 import { hpct, n3, playerTotals } from '../utils/stats';
-import { sortedCompleted } from '../utils/sort';
+import { sortedCompleted, sortByJersey } from '../utils/sort';
 
 export default function Export({ team, onBack }) {
   const { players, completedGames, playerGameStats } = useData();
 
-  const teamPlayers = players.filter(p => p.team_id === team.id);
+  const teamPlayers = sortByJersey(players.filter(p => p.team_id === team.id));
   const teamGames = sortedCompleted(completedGames.filter(g => g.team_id === team.id));
 
   function buildCSV() {

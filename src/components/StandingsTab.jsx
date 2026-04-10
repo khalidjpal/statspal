@@ -1,9 +1,11 @@
 import { useMemo, useState } from 'react';
 import { supabase } from '../supabase';
 import { computeStandings } from '../utils/stats';
+import { useToast } from '../contexts/ToastContext';
 import AddLeagueTeamModal from './modals/AddLeagueTeamModal';
 import AddResultModal from './modals/AddResultModal';
 import EditLeagueTeamModal from './modals/EditLeagueTeamModal';
+import EditLeagueResultModal from './modals/EditLeagueResultModal';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
@@ -22,13 +24,27 @@ function rankClass(i) {
 }
 
 export default function StandingsTab({ team, leagueTeams, leagueResults, isAdmin, refresh }) {
+  const { addToast } = useToast();
   const [showAddTeam, setShowAddTeam] = useState(false);
   const [showAddResult, setShowAddResult] = useState(false);
   const [editingTeam, setEditingTeam] = useState(null);
+  const [editingResult, setEditingResult] = useState(null);
+  const [manageExpanded, setManageExpanded] = useState(false);
 
   const myLeagueTeams = leagueTeams.filter(lt => lt.team_id === team.id);
   const myLeagueResults = leagueResults.filter(lr => lr.team_id === team.id);
   const standings = computeStandings(myLeagueTeams, myLeagueResults);
+
+  const allResultsSorted = useMemo(() => {
+    return [...myLeagueResults].sort((a, b) => {
+      const sa = String(a.game_date || '');
+      const sb = String(b.game_date || '');
+      if (sa !== sb) return sa < sb ? 1 : -1;
+      const ca = new Date(a.created_at || 0).getTime() || 0;
+      const cb = new Date(b.created_at || 0).getTime() || 0;
+      return cb - ca;
+    });
+  }, [myLeagueResults]);
 
   const teamById = useMemo(() => {
     const m = {};
@@ -47,6 +63,17 @@ export default function StandingsTab({ team, leagueTeams, leagueResults, isAdmin
     if (!confirm(`Remove "${lt.name}" from the league? This also deletes their results.`)) return;
     await supabase.from('league_results').delete().or(`home_league_team_id.eq.${lt.id},away_league_team_id.eq.${lt.id}`);
     await supabase.from('league_teams').delete().eq('id', lt.id);
+    refresh();
+  }
+
+  async function handleDeleteResult(r) {
+    if (!confirm('Delete this result? Standings will update immediately.')) return;
+    const { error } = await supabase.from('league_results').delete().eq('id', r.id);
+    if (error) {
+      addToast('Failed to delete result: ' + error.message, 'error');
+      return;
+    }
+    addToast('Result deleted', 'success');
     refresh();
   }
 
@@ -146,6 +173,58 @@ export default function StandingsTab({ team, leagueTeams, leagueResults, isAdmin
         </div>
       )}
 
+      {isAdmin && (
+        <div className="lb-card lb-manage-card">
+          <button
+            type="button"
+            className="collapsible-header lb-manage-header"
+            onClick={() => setManageExpanded(v => !v)}
+            aria-expanded={manageExpanded}
+          >
+            <span className="collapsible-title">Manage Results ({allResultsSorted.length})</span>
+            <span className={`collapsible-chevron${manageExpanded ? ' open' : ''}`} aria-hidden="true">▾</span>
+          </button>
+          <div className={`collapsible-body${manageExpanded ? ' open' : ''}`}>
+            <div className="collapsible-inner">
+              {allResultsSorted.length === 0 ? (
+                <div className="empty-state">No results entered yet</div>
+              ) : (
+                <div className="lb-results-list">
+                  {allResultsSorted.map(r => {
+                    const home = teamById[r.home_league_team_id];
+                    const away = teamById[r.away_league_team_id];
+                    return (
+                      <div key={r.id} className="lb-result-mgmt">
+                        <div className="lb-result-mgmt-main">
+                          <div className="lb-result-mgmt-team lb-result-mgmt-team-home">
+                            <span className="lb-dot" style={{ background: home?.dot_color || '#58a6ff' }} />
+                            <span className="lb-result-mgmt-name">{home?.name || 'Unknown'}</span>
+                          </div>
+                          <div className="lb-result-mgmt-score">
+                            <span className={(r.home_sets || 0) > (r.away_sets || 0) ? 'lb-result-mgmt-win' : ''}>{r.home_sets ?? 0}</span>
+                            <span className="lb-result-mgmt-dash">—</span>
+                            <span className={(r.away_sets || 0) > (r.home_sets || 0) ? 'lb-result-mgmt-win' : ''}>{r.away_sets ?? 0}</span>
+                          </div>
+                          <div className="lb-result-mgmt-team lb-result-mgmt-team-away">
+                            <span className="lb-result-mgmt-name">{away?.name || 'Unknown'}</span>
+                            <span className="lb-dot" style={{ background: away?.dot_color || '#58a6ff' }} />
+                          </div>
+                        </div>
+                        <div className="lb-result-mgmt-meta">
+                          <span className="lb-result-mgmt-date">{fmtDate(r.game_date)}</span>
+                          <button className="lb-btn-mini lb-btn-edit" onClick={() => setEditingResult(r)}>Edit</button>
+                          <button className="lb-btn-mini lb-btn-danger" onClick={() => handleDeleteResult(r)}>Delete</button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="lb-legend">
         W = Wins · L = Losses · SW = Sets Won · SL = Sets Lost · PCT = Set Win %
       </div>
@@ -153,6 +232,14 @@ export default function StandingsTab({ team, leagueTeams, leagueResults, isAdmin
       {showAddTeam && <AddLeagueTeamModal teamId={team.id} onClose={() => setShowAddTeam(false)} onSaved={() => { setShowAddTeam(false); refresh(); }} />}
       {showAddResult && <AddResultModal teamId={team.id} leagueTeams={myLeagueTeams} onClose={() => setShowAddResult(false)} onSaved={() => { setShowAddResult(false); refresh(); }} />}
       {editingTeam && <EditLeagueTeamModal leagueTeam={editingTeam} onClose={() => setEditingTeam(null)} onSaved={() => { setEditingTeam(null); refresh(); }} />}
+      {editingResult && (
+        <EditLeagueResultModal
+          result={editingResult}
+          allLeagueTeams={myLeagueTeams}
+          onClose={() => setEditingResult(null)}
+          onSaved={() => { setEditingResult(null); addToast('Result updated', 'success'); refresh(); }}
+        />
+      )}
     </div>
   );
 }

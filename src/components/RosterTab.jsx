@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { pColors, mkInit } from '../utils/colors';
 import { sortByJersey } from '../utils/sort';
+import PlayerBadge from './PlayerBadge';
 import AddPlayerModal from './modals/AddPlayerModal';
 
 export default function RosterTab({ team, players, isAdmin, refresh, onSelectPlayer }) {
@@ -18,31 +18,23 @@ export default function RosterTab({ team, players, isAdmin, refresh, onSelectPla
       {teamPlayers.length === 0 ? (
         <div className="empty-state">No players on roster yet</div>
       ) : (
-        teamPlayers.map((p, i) => {
-          const colors = p.colors || pColors(p.player_index ?? i);
-          return (
-            <div
-              key={p.id}
-              className="game-row"
-              onClick={() => onSelectPlayer(p)}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                <span
-                  className="player-badge"
-                  style={{ background: colors.bg, color: colors.text }}
-                >
-                  {p.initials || mkInit(p.name)}
-                </span>
-                <div>
-                  <div style={{ fontWeight: 600 }}>{p.name}</div>
-                  <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-                    {[p.jersey_number ? `#${p.jersey_number}` : null, p.position, p.height, p.grade].filter(Boolean).join(' · ')}
-                  </div>
+        teamPlayers.map(p => (
+          <div
+            key={p.id}
+            className="game-row"
+            onClick={() => onSelectPlayer(p)}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <PlayerBadge player={p} team={team} size={40} />
+              <div>
+                <div style={{ fontWeight: 600 }}>{p.name}</div>
+                <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+                  {[p.jersey_number ? `#${p.jersey_number}` : null, p.position, p.height, p.grade].filter(Boolean).join(' · ')}
                 </div>
               </div>
             </div>
-          );
-        })
+          </div>
+        ))
       )}
 
       {showAdd && (

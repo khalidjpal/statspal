@@ -2,8 +2,10 @@ import { useEffect, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useData } from '../contexts/DataContext';
 import { hpct, n3, hcol, hlbl, playerTotals, computeStandings } from '../utils/stats';
-import { pColors, mkInit } from '../utils/colors';
 import { sortedUpcoming, sortedCompleted } from '../utils/sort';
+import PlayerBadge from '../components/PlayerBadge';
+import Modal from '../components/Modal';
+import PlayerGameDetail from './PlayerGameDetail';
 
 const TABS = ['Season', 'Bests', 'Games', 'Efficiency', 'Schedule', 'Standings'];
 
@@ -13,6 +15,7 @@ export default function PlayerHome({ onSelectGame }) {
   const { players, completedGames, playerGameStats, schedule, leagueTeams, leagueResults, refresh } = data;
   const [tab, setTab] = useState('Season');
   const [completedExpanded, setCompletedExpanded] = useState(false);
+  const [popupPlayerGame, setPopupPlayerGame] = useState(null);
 
   useEffect(() => { refresh(); }, [refresh]);
 
@@ -27,7 +30,6 @@ export default function PlayerHome({ onSelectGame }) {
     );
   }
 
-  const colors = player.colors || pColors(player.player_index ?? 0);
   const myStats = playerGameStats.filter(s => s.player_id === player.id);
   const totals = playerTotals(myStats);
   const sp = totals.sets_played;
@@ -62,9 +64,7 @@ export default function PlayerHome({ onSelectGame }) {
       }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <span className="player-badge" style={{ background: colors.bg, color: colors.text, width: 48, height: 48, fontSize: 16 }}>
-              {player.initials || mkInit(player.name)}
-            </span>
+            <PlayerBadge player={player} team={team} size={48} />
             <div>
               <h1 style={{ fontSize: 20, fontWeight: 700 }}>{player.name}</h1>
               <div style={{ fontSize: 12, opacity: 0.7 }}>{team.name}</div>
@@ -153,7 +153,7 @@ export default function PlayerHome({ onSelectGame }) {
             {myGames.map(g => {
               const gs = myStats.find(s => s.game_id === g.id);
               return (
-                <div key={g.id} className="game-row" onClick={() => onSelectGame && onSelectGame(player, g)}>
+                <div key={g.id} className="game-row" onClick={() => setPopupPlayerGame({ player, game: g })}>
                   <div>
                     <div style={{ fontWeight: 600 }}>vs {g.opponent}</div>
                     <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
@@ -284,6 +284,17 @@ export default function PlayerHome({ onSelectGame }) {
           </div>
         )}
       </div>
+
+      <Modal open={!!popupPlayerGame} onClose={() => setPopupPlayerGame(null)} maxWidth={520}>
+        {popupPlayerGame && (
+          <PlayerGameDetail
+            asModal
+            player={popupPlayerGame.player}
+            game={popupPlayerGame.game}
+            team={team}
+          />
+        )}
+      </Modal>
     </div>
   );
 }

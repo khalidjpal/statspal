@@ -1,11 +1,10 @@
 import { useData } from '../contexts/DataContext';
 import { hpct, n3, hcol, hlbl } from '../utils/stats';
-import { pColors, mkInit } from '../utils/colors';
+import PlayerBadge from '../components/PlayerBadge';
 
 export default function PlayerGameDetailPlayer({ player, game, onBack }) {
   const { playerGameStats, teams } = useData();
   const team = teams.find(t => t.id === player.team_id);
-  const colors = player.colors || pColors(player.player_index ?? 0);
   const stats = playerGameStats.find(s => s.player_id === player.id && s.game_id === game.id) ||
     { kills: 0, aces: 0, digs: 0, assists: 0, blocks: 0, errors: 0, attempts: 0, sets_played: 0, block_assists: 0, serve_errors: 0 };
 
@@ -22,9 +21,7 @@ export default function PlayerGameDetailPlayer({ player, game, onBack }) {
           Back
         </button>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 12 }}>
-          <span className="player-badge" style={{ background: colors.bg, color: colors.text, width: 48, height: 48, fontSize: 16 }}>
-            {player.initials || mkInit(player.name)}
-          </span>
+          <PlayerBadge player={player} team={team} size={48} />
           <div>
             <h1 style={{ fontSize: 18, fontWeight: 700 }}>{player.name}</h1>
             <div style={{ fontSize: 13, opacity: 0.7 }}>

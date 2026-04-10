@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { pColors, mkInit } from '../utils/colors';
+import PlayerBadge from '../components/PlayerBadge';
 import { hpct, n3, hcol } from '../utils/stats';
 import { sortByJersey } from '../utils/sort';
 
@@ -59,8 +59,7 @@ export default function LiveStats({ team, roster: rosterProp, onBack, onSave }) 
       <div style={{ padding: '12px 20px', maxWidth: 600, margin: '0 auto' }}>
         {/* Player selector */}
         <div style={{ display: 'flex', gap: 8, overflowX: 'auto', marginBottom: 16, paddingBottom: 4 }}>
-          {roster.map((p, i) => {
-            const colors = p.colors || pColors(p.player_index ?? i);
+          {roster.map(p => {
             const isSelected = p.id === selectedPlayer;
             return (
               <button
@@ -75,9 +74,7 @@ export default function LiveStats({ team, roster: rosterProp, onBack, onSave }) 
                   boxShadow: isSelected ? '0 2px 8px rgba(0,0,0,0.2)' : '0 1px 3px rgba(0,0,0,0.08)',
                 }}
               >
-                <span className="player-badge" style={{ background: colors.bg, color: colors.text, width: 36, height: 36, fontSize: 12 }}>
-                  {p.initials || mkInit(p.name)}
-                </span>
+                <PlayerBadge player={p} team={team} size={36} />
                 <span style={{ fontSize: 11, fontWeight: 600 }}>{p.name.split(' ')[0]}</span>
               </button>
             );

@@ -6,14 +6,27 @@ import ScheduleTab from '../components/ScheduleTab';
 import StandingsTab from '../components/StandingsTab';
 import AveragesTab from '../components/AveragesTab';
 import RosterTab from '../components/RosterTab';
+import Modal from '../components/Modal';
+import PlayerDetail from './PlayerDetail';
+import GameSummary from './GameSummary';
+import PlayerGameDetail from './PlayerGameDetail';
 
 const TABS = ['Schedule', 'Standings', 'Averages', 'Roster'];
 
-export default function TeamDashboard({ team, onBack, onSelectGame, onSelectPlayer, onPreGame, onStartLive, onResumeGame, onTeamAdmin }) {
+export default function TeamDashboard({ team, onBack, onPreGame, onStartLive, onResumeGame, onTeamAdmin }) {
   const { currentUser } = useAuth();
   const data = useData();
   const { players, schedule, completedGames, playerGameStats, leagueTeams, leagueResults, refresh } = data;
   const [tab, setTab] = useState('Schedule');
+
+  // Popup modal state — keeps drill-downs in-place instead of routing
+  const [popupPlayer, setPopupPlayer] = useState(null);
+  const [popupGame, setPopupGame] = useState(null);
+  const [popupPlayerGame, setPopupPlayerGame] = useState(null); // { player, game }
+
+  function openPlayer(player) { setPopupPlayer(player); }
+  function openGame(game) { setPopupGame(game); }
+  function openPlayerGame(player, game) { setPopupPlayerGame({ player, game }); }
 
   useEffect(() => { refresh(); }, [refresh]);
 
@@ -93,7 +106,7 @@ export default function TeamDashboard({ team, onBack, onSelectGame, onSelectPlay
             playerGameStats={playerGameStats}
             leagueTeams={leagueTeams}
             isAdmin={isCoachOrAdmin}
-            onSelectGame={onSelectGame}
+            onSelectGame={openGame}
             onStartLive={isCoachOrAdmin ? onStartLive : undefined}
             onResumeGame={isCoachOrAdmin ? onResumeGame : undefined}
             refresh={refresh}
@@ -114,7 +127,7 @@ export default function TeamDashboard({ team, onBack, onSelectGame, onSelectPlay
             playerGameStats={playerGameStats}
             completedGames={completedGames}
             teamId={team.id}
-            onSelectPlayer={onSelectPlayer}
+            onSelectPlayer={openPlayer}
           />
         )}
         {tab === 'Roster' && (
@@ -123,10 +136,42 @@ export default function TeamDashboard({ team, onBack, onSelectGame, onSelectPlay
             players={players}
             isAdmin={isAdmin}
             refresh={refresh}
-            onSelectPlayer={onSelectPlayer}
+            onSelectPlayer={openPlayer}
           />
         )}
       </div>
+
+      {/* Drill-down popups */}
+      <Modal open={!!popupPlayer} onClose={() => setPopupPlayer(null)} maxWidth={520}>
+        {popupPlayer && (
+          <PlayerDetail
+            asModal
+            player={popupPlayer}
+            team={team}
+            onSelectGame={(p, g) => openPlayerGame(p, g)}
+          />
+        )}
+      </Modal>
+      <Modal open={!!popupGame} onClose={() => setPopupGame(null)} maxWidth={760}>
+        {popupGame && (
+          <GameSummary
+            asModal
+            game={popupGame}
+            team={team}
+            onSelectPlayer={(p, g) => openPlayerGame(p, g)}
+          />
+        )}
+      </Modal>
+      <Modal open={!!popupPlayerGame} onClose={() => setPopupPlayerGame(null)} maxWidth={520}>
+        {popupPlayerGame && (
+          <PlayerGameDetail
+            asModal
+            player={popupPlayerGame.player}
+            game={popupPlayerGame.game}
+            team={team}
+          />
+        )}
+      </Modal>
     </div>
   );
 }

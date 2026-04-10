@@ -2,11 +2,11 @@ import { useEffect, useState } from 'react';
 import { useData } from '../contexts/DataContext';
 import { useAuth } from '../contexts/AuthContext';
 import { hpct, n3, hcol, hlbl, playerTotals } from '../utils/stats';
-import { pColors, mkInit } from '../utils/colors';
 import { sortedCompleted } from '../utils/sort';
+import PlayerBadge from '../components/PlayerBadge';
 import ManualResultModal from '../components/modals/ManualResultModal';
 
-export default function PlayerDetail({ player, team, onBack, onSelectGame }) {
+export default function PlayerDetail({ player, team, onBack, onSelectGame, asModal = false }) {
   const { completedGames, playerGameStats, players, refresh } = useData();
   const { currentUser } = useAuth();
   const isAdmin = currentUser?.role === 'admin';
@@ -14,7 +14,6 @@ export default function PlayerDetail({ player, team, onBack, onSelectGame }) {
 
   useEffect(() => { refresh(); }, [refresh]);
 
-  const colors = player.colors || pColors(player.player_index ?? 0);
   const myStats = playerGameStats.filter(s => s.player_id === player.id);
   const totals = playerTotals(myStats);
   const sp = totals.sets_played;
@@ -24,29 +23,19 @@ export default function PlayerDetail({ player, team, onBack, onSelectGame }) {
   const gameIds = new Set(myStats.map(s => s.game_id));
   const myGames = sortedCompleted(completedGames.filter(g => gameIds.has(g.id)));
 
-  return (
-    <div style={{ minHeight: '100vh', background: 'var(--bg)' }}>
-      <div style={{
-        background: `linear-gradient(135deg, ${team.color || '#0d1f5c'}, ${team.color || '#1a3a8f'})`,
-        color: '#fff', padding: '16px 20px',
-      }}>
-        <button onClick={onBack} style={{ background: 'rgba(255,255,255,0.15)', color: '#fff', padding: '6px 14px', borderRadius: 8, fontSize: 13, fontWeight: 600, border: 'none', cursor: 'pointer' }}>
-          Back
-        </button>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginTop: 12 }}>
-          <span className="player-badge" style={{ background: colors.bg, color: colors.text, width: 56, height: 56, fontSize: 20 }}>
-            {player.initials || mkInit(player.name)}
-          </span>
-          <div>
-            <h1 style={{ fontSize: 22, fontWeight: 700 }}>{player.name}</h1>
-            <div style={{ fontSize: 13, opacity: 0.7 }}>
-              {[player.jersey_number ? `#${player.jersey_number}` : null, player.position, player.height, player.grade].filter(Boolean).join(' · ')}
-            </div>
+  const body = (
+    <div className="pgd-body">
+      <div className="pgd-head">
+        <PlayerBadge player={player} team={team} size={52} />
+        <div className="pgd-head-text">
+          <div className="pgd-name" style={{ fontSize: 18 }}>{player.name}</div>
+          <div className="pgd-sub">
+            {[player.jersey_number ? `#${player.jersey_number}` : null, player.position, player.height, player.grade].filter(Boolean).join(' · ')}
           </div>
         </div>
       </div>
 
-      <div style={{ padding: '16px 20px', maxWidth: 600, margin: '0 auto' }}>
+      <div style={{ marginTop: 12 }}>
         {/* Season totals */}
         <div className="card">
           <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 12 }}>Season Totals</div>
@@ -130,6 +119,24 @@ export default function PlayerDetail({ player, team, onBack, onSelectGame }) {
             onSaved={() => { setEditGame(null); refresh(); }}
           />
         )}
+      </div>
+    </div>
+  );
+
+  if (asModal) return body;
+
+  return (
+    <div style={{ minHeight: '100vh', background: 'var(--bg)' }}>
+      <div style={{
+        background: `linear-gradient(135deg, ${team.color || '#0d1f5c'}, ${team.color || '#1a3a8f'})`,
+        color: '#fff', padding: '16px 20px',
+      }}>
+        <button onClick={onBack} style={{ background: 'rgba(255,255,255,0.15)', color: '#fff', padding: '6px 14px', borderRadius: 8, fontSize: 13, fontWeight: 600, border: 'none', cursor: 'pointer' }}>
+          Back
+        </button>
+      </div>
+      <div style={{ padding: '16px 20px', maxWidth: 600, margin: '0 auto' }}>
+        {body}
       </div>
     </div>
   );

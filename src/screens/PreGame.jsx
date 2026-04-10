@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useData } from '../contexts/DataContext';
 import { sortedUpcoming, sortByJersey } from '../utils/sort';
-import { pColors, mkInit } from '../utils/colors';
+import PlayerBadge from '../components/PlayerBadge';
 import { getActiveSession } from '../utils/liveSession';
 
 const STEPS = ['setup', 'format', 'lineup'];
@@ -186,15 +186,12 @@ export default function PreGame({ team, scheduledGame, onBack, onStartGame, onRe
             <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 8, color: 'var(--text)' }}>
               Active Roster ({selectedPlayers.length}/{teamPlayers.length})
             </h3>
-            {teamPlayers.map((p, i) => {
-              const colors = p.colors || pColors(p.player_index ?? i);
+            {teamPlayers.map(p => {
               const selected = selectedPlayers.includes(p.id);
               return (
                 <div key={p.id} className="game-row" onClick={() => togglePlayer(p.id)} style={{ opacity: selected ? 1 : 0.4 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                    <span className="player-badge" style={{ background: colors.bg, color: colors.text }}>
-                      {p.initials || mkInit(p.name)}
-                    </span>
+                    <PlayerBadge player={p} team={team} size={40} />
                     <div>
                       <div style={{ fontWeight: 600, color: 'var(--text)' }}>{p.name}</div>
                       <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>

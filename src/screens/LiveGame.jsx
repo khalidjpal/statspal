@@ -1,5 +1,4 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { pColors, mkInit } from '../utils/colors';
 import { hpct, n3, hcol } from '../utils/stats';
 import { saveSession, abandonSession } from '../utils/liveSession';
 import { sortByJersey } from '../utils/sort';

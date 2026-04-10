@@ -2,11 +2,11 @@ import { useEffect, useState } from 'react';
 import { useData } from '../contexts/DataContext';
 import { useAuth } from '../contexts/AuthContext';
 import { hpct, n3, hcol, playerTotals } from '../utils/stats';
-import { pColors, mkInit } from '../utils/colors';
 import { sortByJersey } from '../utils/sort';
+import PlayerBadge from '../components/PlayerBadge';
 import ManualResultModal from '../components/modals/ManualResultModal';
 
-export default function GameSummary({ game, team, onBack, onSelectPlayer }) {
+export default function GameSummary({ game, team, onBack, onSelectPlayer, asModal = false }) {
   const { players, playerGameStats, refresh } = useData();
   const { currentUser } = useAuth();
   const isAdmin = currentUser?.role === 'admin';
@@ -25,35 +25,24 @@ export default function GameSummary({ game, team, onBack, onSelectPlayer }) {
 
   const totals = playerTotals(gameStats);
 
-  return (
-    <div style={{ minHeight: '100vh', background: 'var(--bg)' }}>
-      <div style={{
-        background: `linear-gradient(135deg, ${team.color || '#0d1f5c'}, ${team.color || '#1a3a8f'})`,
-        color: '#fff', padding: '16px 20px',
-      }}>
-        <button onClick={onBack} style={{ background: 'rgba(255,255,255,0.15)', color: '#fff', padding: '6px 14px', borderRadius: 8, fontSize: 13, fontWeight: 600, border: 'none', cursor: 'pointer' }}>
-          Back
-        </button>
-        <h1 style={{ fontSize: 20, fontWeight: 700, marginTop: 8 }}>
-          vs {game.opponent}
-        </h1>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 4 }}>
-          <span className={`game-result-badge ${game.result === 'W' ? 'win' : 'loss'}`}>
-            {game.result}
-          </span>
-          <span style={{ fontSize: 18, fontWeight: 700 }}>{game.home_sets}-{game.away_sets}</span>
-          <span style={{ fontSize: 13, opacity: 0.7 }}>
+  const body = (
+    <div className="pgd-body">
+      <div style={{ marginBottom: 14 }}>
+        <h2 style={{ fontSize: 18, fontWeight: 800, color: '#f0f6fc', marginBottom: 6 }}>vs {game.opponent}</h2>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span className={`game-result-badge ${game.result === 'W' ? 'win' : 'loss'}`}>{game.result}</span>
+          <span style={{ fontSize: 16, fontWeight: 700, color: '#f0f6fc' }}>{game.home_sets}-{game.away_sets}</span>
+          <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
             {new Date(game.game_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
           </span>
         </div>
         {game.set_scores && (
-          <div style={{ fontSize: 12, opacity: 0.5, marginTop: 4 }}>
+          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 6, fontFamily: 'var(--mono)' }}>
             {game.set_scores.map((s, i) => `S${i + 1}: ${s.home}-${s.away}`).join('  ')}
           </div>
         )}
       </div>
-
-      <div style={{ padding: '16px 20px', maxWidth: 800, margin: '0 auto' }}>
+      <div>
         {/* Team totals strip — always dark navy */}
         <div className="card" style={{ marginBottom: 16, background: '#0d1a35', border: 'none' }}>
           <div style={{ fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,0.5)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Team Totals</div>
@@ -108,10 +97,9 @@ export default function GameSummary({ game, team, onBack, onSelectPlayer }) {
                 </tr>
               </thead>
               <tbody>
-                {teamPlayers.map((p, i) => {
+                {teamPlayers.map(p => {
                   const s = getPlayerStats(p.id);
                   if (s.sets_played === 0 && s.kills === 0 && s.aces === 0 && s.digs === 0 && s.blocks === 0 && s.block_assists === 0) return null;
-                  const colors = p.colors || pColors(p.player_index ?? i);
                   return (
                     <tr
                       key={p.id}
@@ -119,9 +107,7 @@ export default function GameSummary({ game, team, onBack, onSelectPlayer }) {
                       onClick={() => onSelectPlayer(p, game)}
                     >
                       <td style={{ padding: '8px', display: 'flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap' }}>
-                        <span className="player-badge" style={{ background: colors.bg, color: colors.text, width: 28, height: 28, fontSize: 10 }}>
-                          {p.initials || mkInit(p.name)}
-                        </span>
+                        <PlayerBadge player={p} team={team} size={28} />
                         <span style={{ fontWeight: 600, fontSize: 12, color: 'var(--text)' }}>{p.name}</span>
                       </td>
                       <td style={{ textAlign: 'center', padding: '8px 4px' }}>{s.sets_played}</td>
@@ -155,6 +141,24 @@ export default function GameSummary({ game, team, onBack, onSelectPlayer }) {
           onSaved={() => { setEditingGame(null); refresh(); }}
         />
       )}
+    </div>
+  );
+
+  if (asModal) return body;
+
+  return (
+    <div style={{ minHeight: '100vh', background: 'var(--bg)' }}>
+      <div style={{
+        background: `linear-gradient(135deg, ${team.color || '#0d1f5c'}, ${team.color || '#1a3a8f'})`,
+        color: '#fff', padding: '16px 20px',
+      }}>
+        <button onClick={onBack} style={{ background: 'rgba(255,255,255,0.15)', color: '#fff', padding: '6px 14px', borderRadius: 8, fontSize: 13, fontWeight: 600, border: 'none', cursor: 'pointer' }}>
+          Back
+        </button>
+      </div>
+      <div style={{ padding: '16px 20px', maxWidth: 800, margin: '0 auto' }}>
+        {body}
+      </div>
     </div>
   );
 }

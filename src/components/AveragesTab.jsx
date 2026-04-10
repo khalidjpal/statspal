@@ -1,9 +1,12 @@
 import { useMemo, useState } from 'react';
+import { useData } from '../contexts/DataContext';
 import { hpct, n3, hcol } from '../utils/stats';
-import { pColors, mkInit } from '../utils/colors';
 import { sortByJersey } from '../utils/sort';
+import PlayerBadge from './PlayerBadge';
 
 export default function AveragesTab({ players, playerGameStats, completedGames, teamId, onSelectPlayer }) {
+  const { teams } = useData();
+  const team = teams.find(t => t.id === teamId);
   const teamPlayers = sortByJersey(players.filter(p => p.team_id === teamId));
   const [scope, setScope] = useState('all'); // 'all' | 'league'
 
@@ -93,9 +96,8 @@ export default function AveragesTab({ players, playerGameStats, completedGames, 
                 </tr>
               </thead>
               <tbody>
-                {teamPlayers.map((p, i) => {
+                {teamPlayers.map(p => {
                   const a = getPlayerAvgs(p);
-                  const colors = p.colors || pColors(p.player_index ?? i);
                   const dash = <span style={{ color: 'var(--text-muted)' }}>—</span>;
                   return (
                     <tr
@@ -104,12 +106,7 @@ export default function AveragesTab({ players, playerGameStats, completedGames, 
                       onClick={() => onSelectPlayer(p)}
                     >
                       <td style={{ padding: '8px', display: 'flex', alignItems: 'center', gap: 8, whiteSpace: 'nowrap' }}>
-                        <span
-                          className="player-badge"
-                          style={{ background: colors.bg, color: colors.text, width: 32, height: 32, fontSize: 11 }}
-                        >
-                          {p.initials || mkInit(p.name)}
-                        </span>
+                        <PlayerBadge player={p} team={team} size={32} />
                         <span style={{ fontWeight: 600, fontSize: 13, color: 'var(--text)' }}>{p.name}</span>
                       </td>
                       <td style={{ textAlign: 'center', padding: '8px 4px', color: 'var(--text)' }}>{a ? a.sp : dash}</td>

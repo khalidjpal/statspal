@@ -3,7 +3,7 @@ import { useData } from '../contexts/DataContext';
 import { useToast } from '../contexts/ToastContext';
 import { supabase } from '../supabase';
 import { hpct, n3, hcol, teamRecord } from '../utils/stats';
-import { mkInit } from '../utils/colors';
+import PlayerBadge from '../components/PlayerBadge';
 import { sortByJersey, sortedCompleted } from '../utils/sort';
 import GodStatsModal from '../components/modals/GodStatsModal';
 import AddPlayerModal from '../components/modals/AddPlayerModal';
@@ -182,15 +182,7 @@ export default function GodMode({ onBack }) {
                           borderTop: pi > 0 ? '1px solid var(--border)' : 'none',
                         }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                            <span style={{
-                              width: 34, height: 34, borderRadius: '50%',
-                              background: p.colors?.bg || teamColor,
-                              color: p.colors?.text || '#fff',
-                              display: 'flex', alignItems: 'center', justifyContent: 'center',
-                              fontSize: 11, fontWeight: 800, flexShrink: 0,
-                            }}>
-                              {p.initials || mkInit(p.name)}
-                            </span>
+                            <PlayerBadge player={p} team={t} size={34} />
                             <div>
                               <div style={{ fontWeight: 600, color: 'var(--text)' }}>{p.name}</div>
                               <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>

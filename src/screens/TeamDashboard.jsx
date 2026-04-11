@@ -128,6 +128,7 @@ export default function TeamDashboard({ team, onBack, onPreGame, onStartLive, on
             completedGames={completedGames}
             teamId={team.id}
             onSelectPlayer={openPlayer}
+            onSelectPlayerGame={openPlayerGame}
           />
         )}
         {tab === 'Roster' && (

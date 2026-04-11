@@ -70,7 +70,7 @@ export default function TeamAdmin({ team, onBack, onExport }) {
         <h1 style={{ fontSize: 20, fontWeight: 700, marginTop: 8 }}>{team.name} — Admin</h1>
       </div>
 
-      <div style={{ padding: '16px 20px', maxWidth: 800, margin: '0 auto' }}>
+      <div className="page-wrap">
         <div className="tab-bar">
           {TABS.map(t => (
             <button key={t} className={`tab-btn ${tab === t ? 'active' : ''}`} onClick={() => setTab(t)}

@@ -139,13 +139,13 @@ export default function ScheduleTab({ team, schedule, completedGames, players, p
     return { oppTeam, oppW, oppL, last5, streakLen, streakType, ourWins, ourLosses, lastMeeting, firstMeeting: h2hGames.length === 0 };
   }, [nextGame, leagueResults, myLeagueTeams, ourLeagueTeam, team.id]);
 
-  // Past timeline: completed games + past unplayed, most recent first
+  // Past timeline: completed games + past unplayed, oldest first so most recent sits directly above next game card
   const pastTimeline = useMemo(() => {
     const items = [
       ...completed.map(g => ({ ...g, _kind: 'completed' })),
       ...pastUnplayed.map(g => ({ ...g, _kind: 'needsResult' })),
     ];
-    return items.sort((a, b) => b.game_date.localeCompare(a.game_date));
+    return items.sort((a, b) => a.game_date.localeCompare(b.game_date));
   }, [completed, pastUnplayed]);
 
   // Instantly position the timeline before the browser paints.
@@ -276,77 +276,76 @@ export default function ScheduleTab({ team, schedule, completedGames, players, p
         {nextGame && (
           <div ref={nextGameRef} className="sch-next-anchor">
 
-            {/* Divider */}
-            <div className={`sch-tl-divider${nextGame.game_date === today ? ' sch-tl-divider-today' : ''}`}>
-              <span className="sch-tl-divider-label">
-                {nextGame.game_date === today ? 'TODAY' : 'NEXT GAME'}
-              </span>
-            </div>
-
-            {/* Expanded next game card */}
+            {/* Next game card — two column compact layout */}
             <div className={`sch-next-card${nextGame.game_date === today ? ' sch-next-today' : ''}`}>
-              <div className="sch-next-eyebrow">
-                {nextGame.game_date === today ? <><span className="sch-live-dot" /> TODAY</> : 'NEXT GAME'}
-                {nextGame.is_league && <span className="sch-badge-league sch-badge-league-sm">League</span>}
-                {nextGame.game_date !== today && (
-                  <span className="sch-next-countdown">{daysUntilLabel(nextGame.game_date, today)}</span>
+
+              {/* LEFT: opponent info + button */}
+              <div className="sch-nc-left">
+                <div className="sch-nc-eyebrow">
+                  {nextGame.game_date === today ? <><span className="sch-live-dot" /> TODAY</> : 'NEXT GAME'}
+                  {nextGame.is_league && <span className="sch-badge-league sch-badge-league-sm">League</span>}
+                  {nextGame.game_date !== today && (
+                    <span className="sch-next-countdown">{daysUntilLabel(nextGame.game_date, today)}</span>
+                  )}
+                </div>
+                <div className="sch-nc-opp">{nextGame.opponent}</div>
+                <div className="sch-nc-meta">
+                  {formatShortDate(nextGame.game_date)}
+                  {nextGame.location && ` · ${nextGame.location}`}
+                </div>
+                {isAdmin && (
+                  <button className="sch-start-btn" onClick={() => onStartLive && onStartLive(nextGame)}>
+                    Start Live Scoring
+                  </button>
                 )}
               </div>
 
-              <div className="sch-next-opp">{nextGame.opponent}</div>
+              {/* Vertical divider */}
+              <div className="sch-nc-divider" />
 
-              <div className="sch-next-meta">
-                <span>{formatShortDate(nextGame.game_date)}</span>
-                {nextGame.location && <><span className="sch-meta-dot">·</span><span>{nextGame.location}</span></>}
-              </div>
-
-              {/* Pregame opponent info */}
-              {pregame && (
-                <div className="sch-pregame">
-                  <div className="sch-pregame-divider" />
-                  <div className="sch-pregame-row">
-                    <span className="sch-pregame-lbl">League Record</span>
-                    <span className="sch-pregame-val">{pregame.oppW}–{pregame.oppL}</span>
-                  </div>
-                  {pregame.last5.length > 0 && (
-                    <div className="sch-pregame-row">
-                      <span className="sch-pregame-lbl">Last {pregame.last5.length}</span>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                        <div className="sch-streak-wrap">
-                          {[...pregame.last5].reverse().map((r, i) => (
-                            <span key={i} className={`sch-streak-pill sch-streak-${r === 'W' ? 'w' : 'l'}`}>{r}</span>
-                          ))}
-                        </div>
-                        <div style={{ fontSize: 9, color: 'var(--text-muted)', letterSpacing: '0.03em' }}>
-                          ← most recent
+              {/* RIGHT: pre-match stats */}
+              <div className="sch-nc-right">
+                {pregame ? (
+                  <>
+                    <div className="sch-nc-stat-row">
+                      <span className="sch-nc-lbl">League Record</span>
+                      <span className="sch-nc-val">{pregame.oppW}–{pregame.oppL}</span>
+                    </div>
+                    {pregame.lastMeeting && (
+                      <div className="sch-nc-stat-row">
+                        <span className="sch-nc-lbl">Last Meeting</span>
+                        <span className={`sch-nc-val sch-pregame-result-${pregame.lastMeeting.result === 'W' ? 'w' : 'l'}`}>
+                          {pregame.lastMeeting.result} {pregame.lastMeeting.score} · {pregame.lastMeeting.date}
+                        </span>
+                      </div>
+                    )}
+                    {pregame.streakType && (
+                      <div className="sch-nc-stat-row">
+                        <span className="sch-nc-lbl">Streak</span>
+                        <span className="sch-nc-val" style={{ color: pregame.streakType === 'W' ? '#3fb950' : '#f85149' }}>
+                          {pregame.streakLen}{pregame.streakType}
+                        </span>
+                      </div>
+                    )}
+                    {pregame.last5.length > 0 && (
+                      <div className="sch-nc-stat-row" style={{ alignItems: 'flex-start' }}>
+                        <span className="sch-nc-lbl" style={{ paddingTop: 1 }}>Last 5</span>
+                        <div>
+                          <div className="sch-streak-wrap" style={{ justifyContent: 'flex-end' }}>
+                            {[...pregame.last5].reverse().map((r, i) => (
+                              <span key={i} className={`sch-streak-pill sch-streak-${r === 'W' ? 'w' : 'l'}`}>{r}</span>
+                            ))}
+                          </div>
+                          <div style={{ fontSize: 8, color: 'var(--text-muted)', marginTop: 2, textAlign: 'left' }}>← most recent</div>
                         </div>
                       </div>
-                    </div>
-                  )}
-                  {pregame.streakType && (
-                    <div className="sch-pregame-row">
-                      <span className="sch-pregame-lbl">Streak</span>
-                      <span style={{ fontWeight: 700, fontSize: 13, color: pregame.streakType === 'W' ? '#3fb950' : '#f85149' }}>
-                        {pregame.streakLen}{pregame.streakType}
-                      </span>
-                    </div>
-                  )}
-                  {pregame.lastMeeting && (
-                    <div className="sch-pregame-row">
-                      <span className="sch-pregame-lbl">Last Meeting</span>
-                      <span className={`sch-pregame-val sch-pregame-result-${pregame.lastMeeting.result === 'W' ? 'w' : 'l'}`}>
-                        {pregame.lastMeeting.result} {pregame.lastMeeting.score} · {pregame.lastMeeting.date}
-                      </span>
-                    </div>
-                  )}
-                </div>
-              )}
+                    )}
+                  </>
+                ) : (
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>No league data</div>
+                )}
+              </div>
 
-              {isAdmin && (
-                <button className="sch-start-btn" onClick={() => onStartLive && onStartLive(nextGame)}>
-                  Start Live Scoring
-                </button>
-              )}
             </div>
           </div>
         )}

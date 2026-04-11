@@ -97,7 +97,7 @@ export default function GodMode({ onBack }) {
         <div style={{ fontSize: 13, opacity: 0.6 }}>Direct database access</div>
       </div>
 
-      <div style={{ padding: '16px 20px', maxWidth: 800, margin: '0 auto' }}>
+      <div className="page-wrap">
         <div className="tab-bar">
           {TABS.map(t => (
             <button key={t} className={`tab-btn ${tab === t ? 'active' : ''}`} onClick={() => setTab(t)}

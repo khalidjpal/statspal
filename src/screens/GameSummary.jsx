@@ -156,7 +156,7 @@ export default function GameSummary({ game, team, onBack, onSelectPlayer, asModa
           Back
         </button>
       </div>
-      <div style={{ padding: '16px 20px', maxWidth: 800, margin: '0 auto' }}>
+      <div className="page-wrap">
         {body}
       </div>
     </div>

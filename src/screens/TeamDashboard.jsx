@@ -79,14 +79,7 @@ export default function TeamDashboard({ team, onBack, onPreGame, onStartLive, on
         </div>
       </div>
 
-      <div style={{ padding: '16px 20px', maxWidth: 800, margin: '0 auto' }}>
-        <NextGameBar
-          team={team}
-          schedule={schedule}
-          completedGames={completedGames}
-          onResumeGame={isCoachOrAdmin ? onResumeGame : undefined}
-        />
-
+      <div className="page-wrap">
         {/* Tab bar */}
         <div className="tab-bar">
           {TABS.map(t => (

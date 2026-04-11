@@ -8,6 +8,7 @@ import EditLeagueTeamModal from './modals/EditLeagueTeamModal';
 import EditLeagueResultModal from './modals/EditLeagueResultModal';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const SHOW_LIMIT = 8;
 
 function fmtDate(s) {
   if (!s) return '';
@@ -29,7 +30,9 @@ export default function StandingsTab({ team, leagueTeams, leagueResults, isAdmin
   const [showAddResult, setShowAddResult] = useState(false);
   const [editingTeam, setEditingTeam] = useState(null);
   const [editingResult, setEditingResult] = useState(null);
-  const [manageExpanded, setManageExpanded] = useState(false);
+  const [showAll, setShowAll] = useState(false);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [filterTeamId, setFilterTeamId] = useState(null);
 
   const myLeagueTeams = leagueTeams.filter(lt => lt.team_id === team.id);
   const myLeagueResults = leagueResults.filter(lr => lr.team_id === team.id);
@@ -52,12 +55,28 @@ export default function StandingsTab({ team, leagueTeams, leagueResults, isAdmin
     return m;
   }, [myLeagueTeams]);
 
-  const recent = useMemo(() => {
-    return [...myLeagueResults]
-      .filter(r => r.game_date)
-      .sort((a, b) => (b.game_date || '').localeCompare(a.game_date || ''))
-      .slice(0, 5);
+  const resultMap = useMemo(() => {
+    const m = {};
+    for (const r of myLeagueResults) {
+      if (!m[r.home_league_team_id]) m[r.home_league_team_id] = {};
+      m[r.home_league_team_id][r.away_league_team_id] = r;
+    }
+    return m;
   }, [myLeagueResults]);
+
+  const mostRecentDate = allResultsSorted[0]?.game_date || null;
+
+  const filteredResults = useMemo(() => {
+    if (!filterTeamId) return allResultsSorted;
+    return allResultsSorted.filter(
+      r => r.home_league_team_id === filterTeamId || r.away_league_team_id === filterTeamId
+    );
+  }, [allResultsSorted, filterTeamId]);
+
+  const visibleResults = filterTeamId
+    ? filteredResults
+    : showAll ? allResultsSorted : allResultsSorted.slice(0, SHOW_LIMIT);
+  const hasMore = !filterTeamId && allResultsSorted.length > SHOW_LIMIT;
 
   async function handleRemoveTeam(lt) {
     if (!confirm(`Remove "${lt.name}" from the league? This also deletes their results.`)) return;
@@ -79,6 +98,8 @@ export default function StandingsTab({ team, leagueTeams, leagueResults, isAdmin
 
   return (
     <div className="lb-wrap">
+
+      {/* ── Standings table ── */}
       <div className="lb-card">
         <div className="lb-table" role="table">
           <div className="lb-header" role="row">
@@ -123,34 +144,231 @@ export default function StandingsTab({ team, leagueTeams, leagueResults, isAdmin
         </div>
       </div>
 
-      {recent.length > 0 && (
-        <div className="lb-card lb-recent-card">
-          <div className="lb-section-title">RECENT RESULTS</div>
-          <div className="lb-recent-list">
-            {recent.map(r => {
+      {/* ── Results feed ── */}
+      {allResultsSorted.length > 0 && (
+        <div className="lb-card lb-feed-card">
+          <div className="lb-feed-title">RESULTS</div>
+
+          {/* Filter buttons – standings order */}
+          {standings.length >= 2 && (
+            <div className="lb-record-bar">
+              {standings.map(t => {
+                const isSelected = filterTeamId === t.id;
+                const isFiltering = filterTeamId !== null;
+                return (
+                  <button
+                    key={t.id}
+                    type="button"
+                    className={[
+                      'lb-record-team lb-filter-btn',
+                      isSelected ? 'lb-filter-selected' : '',
+                      isFiltering && !isSelected ? 'lb-filter-dimmed' : '',
+                      t.is_us && !isSelected ? 'lb-record-us' : '',
+                    ].filter(Boolean).join(' ')}
+                    onClick={() => { setFilterTeamId(id => id === t.id ? null : t.id); setShowAll(false); }}
+                    style={isSelected ? { '--filter-dot': t.dot_color || '#58a6ff' } : {}}
+                  >
+                    <span className="lb-record-dot" style={{ background: t.dot_color || '#58a6ff' }} />
+                    <span className="lb-record-name">{t.name}</span>
+                    <span className="lb-record-wl">{t.wins}–{t.losses}</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Match cards */}
+          <div className="mc-list">
+            {visibleResults.map(r => {
               const home = teamById[r.home_league_team_id];
               const away = teamById[r.away_league_team_id];
               if (!home || !away) return null;
               const homeWon = (r.home_sets || 0) > (r.away_sets || 0);
-              const usPlayed = home.is_us || away.is_us;
-              const usWon = (home.is_us && homeWon) || (away.is_us && !homeWon);
-              const isWin = usPlayed ? usWon : homeWon;
+              const usInvolved = home.is_us || away.is_us;
+              const isRecent = r.game_date === mostRecentDate;
+
+              // Perspective-aware ordering: filtered team always on left
+              const isHomeFilter = filterTeamId === home.id;
+              const isAwayFilter = filterTeamId === away.id;
+              const isFiltered = !!(isHomeFilter || isAwayFilter);
+
+              // Determine left/right slots
+              const leftTeam    = isFiltered && isAwayFilter ? away : home;
+              const leftSets    = isFiltered && isAwayFilter ? (r.away_sets ?? 0) : (r.home_sets ?? 0);
+              const leftWon     = isFiltered && isAwayFilter ? !homeWon : homeWon;
+              const leftIsHome  = !isAwayFilter; // true = home, false = away (for label)
+
+              const rightTeam   = isFiltered && isAwayFilter ? home : away;
+              const rightSets   = isFiltered && isAwayFilter ? (r.home_sets ?? 0) : (r.away_sets ?? 0);
+              const rightWon    = isFiltered && isAwayFilter ? homeWon : !homeWon;
+
+              const leftSideCls  = isFiltered ? 'mc-focus'    : (leftWon  ? 'mc-winner' : 'mc-loser');
+              const rightSideCls = isFiltered ? 'mc-opponent' : (rightWon ? 'mc-winner' : 'mc-loser');
+
               return (
-                <div key={r.id} className="lb-recent-row">
-                  <span className={`lb-result-dot ${isWin ? 'win' : 'loss'}`} />
-                  <span className="lb-recent-text">
-                    <span className={home.is_us ? 'lb-recent-us' : ''}>{home.name}</span>
-                    <span className="lb-recent-score"> {r.home_sets} — {r.away_sets} </span>
-                    <span className={away.is_us ? 'lb-recent-us' : ''}>{away.name}</span>
-                  </span>
-                  <span className="lb-recent-date">{fmtDate(r.game_date)}</span>
+                <div
+                  key={r.id}
+                  className={['mc-card', usInvolved ? 'mc-us' : '', isRecent ? 'mc-recent' : ''].filter(Boolean).join(' ')}
+                >
+                  <div className="mc-match">
+                    {/* Left side — always filtered team (or home when no filter) */}
+                    <div className={`mc-side mc-home ${leftSideCls}`}>
+                      <span className="mc-dot" style={{ background: leftTeam.dot_color || '#58a6ff' }} />
+                      <span className="mc-name-wrap">
+                        <span className="mc-name">{leftTeam.name}</span>
+                        {isFiltered && <span className="mc-ha-label">{leftIsHome ? 'Home' : 'Away'}</span>}
+                      </span>
+                      <span className={`mc-pill ${leftWon ? 'win' : 'loss'}`}>{leftWon ? 'W' : 'L'}</span>
+                      <span className="mc-score">{leftSets}</span>
+                    </div>
+
+                    {/* VS separator */}
+                    <div className="mc-vs">VS</div>
+
+                    {/* Right side — always opponent (or away when no filter) */}
+                    <div className={`mc-side mc-away ${rightSideCls}`}>
+                      <span className="mc-score">{rightSets}</span>
+                      <span className={`mc-pill ${rightWon ? 'win' : 'loss'}${isFiltered ? ' mc-pill-muted' : ''}`}>{rightWon ? 'W' : 'L'}</span>
+                      <span className="mc-name">{rightTeam.name}</span>
+                      <span className="mc-dot" style={{ background: rightTeam.dot_color || '#58a6ff' }} />
+                    </div>
+                  </div>
+
+                  <div className="mc-meta">
+                    <span className="mc-date">{fmtDate(r.game_date)}</span>
+                    {isRecent && <span className="mc-badge-recent">Recent</span>}
+                  </div>
                 </div>
               );
             })}
           </div>
+
+          {/* Count label */}
+          {filterTeamId ? (
+            <div className="mc-count-label">
+              Showing {filteredResults.length} result{filteredResults.length !== 1 ? 's' : ''} for{' '}
+              <span className="mc-count-team">{teamById[filterTeamId]?.name}</span>
+              <button className="mc-clear-filter" onClick={() => { setFilterTeamId(null); setShowAll(false); }}>✕ Clear</button>
+            </div>
+          ) : (
+            allResultsSorted.length > 0 && !showAll && hasMore && (
+              <div className="mc-count-label">
+                Showing {Math.min(SHOW_LIMIT, allResultsSorted.length)} of {allResultsSorted.length} results
+              </div>
+            )
+          )}
+
+          {hasMore && (
+            <button className="mc-show-more" onClick={() => setShowAll(v => !v)}>
+              {showAll
+                ? 'Show less ▴'
+                : `Show ${allResultsSorted.length - SHOW_LIMIT} more result${allResultsSorted.length - SHOW_LIMIT === 1 ? '' : 's'} ▾`}
+            </button>
+          )}
         </div>
       )}
 
+      {/* ── Advanced Statistics (collapsible matrix) ── */}
+      {myLeagueResults.length > 0 && standings.length >= 2 && (
+        <div className="lb-card lb-adv-card">
+          <button
+            type="button"
+            className="collapsible-header lb-adv-header"
+            onClick={() => setAdvancedOpen(v => !v)}
+            aria-expanded={advancedOpen}
+          >
+            <span className="collapsible-title lb-adv-title">Advanced Statistics — Head to Head Matrix</span>
+            <span className={`collapsible-chevron${advancedOpen ? ' open' : ''}`} aria-hidden="true">▾</span>
+          </button>
+
+          <div className={`collapsible-body${advancedOpen ? ' open' : ''}`}>
+            <div className="collapsible-inner lb-adv-inner">
+              <div className="lb-matrix-scroll">
+                <div
+                  className="lb-matrix"
+                  style={{ gridTemplateColumns: `130px repeat(${standings.length}, minmax(70px, 1fr))` }}
+                >
+                  {/* Corner */}
+                  <div className="lb-matrix-corner">
+                    <span>HOME ↓</span>
+                    <span>AWAY →</span>
+                  </div>
+
+                  {/* Column headers (away teams) */}
+                  {standings.map(t => (
+                    <div key={`ch-${t.id}`} className={`lb-matrix-col-hdr${t.is_us ? ' lb-matrix-us-col' : ''}`}>
+                      <span className="lb-matrix-hdr-dot" style={{ background: t.dot_color || '#58a6ff' }} />
+                      <span className="lb-matrix-hdr-name">{t.name}</span>
+                    </div>
+                  ))}
+
+                  {/* Rows: row header + cells */}
+                  {standings.flatMap(homeTeam => [
+                    <div key={`rh-${homeTeam.id}`} className={`lb-matrix-row-hdr${homeTeam.is_us ? ' lb-matrix-us-row' : ''}`}>
+                      <span className="lb-matrix-hdr-dot" style={{ background: homeTeam.dot_color || '#58a6ff' }} />
+                      <span className="lb-matrix-hdr-name">{homeTeam.name}</span>
+                    </div>,
+                    ...standings.map(awayTeam => {
+                      if (homeTeam.id === awayTeam.id) {
+                        return (
+                          <div key={`cell-${homeTeam.id}-${awayTeam.id}`} className="lb-matrix-cell lb-matrix-cell-self">
+                            <span>—</span>
+                          </div>
+                        );
+                      }
+                      const r = resultMap[homeTeam.id]?.[awayTeam.id];
+                      if (!r) {
+                        return (
+                          <div
+                            key={`cell-${homeTeam.id}-${awayTeam.id}`}
+                            className={`lb-matrix-cell lb-matrix-cell-empty${(homeTeam.is_us || awayTeam.is_us) ? ' lb-matrix-us-empty' : ''}`}
+                          />
+                        );
+                      }
+                      const homeWon = (r.home_sets || 0) > (r.away_sets || 0);
+                      const usInvolved = homeTeam.is_us || awayTeam.is_us;
+                      const isRecent = r.game_date === mostRecentDate;
+                      const cellCls = [
+                        'lb-matrix-cell',
+                        homeWon ? 'lb-matrix-win' : 'lb-matrix-loss',
+                        usInvolved ? 'lb-matrix-us' : '',
+                        usInvolved && homeWon ? 'lb-matrix-us-win' : '',
+                        isRecent ? 'lb-matrix-recent' : '',
+                      ].filter(Boolean).join(' ');
+                      return (
+                        <div
+                          key={`cell-${homeTeam.id}-${awayTeam.id}`}
+                          className={cellCls}
+                          title={fmtDate(r.game_date)}
+                        >
+                          <span className="lb-matrix-score">{r.home_sets}–{r.away_sets}</span>
+                          <span className={`lb-matrix-pill ${homeWon ? 'win' : 'loss'}`}>{homeWon ? 'W' : 'L'}</span>
+                          {isAdmin && (
+                            <div className="lb-matrix-actions">
+                              <button
+                                className="lb-matrix-btn lb-matrix-edit"
+                                onClick={e => { e.stopPropagation(); setEditingResult(r); }}
+                                title="Edit"
+                              >✎</button>
+                              <button
+                                className="lb-matrix-btn lb-matrix-del"
+                                onClick={e => { e.stopPropagation(); handleDeleteResult(r); }}
+                                title="Delete"
+                              >✕</button>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })
+                  ])}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Admin ── */}
       {isAdmin && (
         <div className="lb-card lb-admin-card">
           <div className="lb-section-title">ADMIN</div>
@@ -170,58 +388,6 @@ export default function StandingsTab({ team, leagueTeams, leagueResults, isAdmin
               ))}
             </div>
           )}
-        </div>
-      )}
-
-      {isAdmin && (
-        <div className="lb-card lb-manage-card">
-          <button
-            type="button"
-            className="collapsible-header lb-manage-header"
-            onClick={() => setManageExpanded(v => !v)}
-            aria-expanded={manageExpanded}
-          >
-            <span className="collapsible-title">Manage Results ({allResultsSorted.length})</span>
-            <span className={`collapsible-chevron${manageExpanded ? ' open' : ''}`} aria-hidden="true">▾</span>
-          </button>
-          <div className={`collapsible-body${manageExpanded ? ' open' : ''}`}>
-            <div className="collapsible-inner">
-              {allResultsSorted.length === 0 ? (
-                <div className="empty-state">No results entered yet</div>
-              ) : (
-                <div className="lb-results-list">
-                  {allResultsSorted.map(r => {
-                    const home = teamById[r.home_league_team_id];
-                    const away = teamById[r.away_league_team_id];
-                    return (
-                      <div key={r.id} className="lb-result-mgmt">
-                        <div className="lb-result-mgmt-main">
-                          <div className="lb-result-mgmt-team lb-result-mgmt-team-home">
-                            <span className="lb-dot" style={{ background: home?.dot_color || '#58a6ff' }} />
-                            <span className="lb-result-mgmt-name">{home?.name || 'Unknown'}</span>
-                          </div>
-                          <div className="lb-result-mgmt-score">
-                            <span className={(r.home_sets || 0) > (r.away_sets || 0) ? 'lb-result-mgmt-win' : ''}>{r.home_sets ?? 0}</span>
-                            <span className="lb-result-mgmt-dash">—</span>
-                            <span className={(r.away_sets || 0) > (r.home_sets || 0) ? 'lb-result-mgmt-win' : ''}>{r.away_sets ?? 0}</span>
-                          </div>
-                          <div className="lb-result-mgmt-team lb-result-mgmt-team-away">
-                            <span className="lb-result-mgmt-name">{away?.name || 'Unknown'}</span>
-                            <span className="lb-dot" style={{ background: away?.dot_color || '#58a6ff' }} />
-                          </div>
-                        </div>
-                        <div className="lb-result-mgmt-meta">
-                          <span className="lb-result-mgmt-date">{fmtDate(r.game_date)}</span>
-                          <button className="lb-btn-mini lb-btn-edit" onClick={() => setEditingResult(r)}>Edit</button>
-                          <button className="lb-btn-mini lb-btn-danger" onClick={() => handleDeleteResult(r)}>Delete</button>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          </div>
         </div>
       )}
 

@@ -251,7 +251,7 @@ export default function ScheduleTab({ team, schedule, completedGames, players, p
               <div className="sch-tl-mid">
                 <div className="sch-tl-opp">
                   {g.opponent}
-                  {g.is_league && <span className="sch-badge-league">L</span>}
+                  {g.is_league && <span className="sch-badge-league">League</span>}
                 </div>
                 {g.location && <div className="sch-tl-loc">{g.location}</div>}
               </div>
@@ -305,33 +305,32 @@ export default function ScheduleTab({ team, schedule, completedGames, players, p
                 <div className="sch-pregame">
                   <div className="sch-pregame-divider" />
                   <div className="sch-pregame-row">
-                    <span className="sch-pregame-lbl">Their Record</span>
-                    <span className="sch-pregame-val">{pregame.oppW}–{pregame.oppL} League</span>
+                    <span className="sch-pregame-lbl">League Record</span>
+                    <span className="sch-pregame-val">{pregame.oppW}–{pregame.oppL}</span>
                   </div>
                   {pregame.last5.length > 0 && (
                     <div className="sch-pregame-row">
                       <span className="sch-pregame-lbl">Last {pregame.last5.length}</span>
-                      <div className="sch-streak-wrap">
-                        {pregame.last5.map((r, i) => (
-                          <span key={i} className={`sch-streak-pill sch-streak-${r === 'W' ? 'w' : 'l'}`}>{r}</span>
-                        ))}
-                        {pregame.streakType && (
-                          <span className={`sch-streak-label sch-streak-label-${pregame.streakType === 'W' ? 'w' : 'l'}`}>
-                            {pregame.streakLen}{pregame.streakType}
-                          </span>
-                        )}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                        <div className="sch-streak-wrap">
+                          {[...pregame.last5].reverse().map((r, i) => (
+                            <span key={i} className={`sch-streak-pill sch-streak-${r === 'W' ? 'w' : 'l'}`}>{r}</span>
+                          ))}
+                        </div>
+                        <div style={{ fontSize: 9, color: 'var(--text-muted)', letterSpacing: '0.03em' }}>
+                          ← most recent
+                        </div>
                       </div>
                     </div>
                   )}
-                  <div className="sch-pregame-row">
-                    <span className="sch-pregame-lbl">Series</span>
-                    <span className="sch-pregame-val">
-                      {pregame.firstMeeting
-                        ? 'First Meeting'
-                        : `${ourLeagueTeam?.name || 'Us'} ${pregame.ourWins}–${pregame.ourLosses} vs ${pregame.oppTeam.name}`
-                      }
-                    </span>
-                  </div>
+                  {pregame.streakType && (
+                    <div className="sch-pregame-row">
+                      <span className="sch-pregame-lbl">Streak</span>
+                      <span style={{ fontWeight: 700, fontSize: 13, color: pregame.streakType === 'W' ? '#3fb950' : '#f85149' }}>
+                        {pregame.streakLen}{pregame.streakType}
+                      </span>
+                    </div>
+                  )}
                   {pregame.lastMeeting && (
                     <div className="sch-pregame-row">
                       <span className="sch-pregame-lbl">Last Meeting</span>
@@ -373,7 +372,7 @@ export default function ScheduleTab({ team, schedule, completedGames, players, p
               <div className="sch-tl-mid">
                 <div className="sch-tl-opp">
                   {g.opponent}
-                  {g.is_league && <span className="sch-badge-league">L</span>}
+                  {g.is_league && <span className="sch-badge-league">League</span>}
                   {isT && <span className="sch-badge-today">Today</span>}
                 </div>
                 {g.location && <div className="sch-tl-loc">{g.location}</div>}

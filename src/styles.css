@@ -31,6 +31,7 @@ input[type=number] {
   margin-bottom: 12px;
   flex-wrap: wrap;
 }
+
 .avg-seg {
   display: inline-flex;
   background: rgba(255,255,255,0.04);
@@ -463,7 +464,7 @@ input[type=number] {
 [data-theme="light"] .game-row:hover { background: #f0f2f5; }
 [data-theme="light"] .tab-bar { background: #fff; }
 [data-theme="light"] .tab-btn { color: #8b949e; }
-[data-theme="light"] .tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+[data-theme="light"] .tab-btn.active { color: var(--team-color, var(--accent)); border-bottom-color: var(--team-color, var(--accent)); }
 [data-theme="light"] .empty-state { color: #8b949e; }
 [data-theme="light"] .create-team-btn { border-color: #d0d7de; color: #8b949e; }
 
@@ -668,7 +669,7 @@ input[type=number] {
   border-bottom: 2px solid transparent; transition: all var(--transition);
   text-transform: uppercase; letter-spacing: 0.08em;
 }
-.tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+.tab-btn.active { color: var(--team-color, var(--accent)); border-bottom-color: var(--team-color, var(--accent)); }
 
 /* ===== CARDS & LISTS ===== */
 .card {
@@ -1520,6 +1521,7 @@ input[type=number] {
 .sch-record-bar {
   display: flex; align-items: center; gap: 0;
   background: var(--card); border: 1px solid var(--border);
+  border-top: 2px solid var(--team-color, var(--border));
   border-radius: 12px; padding: 12px 16px; margin-bottom: 12px;
   justify-content: space-evenly;
 }
@@ -1538,8 +1540,8 @@ input[type=number] {
 /* Shared badges */
 .sch-badge-league {
   font-size: 9px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase;
-  background: rgba(31,111,235,0.15); color: #58a6ff;
-  border: 1px solid rgba(88,166,255,0.25); border-radius: 4px; padding: 2px 5px;
+  background: var(--team-color-12, rgba(31,111,235,0.15)); color: var(--team-color, #58a6ff);
+  border: 1px solid var(--team-color-30, rgba(88,166,255,0.25)); border-radius: 4px; padding: 2px 5px;
 }
 .sch-badge-league-sm { font-size: 8px; padding: 1px 4px; }
 .sch-badge-today {
@@ -1567,12 +1569,12 @@ input[type=number] {
   font-size: 11px; font-weight: 600; padding: 3px 9px; cursor: pointer; flex-shrink: 0;
 }
 .sch-up-live-btn {
-  flex-shrink: 0; background: rgba(240,165,0,0.1); color: #f0a500;
-  border: 1px solid rgba(240,165,0,0.25); border-radius: 8px;
+  flex-shrink: 0; background: var(--team-color-06, rgba(240,165,0,0.1)); color: var(--team-color, #f0a500);
+  border: 1px solid var(--team-color-30, rgba(240,165,0,0.25)); border-radius: 8px;
   font-size: 11px; font-weight: 700; padding: 5px 10px; cursor: pointer;
   transition: background 0.15s; white-space: nowrap;
 }
-.sch-up-live-btn:hover { background: rgba(240,165,0,0.2); }
+.sch-up-live-btn:hover { background: var(--team-color-12, rgba(240,165,0,0.2)); }
 
 /* Next game anchor wrapper (holds divider + card inline in timeline) */
 .sch-next-anchor { }
@@ -1580,8 +1582,8 @@ input[type=number] {
 /* Resume button inside timeline */
 .sch-resume-btn {
   width: 100%; display: flex; align-items: center; gap: 12px;
-  background: linear-gradient(135deg, #f0a500, #d48c00);
-  color: #000; border: none; border-radius: 0;
+  background: var(--team-color, #f0a500);
+  color: #fff; border: none; border-radius: 0;
   padding: 14px 14px; cursor: pointer; text-align: left;
   animation: resume-pulse 2s infinite;
   border-bottom: 1px solid rgba(0,0,0,0.1);
@@ -1589,8 +1591,8 @@ input[type=number] {
 
 /* Next Game Hero Card — inline in timeline */
 .sch-next-card {
-  background: rgba(240,165,0,0.04); border: none; border-radius: 0;
-  border-left: 3px solid #f0a500;
+  background: var(--team-color-06, rgba(240,165,0,0.04)); border: none; border-radius: 0;
+  border-left: 3px solid var(--team-color, #f0a500);
   padding: 14px 14px 14px 11px;
   position: relative; overflow: hidden;
   border-bottom: 1px solid var(--border);
@@ -1598,7 +1600,7 @@ input[type=number] {
 .sch-next-card.sch-next-today { border-left-color: #10b981; background: rgba(16,185,129,0.04); }
 .sch-next-eyebrow {
   display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
-  font-size: 10px; font-weight: 800; letter-spacing: 0.1em; color: #f0a500;
+  font-size: 10px; font-weight: 800; letter-spacing: 0.1em; color: var(--team-color, #f0a500);
   margin-bottom: 6px; text-transform: uppercase;
 }
 .sch-next-card.sch-next-today .sch-next-eyebrow { color: #10b981; }
@@ -1615,12 +1617,12 @@ input[type=number] {
 .sch-meta-dot { color: var(--text-muted); }
 .sch-next-countdown {
   font-size: 10px; font-weight: 800; letter-spacing: 0.07em;
-  background: rgba(240,165,0,0.12); color: #f0a500;
-  border: 1px solid rgba(240,165,0,0.25); border-radius: 20px; padding: 2px 8px;
+  background: var(--team-color-12, rgba(240,165,0,0.12)); color: var(--team-color, #f0a500);
+  border: 1px solid var(--team-color-30, rgba(240,165,0,0.25)); border-radius: 20px; padding: 2px 8px;
 }
 .sch-start-btn {
   display: inline-block; margin-top: 12px;
-  background: linear-gradient(135deg, #f0a500, #d48c00); color: #000;
+  background: var(--team-color, #f0a500); color: #fff;
   border: none; border-radius: 9px; padding: 10px 20px;
   font-size: 13px; font-weight: 800; letter-spacing: 0.02em;
   cursor: pointer; transition: opacity 0.15s;
@@ -1720,12 +1722,12 @@ input[type=number] {
 /* Divider between past and upcoming / next game */
 .sch-tl-divider {
   display: flex; align-items: center; gap: 10px;
-  padding: 9px 14px; background: rgba(240,165,0,0.06);
-  border-top: 1px solid var(--border); border-bottom: 1px solid rgba(240,165,0,0.15);
+  padding: 9px 14px; background: var(--team-color-06, rgba(240,165,0,0.06));
+  border-top: 1px solid var(--border); border-bottom: 1px solid var(--team-color-30, rgba(240,165,0,0.15));
   position: sticky; top: 0; z-index: 2;
 }
 .sch-tl-divider::before, .sch-tl-divider::after {
-  content: ''; flex: 1; height: 1px; background: rgba(240,165,0,0.3);
+  content: ''; flex: 1; height: 1px; background: var(--team-color-30, rgba(240,165,0,0.3));
 }
 .sch-tl-divider.sch-tl-divider-today { background: rgba(16,185,129,0.06); border-bottom-color: rgba(16,185,129,0.2); }
 .sch-tl-divider.sch-tl-divider-today::before,
@@ -1733,7 +1735,7 @@ input[type=number] {
 .sch-tl-divider.sch-tl-divider-today .sch-tl-divider-label { color: #10b981; }
 .sch-tl-divider-label {
   font-size: 9px; font-weight: 800; letter-spacing: 0.12em;
-  color: #f0a500; text-transform: uppercase; white-space: nowrap;
+  color: var(--team-color, #f0a500); text-transform: uppercase; white-space: nowrap;
 }
 
 /* Add Game — inside timeline at bottom */

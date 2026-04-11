@@ -34,7 +34,7 @@ export default function TeamDashboard({ team, onBack, onPreGame, onStartLive, on
   const isCoachOrAdmin = isAdmin || currentUser?.role === 'coach';
 
   return (
-    <div style={{ minHeight: '100vh', background: 'var(--bg)' }}>
+    <div style={{ minHeight: '100vh', background: 'var(--bg)', '--team-color': team.color || '#1a3a8f', '--team-color-06': (team.color || '#1a3a8f') + '0F', '--team-color-12': (team.color || '#1a3a8f') + '1F', '--team-color-30': (team.color || '#1a3a8f') + '4D' }}>
       {/* Header */}
       <div style={{
         background: `linear-gradient(135deg, ${team.color || '#0d1f5c'}, ${team.color || '#1a3a8f'})`,

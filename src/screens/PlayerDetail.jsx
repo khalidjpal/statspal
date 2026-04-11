@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useData } from '../contexts/DataContext';
 import { useAuth } from '../contexts/AuthContext';
 import { hpct, n3, hcol, hlbl, playerTotals } from '../utils/stats';
@@ -6,120 +6,224 @@ import { sortedCompleted } from '../utils/sort';
 import PlayerBadge from '../components/PlayerBadge';
 import ManualResultModal from '../components/modals/ManualResultModal';
 
+const BAR_MIN = -0.05, BAR_MAX = 0.40;
+
+function StatCell({ value, label, color, muted, accent }) {
+  return (
+    <div className={`pd-stat${muted ? ' pd-stat-muted' : ''}${accent ? ' pd-stat-accent' : ''}`}>
+      <div className={`pd-stat-value${muted ? ' pd-stat-value-sm' : ''}`} style={color ? { color } : undefined}>
+        {value}
+      </div>
+      <div className="pd-stat-label">{label}</div>
+    </div>
+  );
+}
+
 export default function PlayerDetail({ player, team, onBack, onSelectGame, asModal = false }) {
   const { completedGames, playerGameStats, players, refresh } = useData();
   const { currentUser } = useAuth();
   const isAdmin = currentUser?.role === 'admin';
   const [editGame, setEditGame] = useState(null);
+  const [leagueOnly, setLeagueOnly] = useState(false);
 
   useEffect(() => { refresh(); }, [refresh]);
 
-  const myStats = playerGameStats.filter(s => s.player_id === player.id);
-  const totals = playerTotals(myStats);
-  const sp = totals.sets_played;
-  const h = hpct(totals.kills, totals.errors, totals.attempts);
+  // League game IDs
+  const leagueGameIds = useMemo(
+    () => new Set(completedGames.filter(g => g.is_league).map(g => g.id)),
+    [completedGames]
+  );
 
-  // Games this player appeared in
-  const gameIds = new Set(myStats.map(s => s.game_id));
-  const myGames = sortedCompleted(completedGames.filter(g => gameIds.has(g.id)));
+  const allMyStats = playerGameStats.filter(s => s.player_id === player.id);
+  const myStats = leagueOnly
+    ? allMyStats.filter(s => leagueGameIds.has(s.game_id))
+    : allMyStats;
+  const leagueGameCount = allMyStats.filter(s => leagueGameIds.has(s.game_id)).length;
+
+  const totals = playerTotals(myStats);
+  const sp = totals.sets_played || 0;
+
+  const h        = hpct(totals.kills, totals.errors, totals.attempts);
+  const effColor = hcol(totals.kills, totals.errors, totals.attempts);
+  const effLabel = hlbl(totals.kills, totals.errors, totals.attempts);
+
+  const totalBlocks = totals.blocks + totals.block_assists;
+  const digsPerSet  = sp > 0 ? (totals.digs    / sp).toFixed(1) : '—';
+  const astsPerSet  = sp > 0 ? (totals.assists  / sp).toFixed(1) : '—';
+
+  const barPct = h == null
+    ? null
+    : Math.min(100, Math.max(0, ((h - BAR_MIN) / (BAR_MAX - BAR_MIN)) * 100));
+
+  // Game log — always show all games, but filter to ones with stats
+  const allGameIds = new Set(allMyStats.map(s => s.game_id));
+  const myGames = sortedCompleted(completedGames.filter(g => allGameIds.has(g.id)));
+
+  const subInfo = [
+    player.position,
+    player.height,
+    player.grade ? `Gr. ${player.grade}` : null,
+    team.name,
+  ].filter(Boolean).join(' · ');
 
   const body = (
     <div className="pgd-body">
+
+      {/* ── Header ── */}
       <div className="pgd-head">
-        <PlayerBadge player={player} team={team} size={52} />
+        <PlayerBadge player={player} team={team} size={60} />
         <div className="pgd-head-text">
-          <div className="pgd-name" style={{ fontSize: 18 }}>{player.name}</div>
-          <div className="pgd-sub">
-            {[player.jersey_number ? `#${player.jersey_number}` : null, player.position, player.height, player.grade].filter(Boolean).join(' · ')}
-          </div>
+          <div className="pgd-name">{player.name}</div>
+          {player.jersey_number != null && (
+            <div style={{ fontSize: 11, color: team.color || '#58a6ff', fontWeight: 700, marginBottom: 2 }}>
+              #{player.jersey_number}
+            </div>
+          )}
+          <div className="pgd-sub">{subInfo}</div>
         </div>
       </div>
 
-      <div style={{ marginTop: 12 }}>
-        {/* Season totals */}
-        <div className="card">
-          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 12 }}>Season Totals</div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, textAlign: 'center' }}>
-            {[
-              { label: 'SP',   value: sp },
-              { label: 'K',    value: totals.kills },
-              { label: 'E',    value: totals.errors, color: totals.errors > 0 ? '#ef4444' : undefined },
-              { label: 'TA',   value: totals.attempts },
-              { label: 'A',    value: totals.assists },
-              { label: 'SA',   value: totals.aces },
-              { label: 'SE',   value: totals.serve_errors, color: totals.serve_errors > 0 ? '#ef4444' : undefined },
-              { label: 'Digs', value: totals.digs },
-              { label: 'BS',   value: totals.blocks },
-              { label: 'BA',   value: totals.block_assists },
-            ].map((item, i) => (
-              <div key={i}>
-                <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>{item.label}</div>
-                <div style={{ fontSize: 20, fontWeight: 700, color: item.color || 'var(--text)' }}>{item.value}</div>
-              </div>
-            ))}
-          </div>
+      {/* ── Toggle ── */}
+      <div className="pd-toggle-bar">
+        <div className="avg-seg pd-scope-seg">
+          <button className={`avg-seg-btn${!leagueOnly ? ' on' : ''}`} onClick={() => setLeagueOnly(false)}>
+            All Games
+          </button>
+          <button className={`avg-seg-btn${leagueOnly ? ' on' : ''}`} onClick={() => setLeagueOnly(true)}>
+            League Only
+          </button>
         </div>
+        {leagueOnly && (
+          <span className="pd-league-note">
+            {leagueGameCount} league game{leagueGameCount !== 1 ? 's' : ''}
+          </span>
+        )}
+      </div>
 
-        {/* Hitting efficiency */}
-        <div className="card" style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 8 }}>K% — Hitting Efficiency</div>
-          <div style={{ fontSize: 36, fontWeight: 700, color: hcol(totals.kills, totals.errors, totals.attempts) }}>
-            {n3(h)}
-          </div>
-          <div style={{ fontSize: 13, color: hcol(totals.kills, totals.errors, totals.attempts), fontWeight: 600 }}>
-            {hlbl(totals.kills, totals.errors, totals.attempts)}
-          </div>
-          <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 8 }}>
-            {totals.kills}K - {totals.errors}E / {totals.attempts} TA
-          </div>
+      {/* ── Hitting Efficiency Hero ── */}
+      <div className="pgd-card pgd-eff pd-eff-hero pd-cat-card" style={{ borderLeftColor: effColor }}>
+        <div className="pgd-section-label">Hitting Efficiency</div>
+        <div className="pd-eff-main">
+          <span className="pgd-eff-num" style={{ color: effColor }}>{n3(h)}</span>
+          <span className="pgd-eff-tier" style={{ color: effColor, borderColor: effColor, background: `${effColor}22` }}>
+            {effLabel}
+          </span>
         </div>
+        <div className="pgd-eff-formula">
+          ({totals.kills}K − {totals.errors}E) ÷ {totals.attempts} TA
+        </div>
+        {barPct !== null && (
+          <div className="pd-eff-bar-wrap">
+            <div className="pd-eff-bar">
+              <div className="pd-eff-bar-dot" style={{ left: `${barPct}%`, background: effColor }} />
+            </div>
+            <div className="pd-eff-bar-labels">
+              <span>Poor</span><span>Avg</span><span>Excellent</span>
+            </div>
+          </div>
+        )}
+      </div>
 
-        {/* Game log */}
-        <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 8, color: 'var(--text)' }}>Game Log</h3>
+      {/* ── Attack ── */}
+      <div className="pgd-card pd-cat-card" style={{ borderLeftColor: '#58a6ff' }}>
+        <div className="pgd-section-label" style={{ color: '#58a6ff' }}>Attack</div>
+        <div className="pd-cat-grid pd-cat-4">
+          <StatCell value={sp}             label="SP" />
+          <StatCell value={totals.kills}   label="K" />
+          <StatCell value={totals.errors}  label="E"  color={totals.errors > 0 ? '#f85149' : undefined} />
+          <StatCell value={totals.attempts} label="TA" />
+        </div>
+      </div>
+
+      {/* ── Serve ── */}
+      <div className="pgd-card pd-cat-card" style={{ borderLeftColor: '#f5c95a' }}>
+        <div className="pgd-section-label" style={{ color: '#f5c95a' }}>Serve</div>
+        <div className="pd-cat-grid pd-cat-2">
+          <StatCell value={totals.aces}         label="SA" color="#3fb950" />
+          <StatCell value={totals.serve_errors} label="SE" color={totals.serve_errors > 0 ? '#f85149' : undefined} />
+        </div>
+      </div>
+
+      {/* ── Reception & Defense ── */}
+      <div className="pgd-card pd-cat-card" style={{ borderLeftColor: '#2dd4bf' }}>
+        <div className="pgd-section-label" style={{ color: '#2dd4bf' }}>Reception & Defense</div>
+        <div className="pd-cat-grid pd-cat-2">
+          <StatCell value={totals.digs} label="Digs" />
+          <StatCell value={digsPerSet}  label="Per Set" muted />
+        </div>
+      </div>
+
+      {/* ── Blocking ── */}
+      <div className="pgd-card pd-cat-card" style={{ borderLeftColor: '#a78bfa' }}>
+        <div className="pgd-section-label" style={{ color: '#a78bfa' }}>Blocking</div>
+        <div className="pd-cat-grid pd-cat-3">
+          <StatCell value={totals.blocks}        label="BS" />
+          <StatCell value={totals.block_assists}  label="BA" />
+          <StatCell value={totalBlocks}           label="Total" color="#a78bfa" accent />
+        </div>
+      </div>
+
+      {/* ── Ball Handling ── */}
+      <div className="pgd-card pd-cat-card" style={{ borderLeftColor: '#fb923c' }}>
+        <div className="pgd-section-label" style={{ color: '#fb923c' }}>Ball Handling</div>
+        <div className="pd-cat-grid pd-cat-2">
+          <StatCell value={totals.assists} label="A — Assists" />
+          <StatCell value={astsPerSet}     label="Per Set" muted />
+        </div>
+      </div>
+
+      {/* ── Game Log ── */}
+      <div style={{ marginTop: 4 }}>
+        <div className="pgd-section-label">Game Log</div>
         {myGames.length === 0 && <div className="empty-state">No games played yet</div>}
         {myGames.map(g => {
-          const gs = myStats.find(s => s.game_id === g.id);
+          const gs = allMyStats.find(s => s.game_id === g.id);
+          const gameH      = gs ? hpct(gs.kills, gs.errors, gs.attempts) : null;
+          const gameHColor = gs ? hcol(gs.kills, gs.errors, gs.attempts) : '#888';
+          const gameDate   = new Date(g.game_date + 'T00:00:00')
+            .toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
           return (
-            <div key={g.id} className="game-row" onClick={() => onSelectGame(player, g)}>
-              <div>
-                <div style={{ fontWeight: 600 }}>vs {g.opponent}</div>
-                <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-                  {new Date(g.game_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+            <div key={g.id} className="pd-game-row" onClick={() => onSelectGame(player, g)}>
+              <div className="pd-game-left">
+                <div className="pd-game-opp">
+                  vs {g.opponent}
+                  {g.is_league && <span className="pd-league-badge">League</span>}
                 </div>
+                <div className="pd-game-date">{gameDate}</div>
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div className="pd-game-right">
                 {gs && (
-                  <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-                    {gs.kills}K {gs.digs}D
+                  <span className="pd-game-stats">
+                    <span>{gs.kills}K</span>
+                    <span className="pd-game-sep">·</span>
+                    <span>{gs.digs}D</span>
+                    <span className="pd-game-sep">·</span>
+                    <span style={{ color: gameHColor, fontWeight: 700 }}>{n3(gameH)}</span>
                   </span>
                 )}
-                <span className={`game-result-badge ${g.result === 'W' ? 'win' : 'loss'}`}>
-                  {g.result}
-                </span>
+                <span className={`game-result-badge ${g.result === 'W' ? 'win' : 'loss'}`}>{g.result}</span>
                 {isAdmin && (
                   <button
-                    onClick={(e) => { e.stopPropagation(); setEditGame(g); }}
-                    style={{ background: 'rgba(128,128,128,0.1)', color: 'var(--text-secondary)', padding: '4px 10px', borderRadius: 6, fontSize: 11, fontWeight: 600, border: 'none', cursor: 'pointer' }}
-                  >
-                    Edit
-                  </button>
+                    className="pd-edit-btn"
+                    onClick={e => { e.stopPropagation(); setEditGame(g); }}
+                  >Edit</button>
                 )}
               </div>
             </div>
           );
         })}
-
-        {editGame && (
-          <ManualResultModal
-            game={editGame}
-            team={team}
-            players={players}
-            existingStats={playerGameStats.filter(s => s.game_id === editGame.id)}
-            onClose={() => setEditGame(null)}
-            onSaved={() => { setEditGame(null); refresh(); }}
-          />
-        )}
       </div>
+
+      {editGame && (
+        <ManualResultModal
+          game={editGame}
+          team={team}
+          players={players}
+          existingStats={playerGameStats.filter(s => s.game_id === editGame.id)}
+          onClose={() => setEditGame(null)}
+          onSaved={() => { setEditGame(null); refresh(); }}
+        />
+      )}
     </div>
   );
 

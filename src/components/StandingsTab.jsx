@@ -55,11 +55,26 @@ export default function StandingsTab({ team, leagueTeams, leagueResults, isAdmin
     return m;
   }, [myLeagueTeams]);
 
-  const resultMap = useMemo(() => {
+  // seriesMap[rowTeamId][colTeamId] = { wins, losses, games[] }
+  // wins/losses from the row team's perspective across ALL matchups (home or away)
+  const seriesMap = useMemo(() => {
     const m = {};
+    const init = (a, b) => {
+      if (!m[a]) m[a] = {};
+      if (!m[a][b]) m[a][b] = { wins: 0, losses: 0, games: [] };
+    };
     for (const r of myLeagueResults) {
-      if (!m[r.home_league_team_id]) m[r.home_league_team_id] = {};
-      m[r.home_league_team_id][r.away_league_team_id] = r;
+      const hid = r.home_league_team_id;
+      const aid = r.away_league_team_id;
+      const homeWon = (r.home_sets || 0) > (r.away_sets || 0);
+      // Row = home team perspective
+      init(hid, aid);
+      if (homeWon) m[hid][aid].wins++; else m[hid][aid].losses++;
+      m[hid][aid].games.push({ rowSets: r.home_sets ?? 0, colSets: r.away_sets ?? 0, game_date: r.game_date, r });
+      // Row = away team perspective (mirror)
+      init(aid, hid);
+      if (!homeWon) m[aid][hid].wins++; else m[aid][hid].losses++;
+      m[aid][hid].games.push({ rowSets: r.away_sets ?? 0, colSets: r.home_sets ?? 0, game_date: r.game_date, r });
     }
     return m;
   }, [myLeagueResults]);
@@ -290,11 +305,11 @@ export default function StandingsTab({ team, leagueTeams, leagueResults, isAdmin
                 >
                   {/* Corner */}
                   <div className="lb-matrix-corner">
-                    <span>HOME ↓</span>
-                    <span>AWAY →</span>
+                    <span>TEAM ↓</span>
+                    <span>OPP →</span>
                   </div>
 
-                  {/* Column headers (away teams) */}
+                  {/* Column headers */}
                   {standings.map(t => (
                     <div key={`ch-${t.id}`} className={`lb-matrix-col-hdr${t.is_us ? ' lb-matrix-us-col' : ''}`}>
                       <span className="lb-matrix-hdr-dot" style={{ background: t.dot_color || '#58a6ff' }} />
@@ -303,56 +318,63 @@ export default function StandingsTab({ team, leagueTeams, leagueResults, isAdmin
                   ))}
 
                   {/* Rows: row header + cells */}
-                  {standings.flatMap(homeTeam => [
-                    <div key={`rh-${homeTeam.id}`} className={`lb-matrix-row-hdr${homeTeam.is_us ? ' lb-matrix-us-row' : ''}`}>
-                      <span className="lb-matrix-hdr-dot" style={{ background: homeTeam.dot_color || '#58a6ff' }} />
-                      <span className="lb-matrix-hdr-name">{homeTeam.name}</span>
+                  {standings.flatMap(rowTeam => [
+                    <div key={`rh-${rowTeam.id}`} className={`lb-matrix-row-hdr${rowTeam.is_us ? ' lb-matrix-us-row' : ''}`}>
+                      <span className="lb-matrix-hdr-dot" style={{ background: rowTeam.dot_color || '#58a6ff' }} />
+                      <span className="lb-matrix-hdr-name">{rowTeam.name}</span>
                     </div>,
-                    ...standings.map(awayTeam => {
-                      if (homeTeam.id === awayTeam.id) {
+                    ...standings.map(colTeam => {
+                      if (rowTeam.id === colTeam.id) {
                         return (
-                          <div key={`cell-${homeTeam.id}-${awayTeam.id}`} className="lb-matrix-cell lb-matrix-cell-self">
+                          <div key={`cell-${rowTeam.id}-${colTeam.id}`} className="lb-matrix-cell lb-matrix-cell-self">
                             <span>—</span>
                           </div>
                         );
                       }
-                      const r = resultMap[homeTeam.id]?.[awayTeam.id];
-                      if (!r) {
+                      const series = seriesMap[rowTeam.id]?.[colTeam.id];
+                      if (!series) {
                         return (
                           <div
-                            key={`cell-${homeTeam.id}-${awayTeam.id}`}
-                            className={`lb-matrix-cell lb-matrix-cell-empty${(homeTeam.is_us || awayTeam.is_us) ? ' lb-matrix-us-empty' : ''}`}
+                            key={`cell-${rowTeam.id}-${colTeam.id}`}
+                            className={`lb-matrix-cell lb-matrix-cell-empty${(rowTeam.is_us || colTeam.is_us) ? ' lb-matrix-us-empty' : ''}`}
                           />
                         );
                       }
-                      const homeWon = (r.home_sets || 0) > (r.away_sets || 0);
-                      const usInvolved = homeTeam.is_us || awayTeam.is_us;
-                      const isRecent = r.game_date === mostRecentDate;
+                      const { wins, losses, games } = series;
+                      const seriesAhead = wins > losses;
+                      const seriesTied  = wins === losses;
+                      const pillType  = seriesAhead ? 'win' : seriesTied ? 'tie' : 'loss';
+                      const pillLabel = seriesAhead ? 'W'   : seriesTied ? 'T'   : 'L';
+                      const usInvolved = rowTeam.is_us || colTeam.is_us;
+                      // Tooltip: each game sorted most recent first
+                      const tooltipText = [...games]
+                        .sort((a, b) => (b.game_date || '').localeCompare(a.game_date || ''))
+                        .map(g => `${g.rowSets}–${g.colSets} · ${fmtDate(g.game_date)}`)
+                        .join('\n');
                       const cellCls = [
                         'lb-matrix-cell',
-                        homeWon ? 'lb-matrix-win' : 'lb-matrix-loss',
+                        seriesAhead ? 'lb-matrix-win' : seriesTied ? 'lb-matrix-tie' : 'lb-matrix-loss',
                         usInvolved ? 'lb-matrix-us' : '',
-                        usInvolved && homeWon ? 'lb-matrix-us-win' : '',
-                        isRecent ? 'lb-matrix-recent' : '',
+                        usInvolved && seriesAhead ? 'lb-matrix-us-win' : '',
                       ].filter(Boolean).join(' ');
                       return (
                         <div
-                          key={`cell-${homeTeam.id}-${awayTeam.id}`}
+                          key={`cell-${rowTeam.id}-${colTeam.id}`}
                           className={cellCls}
-                          title={fmtDate(r.game_date)}
+                          title={tooltipText}
                         >
-                          <span className="lb-matrix-score">{r.home_sets}–{r.away_sets}</span>
-                          <span className={`lb-matrix-pill ${homeWon ? 'win' : 'loss'}`}>{homeWon ? 'W' : 'L'}</span>
-                          {isAdmin && (
+                          <span className="lb-matrix-score">{wins}–{losses}</span>
+                          <span className={`lb-matrix-pill ${pillType}`}>{pillLabel}</span>
+                          {isAdmin && games.length === 1 && (
                             <div className="lb-matrix-actions">
                               <button
                                 className="lb-matrix-btn lb-matrix-edit"
-                                onClick={e => { e.stopPropagation(); setEditingResult(r); }}
+                                onClick={e => { e.stopPropagation(); setEditingResult(games[0].r); }}
                                 title="Edit"
                               >✎</button>
                               <button
                                 className="lb-matrix-btn lb-matrix-del"
-                                onClick={e => { e.stopPropagation(); handleDeleteResult(r); }}
+                                onClick={e => { e.stopPropagation(); handleDeleteResult(games[0].r); }}
                                 title="Delete"
                               >✕</button>
                             </div>

@@ -217,6 +217,178 @@ input[type=number] {
   line-height: 1;
 }
 
+/* ===== PLAYER DETAIL REDESIGN ===== */
+
+/* Hero efficiency card layout */
+.pd-eff-hero { }
+.pd-eff-main {
+  display: flex; align-items: center; gap: 14px;
+  margin-bottom: 8px;
+}
+
+/* K% scale bar */
+.pd-eff-bar-wrap { margin-top: 14px; }
+.pd-eff-bar {
+  position: relative; height: 6px; border-radius: 3px;
+  background: linear-gradient(to right,
+    #C0392B 0%, #E05A2B 22%, #E67E22 40%,
+    #27AE60 65%, #0F6E56 100%);
+  overflow: visible;
+}
+.pd-eff-bar-dot {
+  position: absolute; top: 50%; transform: translate(-50%, -50%);
+  width: 12px; height: 12px; border-radius: 50%;
+  border: 2px solid #0d1117;
+  box-shadow: 0 0 8px rgba(0,0,0,0.6);
+  transition: left 0.3s ease;
+  z-index: 1;
+}
+.pd-eff-bar-labels {
+  display: flex; justify-content: space-between;
+  margin-top: 5px;
+  font-size: 9px; color: #484f58; letter-spacing: 0.04em; font-weight: 600;
+}
+
+/* Category cards — left accent border */
+.pd-cat-card {
+  border-left: 3px solid transparent; /* color via inline style */
+  padding-left: 12px; /* 14px - 2px extra border compensation */
+}
+
+/* Stat grid layouts */
+.pd-cat-grid {
+  display: grid; gap: 8px;
+}
+.pd-cat-2 { grid-template-columns: repeat(2, 1fr); }
+.pd-cat-3 { grid-template-columns: repeat(3, 1fr); }
+.pd-cat-4 { grid-template-columns: repeat(4, 1fr); }
+
+/* Individual stat cell */
+.pd-stat {
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  padding: 10px 6px 8px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.05);
+  border-radius: 8px; text-align: center;
+}
+.pd-stat-muted { opacity: 0.55; }
+.pd-stat-accent { background: rgba(255,255,255,0.05); border-color: rgba(255,255,255,0.08); }
+.pd-stat-value {
+  font-family: var(--mono); font-size: 22px; font-weight: 800;
+  color: #f0f6fc; line-height: 1;
+}
+.pd-stat-value-sm { font-size: 17px; }
+.pd-stat-label {
+  font-size: 10px; font-weight: 700; letter-spacing: 0.06em;
+  color: #6e7681; text-transform: uppercase;
+}
+
+/* Game log rows */
+.pd-game-row {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 11px 13px;
+  background: rgba(255,255,255,0.02);
+  border: 1px solid rgba(255,255,255,0.05);
+  border-radius: 10px; cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+  margin-bottom: 6px;
+}
+.pd-game-row:last-child { margin-bottom: 0; }
+.pd-game-row:hover { background: rgba(255,255,255,0.045); border-color: rgba(88,166,255,0.14); }
+.pd-game-left { display: flex; flex-direction: column; gap: 3px; }
+.pd-game-opp { font-size: 13px; font-weight: 700; color: #f0f6fc; }
+.pd-game-date { font-size: 11px; color: #6e7681; }
+.pd-game-right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.pd-game-stats {
+  display: flex; align-items: center; gap: 5px;
+  font-size: 12px; font-family: var(--mono); color: #8b949e;
+}
+.pd-game-sep { color: #484f58; font-size: 10px; }
+.pd-edit-btn {
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.08);
+  color: #8b949e; font-size: 10px; font-weight: 700; letter-spacing: 0.04em;
+  padding: 3px 8px; border-radius: 5px; cursor: pointer;
+  transition: all 0.15s ease; font-family: inherit;
+}
+.pd-edit-btn:hover { background: rgba(255,255,255,0.1); color: #f0f6fc; }
+
+/* All Games / League toggle bar */
+.pd-toggle-bar {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+}
+.pd-scope-seg {
+  flex-shrink: 0;
+}
+.pd-league-note {
+  font-size: 11px; color: #6e7681; letter-spacing: 0.03em;
+}
+
+/* League badge in game log row */
+.pd-league-badge {
+  display: inline-block;
+  font-size: 9px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase;
+  color: #f5c95a; background: rgba(245,201,90,0.1); border: 1px solid rgba(245,201,90,0.25);
+  padding: 1px 5px; border-radius: 3px; margin-left: 6px;
+  vertical-align: middle;
+}
+
+/* Comparison card — toggle + legend */
+.pd-cmp-top {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 8px; gap: 8px; flex-wrap: wrap;
+}
+.pd-cmp-league-note {
+  font-size: 11px; color: #6e7681; margin-bottom: 6px;
+}
+.pd-cmp-legend {
+  font-size: 10px; color: #6e7681; letter-spacing: 0.03em;
+  margin-bottom: 10px;
+}
+
+/* Game result line (result badge + score) */
+.pd-game-result-line {
+  display: flex; align-items: center; gap: 8px;
+  margin-top: 5px;
+}
+.pd-game-score {
+  font-family: var(--mono); font-size: 14px; font-weight: 800;
+  letter-spacing: 0.04em;
+}
+
+/* Dimmed category card (e.g. all-zero blocking) */
+.pd-cat-card-dim { opacity: 0.5; }
+
+/* This Game vs Season Average comparison card */
+.pd-cmp-card { padding: 14px; }
+.pd-cmp-header {
+  display: grid; grid-template-columns: 1fr 80px 80px;
+  padding: 0 4px 8px;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+.pd-cmp-col-label {
+  font-size: 9px; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase;
+  color: #6e7681; text-align: right;
+}
+.pd-cmp-row {
+  display: grid; grid-template-columns: 1fr 80px 80px;
+  align-items: center;
+  padding: 9px 4px;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+.pd-cmp-row:last-child { border-bottom: none; }
+.pd-cmp-label {
+  font-size: 12px; font-weight: 600; color: #8b949e; letter-spacing: 0.02em;
+}
+.pd-cmp-game {
+  font-family: var(--mono); font-size: 14px; font-weight: 800;
+  text-align: right; letter-spacing: 0.02em;
+}
+.pd-cmp-season {
+  font-family: var(--mono); font-size: 13px; font-weight: 600;
+  color: #6e7681; text-align: right; letter-spacing: 0.02em;
+}
+
 /* Stat-entry cell focus glow */
 .stat-cell-input {
   outline: none;
@@ -838,6 +1010,8 @@ input[type=number] {
 .lb-matrix-win:hover { background: rgba(63,185,80,0.16); }
 .lb-matrix-loss { background: rgba(248,81,73,0.07); }
 .lb-matrix-loss:hover { background: rgba(248,81,73,0.13); }
+.lb-matrix-tie { background: rgba(139,148,158,0.07); }
+.lb-matrix-tie:hover { background: rgba(139,148,158,0.12); }
 
 .lb-matrix-us.lb-matrix-win { background: rgba(245,201,90,0.1); }
 .lb-matrix-us.lb-matrix-win:hover { background: rgba(245,201,90,0.17); }
@@ -867,6 +1041,9 @@ input[type=number] {
 }
 .lb-matrix-pill.loss {
   color: #f85149; background: rgba(248,81,73,0.16); border: 1px solid rgba(248,81,73,0.26);
+}
+.lb-matrix-pill.tie {
+  color: #8b949e; background: rgba(139,148,158,0.14); border: 1px solid rgba(139,148,158,0.24);
 }
 
 /* Admin hover actions */

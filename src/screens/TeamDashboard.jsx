@@ -11,7 +11,7 @@ import PlayerDetail from './PlayerDetail';
 import GameSummary from './GameSummary';
 import PlayerGameDetail from './PlayerGameDetail';
 
-const TABS = ['Schedule', 'Standings', 'Averages', 'Roster'];
+const TABS = ['Schedule', 'Standings', 'Statistics', 'Roster'];
 
 export default function TeamDashboard({ team, onBack, onPreGame, onStartLive, onResumeGame, onTeamAdmin }) {
   const { currentUser } = useAuth();
@@ -114,7 +114,7 @@ export default function TeamDashboard({ team, onBack, onPreGame, onStartLive, on
             refresh={refresh}
           />
         )}
-        {tab === 'Averages' && (
+        {tab === 'Statistics' && (
           <AveragesTab
             players={players}
             playerGameStats={playerGameStats}

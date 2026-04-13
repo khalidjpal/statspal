@@ -117,6 +117,16 @@ export default function LiveGame({ team, gameInfo, onEndMatch, onAbandon, resume
   const [showMatchOver, setShowMatchOver] = useState(false);
   const [pendingSet, setPendingSet] = useState(null);
   const [showAbandonConfirm, setShowAbandonConfirm] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(() => !!document.fullscreenElement);
+  useEffect(() => {
+    const onFs = () => setIsFullscreen(!!document.fullscreenElement);
+    document.addEventListener('fullscreenchange', onFs);
+    return () => document.removeEventListener('fullscreenchange', onFs);
+  }, []);
+  const toggleFullscreen = () => {
+    if (document.fullscreenElement) document.exitFullscreen?.();
+    else document.documentElement.requestFullscreen?.();
+  };
   const isDeuce = homeScore>=(currentSet===bestOf?14:24)&&awayScore>=(currentSet===bestOf?14:24)&&homeScore>0;
 
   const saveTimer=useRef(null);
@@ -240,6 +250,7 @@ export default function LiveGame({ team, gameInfo, onEndMatch, onAbandon, resume
               <button className={`lv-sb-tabtn ${view==='track'?'on':''}`} onClick={()=>setView('track')}>Live</button>
               <button className={`lv-sb-tabtn ${view==='stats'?'on':''}`} onClick={()=>setView('stats')}>Stats</button>
             </div>
+            <button className="lv-sb-pill lv-sb-pill-fs" onClick={toggleFullscreen} title={isFullscreen?'Exit fullscreen':'Enter fullscreen'} aria-label="Toggle fullscreen">{isFullscreen?'🗗':'🗖'}</button>
             <button className="lv-sb-pill lv-sb-pill-end" onClick={manualEndSet} disabled={homeScore===0&&awayScore===0}>End Set</button>
           </div>
           <div className="lv-sb-scores">

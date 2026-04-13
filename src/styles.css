@@ -1448,6 +1448,8 @@ input[type=number] {
 .lv-sb-pill:disabled{opacity:0.15;}.lv-sb-pill:active:not(:disabled){transform:scale(0.93);}
 .lv-sb-pill-end{background:rgba(248,81,73,0.08);color:#f85149;border:1px solid rgba(248,81,73,0.1);}
 .lv-sb-pill-abandon{background:rgba(255,255,255,0.04);color:rgba(230,237,243,0.4);font-size:clamp(10px,1.3vw,12px);padding:clamp(2px,0.3dvh,4px) 9px;}
+.lv-sb-pill-fs{background:rgba(88,166,255,0.06);color:rgba(230,237,243,0.45);font-size:clamp(11px,1.4vw,14px);padding:clamp(2px,0.3dvh,4px) 8px;line-height:1;}
+.lv-sb-pill-fs:hover{background:rgba(88,166,255,0.12);color:#e6edf3;}
 .lv-sb-pill-abandon:hover{background:rgba(248,81,73,0.12);color:#f85149;}
 .lv-sb-set{font-size:clamp(9px,1.2vw,11px);font-weight:700;color:#f0a500;letter-spacing:0.14em;font-family:var(--mono);}
 .lv-sb-tabs{display:flex;gap:2px;}
@@ -1571,6 +1573,24 @@ input[type=number] {
 /* ─── Responsive ─── */
 @media(min-width:768px){.lv-left{flex:0 0 20%;}.lv-ab{border-radius:10px;}}
 @media(max-width:374px){.lv-left{flex:0 0 24%;}.lv-plr-name{font-size:10px;}}
+/* Compact mode for short viewports (small laptops) */
+@media(max-height:700px){
+  .lv-top{flex:0 0 76px!important;max-height:76px!important;height:76px!important;}
+  .lv-sb{padding:2px 8px!important;gap:1px!important;}
+  .lv-sb-score{font-size:22px!important;}
+  .lv-sb-b{width:20px!important;height:16px!important;font-size:10px!important;}
+  .lv-sb-label{font-size:8px!important;}
+  .lv-sb-chip{font-size:7px!important;padding:0 3px!important;}
+  .lv-sb-foot{padding:0!important;}
+  .lv-lastbar{padding:1px 6px!important;font-size:8px!important;}
+  .lv-sr{flex:0 0 30px!important;height:30px!important;padding:0 8px!important;font-size:11px!important;}
+  .lv-btns{padding:2px!important;gap:2px!important;}
+  .lv-btns-cat-label{display:none!important;}
+  .lv-btns-cat{gap:0!important;}
+  .lv-btns-row{gap:3px!important;}
+  .lv-ab-a{font-size:14px!important;}
+  .lv-ab-l{font-size:7px!important;}
+}
 /* ===== UTILITY ===== */
 .text-center{text-align:center;}.text-muted{color:var(--text-secondary);}
 .mt-8{margin-top:8px;}.mt-16{margin-top:16px;}.mb-8{margin-bottom:8px;}.mb-16{margin-bottom:16px;}
@@ -2351,8 +2371,35 @@ input[type=number] {
   .game-row { padding: 14px 20px; font-size: 15px; }
   .empty-state { font-size: 14px; }
 
-  /* ── Live game sidebar ── */
-  .lv-left { flex: 0 0 270px; }
+  /* ── Live game: fixed laptop layout so everything fits 1366×768 ── */
+  .lv { position: fixed; top: 0; left: 0; width: 100vw; height: 100dvh; }
+  .lv-top { flex: 0 0 90px; max-height: 90px; height: 90px; min-height: 0; overflow: hidden; }
+  .lv-sb { flex: 1; padding: 4px 12px 2px; justify-content: center; gap: 2px; min-height: 0; overflow: hidden; }
+  .lv-sb-row1 { flex-shrink: 0; }
+  .lv-sb-scores { padding: 0; }
+  .lv-sb-label { font-size: 9px; line-height: 1; }
+  .lv-sb-score { font-size: 26px; line-height: 1; }
+  .lv-sb-btns { gap: 4px; margin-top: 1px; }
+  .lv-sb-b { width: 22px; height: 18px; font-size: 11px; }
+  .lv-sb-center { padding-top: 2px; }
+  .lv-sb-setw { font-size: 12px; }
+  .lv-sb-foot { padding: 0; gap: 2px; }
+  .lv-sb-chip { font-size: 8px; padding: 0 4px; }
+  .lv-sb-deuce { font-size: 8px; padding: 0 6px; }
+  .lv-lastbar { flex-shrink: 0; padding: 1px 8px; font-size: 9px; line-height: 1.2; }
+
+  .lv-split { flex: 1; min-height: 0; overflow: hidden; }
+  .lv-left { flex: 0 0 180px; min-height: 0; overflow-y: auto; overflow-x: hidden; }
+  .lv-right { flex: 1; min-height: 0; overflow: hidden; }
+  .lv-sr { flex: 0 0 36px; height: 36px; padding: 0 12px; font-size: 12px; overflow: hidden; white-space: nowrap; }
+  .lv-sr-name { font-size: 13px; }
+  .lv-btns { flex: 1; min-height: 0; padding: 6px; gap: 4px; overflow: hidden; }
+  .lv-btns-cat { flex: 1; min-height: 0; }
+  .lv-btns-cat-label { flex-shrink: 0; font-size: 8px; }
+  .lv-btns-row { flex: 1; min-height: 0; gap: 6px; }
+  .lv-ab { min-height: 0; min-width: 0; }
+  .lv-ab-a { font-size: 18px; }
+  .lv-ab-l { font-size: 8px; }
 
   /* ── Standings: disable sticky + let table expand naturally ── */
   .lb-table-wrap { overflow-x: visible; }

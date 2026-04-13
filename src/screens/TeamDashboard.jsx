@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useData } from '../contexts/DataContext';
-import NextGameBar from '../components/NextGameBar';
+import { supabase } from '../supabase';
 import ScheduleTab from '../components/ScheduleTab';
 import StandingsTab from '../components/StandingsTab';
 import AveragesTab from '../components/AveragesTab';
@@ -10,19 +10,24 @@ import Modal from '../components/Modal';
 import PlayerDetail from './PlayerDetail';
 import GameSummary from './GameSummary';
 import PlayerGameDetail from './PlayerGameDetail';
+import InboxModal from '../components/modals/InboxModal';
 
-const TABS = ['Schedule', 'Standings', 'Statistics', 'Roster'];
+const TABS = ['Schedule', 'Standings', 'Averages', 'Roster'];
 
 export default function TeamDashboard({ team, onBack, onPreGame, onStartLive, onResumeGame, onTeamAdmin }) {
   const { currentUser } = useAuth();
   const data = useData();
-  const { players, schedule, completedGames, playerGameStats, leagueTeams, leagueResults, refresh } = data;
+  const { players, schedule, completedGames, playerGameStats, leagueTeams, leagueResults, accounts, coachAssignments, refresh } = data;
   const [tab, setTab] = useState('Schedule');
 
-  // Popup modal state — keeps drill-downs in-place instead of routing
+  // Drill-down popup state
   const [popupPlayer, setPopupPlayer] = useState(null);
   const [popupGame, setPopupGame] = useState(null);
-  const [popupPlayerGame, setPopupPlayerGame] = useState(null); // { player, game }
+  const [popupPlayerGame, setPopupPlayerGame] = useState(null);
+
+  // Inbox
+  const [showInbox, setShowInbox] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
 
   function openPlayer(player) { setPopupPlayer(player); }
   function openGame(game) { setPopupGame(game); }
@@ -30,112 +35,156 @@ export default function TeamDashboard({ team, onBack, onPreGame, onStartLive, on
 
   useEffect(() => { refresh(); }, [refresh]);
 
+  // Fetch unread count for coaches/admins
+  useEffect(() => {
+    if (!currentUser?.id) return;
+    supabase
+      .from('message_recipients')
+      .select('id', { count: 'exact' })
+      .eq('account_id', currentUser.id)
+      .eq('read', false)
+      .then(({ count }) => setUnreadCount(count || 0));
+  }, [currentUser?.id]);
+
   const isAdmin = currentUser?.role === 'admin';
   const isCoachOrAdmin = isAdmin || currentUser?.role === 'coach';
 
+  const teamColor = team.color || '#1a3a8f';
+  const headerBg = `linear-gradient(135deg, ${teamColor}, ${teamColor}CC)`;
+
   return (
-    <div style={{ minHeight: '100vh', background: 'var(--bg)', '--team-color': team.color || '#1a3a8f', '--team-color-06': (team.color || '#1a3a8f') + '0F', '--team-color-12': (team.color || '#1a3a8f') + '1F', '--team-color-30': (team.color || '#1a3a8f') + '4D' }}>
-      {/* Header */}
-      <div style={{
-        background: `linear-gradient(135deg, ${team.color || '#0d1f5c'}, ${team.color || '#1a3a8f'})`,
-        color: '#fff',
-        padding: '16px 20px',
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+    <div
+      className="screen-shell"
+      style={{
+        '--team-color': teamColor,
+        '--team-color-06': teamColor + '0F',
+        '--team-color-12': teamColor + '1F',
+        '--team-color-30': teamColor + '4D',
+      }}
+    >
+      {/* ── Compact top bar (44px) ── */}
+      <div className="app-header" style={{ background: headerBg }}>
+        <button className="app-header-back" onClick={onBack} title="Back">‹</button>
+
+        <span className="app-header-title">{team.name}</span>
+
+        <div className="app-header-actions">
+          {/* Refresh */}
           <button
-            onClick={onBack}
-            style={{ background: 'rgba(255,255,255,0.15)', color: '#fff', padding: '6px 14px', borderRadius: 8, fontSize: 13, fontWeight: 600, border: 'none', cursor: 'pointer' }}
+            className="app-header-btn"
+            onClick={() => refresh()}
+            title="Refresh"
           >
-            Back
+            ↻
           </button>
-          <div style={{ display: 'flex', gap: 8 }}>
+
+          {/* Inbox (coaches + admins) */}
+          {isCoachOrAdmin && (
             <button
-              onClick={() => { refresh(); }}
-              style={{ background: 'rgba(255,255,255,0.15)', color: '#fff', padding: '6px 10px', borderRadius: 8, fontSize: 13, fontWeight: 600, border: 'none', cursor: 'pointer' }}
+              className="app-header-btn"
+              onClick={() => setShowInbox(true)}
+              title="Inbox"
             >
-              ↻
+              ✉
+              {unreadCount > 0 && (
+                <span className="header-badge">{unreadCount > 9 ? '9+' : unreadCount}</span>
+              )}
             </button>
-            {isCoachOrAdmin && (
+          )}
+
+          {/* Start Game (coaches + admins) */}
+          {isCoachOrAdmin && (
+            <button
+              className="app-header-btn app-header-btn-gold"
+              onClick={() => onPreGame(team)}
+              title="Start Game"
+            >
+              ▶ Start
+            </button>
+          )}
+
+          {/* Admin */}
+          {isAdmin && (
+            <button
+              className="app-header-btn"
+              onClick={() => onTeamAdmin(team)}
+              title="Admin"
+            >
+              ⚙
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* ── Scrollable content area ── */}
+      <div className="app-content">
+        <div className="page-wrap">
+
+          {/* Top tab bar */}
+          <div className="tab-bar">
+            {TABS.map(t => (
               <button
-                onClick={() => onPreGame(team)}
-                style={{ background: '#c9a84c', color: '#000', padding: '6px 14px', borderRadius: 8, fontSize: 13, fontWeight: 700, border: 'none', cursor: 'pointer' }}
+                key={t}
+                className={`tab-btn${tab === t ? ' active' : ''}`}
+                onClick={() => setTab(t)}
               >
-                Start Game
+                {t}
               </button>
-            )}
-            {isAdmin && (
-              <button
-                onClick={() => onTeamAdmin(team)}
-                style={{ background: 'rgba(255,255,255,0.15)', color: '#fff', padding: '6px 14px', borderRadius: 8, fontSize: 13, fontWeight: 600, border: 'none', cursor: 'pointer' }}
-              >
-                Admin
-              </button>
-            )}
+            ))}
           </div>
-        </div>
-        <h1 style={{ fontSize: 22, fontWeight: 700 }}>{team.name}</h1>
-        <div style={{ fontSize: 13, opacity: 0.7 }}>
-          {[team.gender, team.level, team.season].filter(Boolean).join(' · ')}
+
+          {tab === 'Schedule' && (
+            <ScheduleTab
+              team={team}
+              schedule={schedule}
+              completedGames={completedGames}
+              players={players}
+              playerGameStats={playerGameStats}
+              leagueTeams={leagueTeams}
+              isAdmin={isCoachOrAdmin}
+              onSelectGame={openGame}
+              onStartLive={isCoachOrAdmin ? onStartLive : undefined}
+              onResumeGame={isCoachOrAdmin ? onResumeGame : undefined}
+              refresh={refresh}
+            />
+          )}
+          {tab === 'Standings' && (
+            <StandingsTab
+              team={team}
+              leagueTeams={leagueTeams}
+              leagueResults={leagueResults}
+              isAdmin={isAdmin}
+              refresh={refresh}
+            />
+          )}
+          {tab === 'Averages' && (
+            <AveragesTab
+              players={players}
+              playerGameStats={playerGameStats}
+              completedGames={completedGames}
+              teamId={team.id}
+              onSelectPlayer={openPlayer}
+              onSelectPlayerGame={openPlayerGame}
+            />
+          )}
+          {tab === 'Roster' && (
+            <RosterTab
+              team={team}
+              players={players}
+              accounts={accounts}
+              coachAssignments={coachAssignments}
+              isAdmin={isAdmin}
+              currentUser={currentUser}
+              refresh={refresh}
+              onSelectPlayer={openPlayer}
+              onOpenInbox={isCoachOrAdmin ? () => setShowInbox(true) : undefined}
+              unreadCount={unreadCount}
+            />
+          )}
         </div>
       </div>
 
-      <div className="page-wrap">
-        {/* Tab bar */}
-        <div className="tab-bar">
-          {TABS.map(t => (
-            <button key={t} className={`tab-btn ${tab === t ? 'active' : ''}`} onClick={() => setTab(t)}>
-              {t}
-            </button>
-          ))}
-        </div>
-
-        {/* Tab content */}
-        {tab === 'Schedule' && (
-          <ScheduleTab
-            team={team}
-            schedule={schedule}
-            completedGames={completedGames}
-            players={players}
-            playerGameStats={playerGameStats}
-            leagueTeams={leagueTeams}
-            isAdmin={isCoachOrAdmin}
-            onSelectGame={openGame}
-            onStartLive={isCoachOrAdmin ? onStartLive : undefined}
-            onResumeGame={isCoachOrAdmin ? onResumeGame : undefined}
-            refresh={refresh}
-          />
-        )}
-        {tab === 'Standings' && (
-          <StandingsTab
-            team={team}
-            leagueTeams={leagueTeams}
-            leagueResults={leagueResults}
-            isAdmin={isAdmin}
-            refresh={refresh}
-          />
-        )}
-        {tab === 'Statistics' && (
-          <AveragesTab
-            players={players}
-            playerGameStats={playerGameStats}
-            completedGames={completedGames}
-            teamId={team.id}
-            onSelectPlayer={openPlayer}
-            onSelectPlayerGame={openPlayerGame}
-          />
-        )}
-        {tab === 'Roster' && (
-          <RosterTab
-            team={team}
-            players={players}
-            isAdmin={isAdmin}
-            refresh={refresh}
-            onSelectPlayer={openPlayer}
-          />
-        )}
-      </div>
-
-      {/* Drill-down popups */}
+      {/* ── Drill-down modals ── */}
       <Modal open={!!popupPlayer} onClose={() => setPopupPlayer(null)} maxWidth={520}>
         {popupPlayer && (
           <PlayerDetail
@@ -146,6 +195,7 @@ export default function TeamDashboard({ team, onBack, onPreGame, onStartLive, on
           />
         )}
       </Modal>
+
       <Modal open={!!popupGame} onClose={() => setPopupGame(null)} maxWidth={760}>
         {popupGame && (
           <GameSummary
@@ -156,6 +206,7 @@ export default function TeamDashboard({ team, onBack, onPreGame, onStartLive, on
           />
         )}
       </Modal>
+
       <Modal open={!!popupPlayerGame} onClose={() => setPopupPlayerGame(null)} maxWidth={520}>
         {popupPlayerGame && (
           <PlayerGameDetail
@@ -166,6 +217,14 @@ export default function TeamDashboard({ team, onBack, onPreGame, onStartLive, on
           />
         )}
       </Modal>
+
+      {showInbox && currentUser && (
+        <InboxModal
+          currentUser={currentUser}
+          onClose={() => setShowInbox(false)}
+          onUnreadChange={setUnreadCount}
+        />
+      )}
     </div>
   );
 }

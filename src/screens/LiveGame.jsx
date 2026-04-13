@@ -18,6 +18,30 @@ const ERR = [
   { key:'recv_error', abbr:'RE', label:'Rcv Err', stat:'digs' },
 ];
 
+const EMPTY_SET_STATS = () => ({ kills:0, aces:0, digs:0, assists:0, blocks:0, errors:0, attempts:0, block_assists:0, serve_errors:0 });
+
+function initStats(rs, roster) {
+  if (rs?.player_stats && Object.keys(rs.player_stats).length > 0) {
+    const first = Object.values(rs.player_stats)[0];
+    // Already new format
+    if (first && typeof first === 'object' && 'overall' in first) return rs.player_stats;
+    // Old flat format — convert
+    const converted = {};
+    Object.entries(rs.player_stats).forEach(([pid, s]) => {
+      converted[pid] = { overall: { ...s }, sets: {} };
+    });
+    return converted;
+  }
+  const o = {};
+  roster.forEach(p => {
+    o[p.id] = {
+      overall: { kills:0, aces:0, digs:0, assists:0, blocks:0, errors:0, attempts:0, sets_played:0, block_assists:0, serve_errors:0 },
+      sets: {},
+    };
+  });
+  return o;
+}
+
 // Compact stat line with dot separators, only non-zero
 function MiniStats({ s }) {
   const hp = hpct(s.kills, s.errors, s.attempts);
@@ -69,9 +93,10 @@ export default function LiveGame({ team, gameInfo, onEndMatch, onAbandon, resume
   const [homeSetsWon, setHomeSetsWon] = useState(rs?rs.home_sets:0);
   const [awaySetsWon, setAwaySetsWon] = useState(rs?rs.away_sets:0);
   const [sets, setSets] = useState(rs?(rs.set_history||[]):[]);
-  const [stats, setStats] = useState(()=>{if(rs?.player_stats&&Object.keys(rs.player_stats).length>0)return rs.player_stats;const o={};roster.forEach(p=>{o[p.id]={kills:0,aces:0,digs:0,assists:0,blocks:0,errors:0,attempts:0,sets_played:0,block_assists:0,serve_errors:0};});return o;});
+  const [stats, setStats] = useState(() => initStats(rs, roster));
   const [selectedPlayer, setSelectedPlayer] = useState(null);
   const [view, setView] = useState('track');
+  const [statsView, setStatsView] = useState('all'); // 'all' | 1 | 2 | 3 ...
   const [history, setHistory] = useState(rs?(rs.history||[]):[]);
   const [lastAction, setLastAction] = useState('');
   const [flashKey, setFlashKey] = useState(0);
@@ -93,15 +118,102 @@ export default function LiveGame({ team, gameInfo, onEndMatch, onAbandon, resume
   function confirmEndSet(){if(!pendingSet)return;finishSet(pendingSet.home,pendingSet.away,pendingSet.nhs,pendingSet.nas);setPendingSet(null);setShowSetOver(false);}
   function keepPlaying(){setPendingSet(null);setShowSetOver(false);}
   function manualEndSet(){if(homeScore===0&&awayScore===0)return;if(homeScore===awayScore)return;const hw=homeScore>awayScore;finishSet(homeScore,awayScore,homeSetsWon+(hw?1:0),awaySetsWon+(hw?0:1));}
-  function finishSet(hs,as,nhs,nas){setSets(p=>[...p,{home:hs,away:as}]);setHomeSetsWon(nhs);setAwaySetsWon(nas);setStats(prev=>{const n={...prev};roster.forEach(p=>{n[p.id]={...n[p.id],sets_played:(n[p.id].sets_played||0)+1};});return n;});if(nhs>=setsToWin||nas>=setsToWin){setShowMatchOver(true);}else{setCurrentSet(c=>c+1);setHomeScore(0);setAwayScore(0);setHistory([]);}}
-  function recordAction(action){if(!selectedPlayer)return;const player=roster.find(p=>p.id===selectedPlayer);pushHistory({type:'stat',playerId:selectedPlayer,prevStats:{...stats[selectedPlayer]}});setStats(prev=>{const ps={...prev[selectedPlayer]};ps[action.stat]=(ps[action.stat]||0)+1;if(action.autoAtt)ps.attempts=(ps.attempts||0)+1;return{...prev,[selectedPlayer]:ps};});setLastAction(`${player?.name?.split(' ')[0]||'?'} → ${action.label}`);setFlashId(action.key);setFlashKey(k=>k+1);}
-  function handleUndo(){if(!history.length)return;const last=history[history.length-1];if(last.type==='point'){setHomeScore(last.homeScore);setAwayScore(last.awayScore);setCurrentSet(last.currentSet);setHomeSetsWon(last.homeSetsWon);setAwaySetsWon(last.awaySetsWon);}else if(last.type==='stat'){setStats(prev=>({...prev,[last.playerId]:last.prevStats}));}setHistory(prev=>prev.slice(0,-1));setLastAction('(undone)');}
-  function handleMatchConfirm(){onEndMatch({homeSetsWon,awaySetsWon,sets,result:homeSetsWon>awaySetsWon?'W':'L',stats:{...stats}});}
+
+  function finishSet(hs, as, nhs, nas) {
+    setSets(p => [...p, { home: hs, away: as }]);
+    setHomeSetsWon(nhs);
+    setAwaySetsWon(nas);
+    setStats(prev => {
+      const n = { ...prev };
+      roster.forEach(p => {
+        n[p.id] = {
+          ...n[p.id],
+          overall: { ...n[p.id].overall, sets_played: (n[p.id].overall.sets_played || 0) + 1 },
+        };
+      });
+      return n;
+    });
+    if (nhs >= setsToWin || nas >= setsToWin) {
+      setShowMatchOver(true);
+    } else {
+      setCurrentSet(c => c + 1);
+      setHomeScore(0);
+      setAwayScore(0);
+      setHistory([]);
+    }
+  }
+
+  function recordAction(action) {
+    if (!selectedPlayer) return;
+    const player = roster.find(p => p.id === selectedPlayer);
+    const ps = stats[selectedPlayer];
+    pushHistory({
+      type: 'stat',
+      playerId: selectedPlayer,
+      setNum: currentSet,
+      prevOverall: { ...ps.overall },
+      prevSetStats: { ...(ps.sets[currentSet] || EMPTY_SET_STATS()) },
+    });
+    setStats(prev => {
+      const cur = prev[selectedPlayer];
+      const newOverall = { ...cur.overall };
+      newOverall[action.stat] = (newOverall[action.stat] || 0) + 1;
+      if (action.autoAtt) newOverall.attempts = (newOverall.attempts || 0) + 1;
+      const newSet = { ...(cur.sets[currentSet] || EMPTY_SET_STATS()) };
+      newSet[action.stat] = (newSet[action.stat] || 0) + 1;
+      if (action.autoAtt) newSet.attempts = (newSet.attempts || 0) + 1;
+      return {
+        ...prev,
+        [selectedPlayer]: { ...cur, overall: newOverall, sets: { ...cur.sets, [currentSet]: newSet } },
+      };
+    });
+    setLastAction(`${player?.name?.split(' ')[0] || '?'} → ${action.label}`);
+    setFlashId(action.key);
+    setFlashKey(k => k + 1);
+  }
+
+  function handleUndo() {
+    if (!history.length) return;
+    const last = history[history.length - 1];
+    if (last.type === 'point') {
+      setHomeScore(last.homeScore);
+      setAwayScore(last.awayScore);
+      setCurrentSet(last.currentSet);
+      setHomeSetsWon(last.homeSetsWon);
+      setAwaySetsWon(last.awaySetsWon);
+    } else if (last.type === 'stat') {
+      setStats(prev => ({
+        ...prev,
+        [last.playerId]: {
+          ...prev[last.playerId],
+          overall: last.prevOverall,
+          sets: { ...prev[last.playerId].sets, [last.setNum]: last.prevSetStats },
+        },
+      }));
+    }
+    setHistory(prev => prev.slice(0, -1));
+    setLastAction('(undone)');
+  }
+
+  function handleMatchConfirm() {
+    // Flatten to overall stats for DB save
+    const flatStats = {};
+    Object.entries(stats).forEach(([pid, ps]) => { flatStats[pid] = { ...ps.overall }; });
+    onEndMatch({ homeSetsWon, awaySetsWon, sets, result: homeSetsWon > awaySetsWon ? 'W' : 'L', stats: flatStats });
+  }
+
   async function handleAbandon(){await abandonSession(team.id);setShowAbandonConfirm(false);if(onAbandon)onAbandon();}
 
-  const selPlayer=roster.find(p=>p.id===selectedPlayer);
-  const selStats=selectedPlayer?stats[selectedPlayer]:null;
-  const sortedRoster=sortByJersey(roster);
+  const selPlayer = roster.find(p => p.id === selectedPlayer);
+  const selStats = selectedPlayer ? stats[selectedPlayer]?.overall : null;
+  const sortedRoster = sortByJersey(roster);
+
+  // Stats table helper: returns the right stat object for a player based on statsView
+  function getViewStats(playerId) {
+    const ps = stats[playerId];
+    if (statsView === 'all') return ps.overall;
+    return ps.sets[statsView] || EMPTY_SET_STATS();
+  }
 
   return (
     <div className="lv">
@@ -143,9 +255,9 @@ export default function LiveGame({ team, gameInfo, onEndMatch, onAbandon, resume
           <div className="lv-left">
             {sortedRoster.map((p) => {
               const sel = p.id === selectedPlayer;
-              const s = stats[p.id];
+              const s = stats[p.id].overall;
               return (
-                <button key={p.id} className={`lv-plr ${sel?'lv-plr-sel':''}`} onClick={()=>setSelectedPlayer(sel?null:p.id)}>
+                <button key={p.id} className={`lv-plr ${sel?'lv-plr-sel':''}`} onMouseDown={e=>e.preventDefault()} onClick={e=>{e.preventDefault();e.stopPropagation();setSelectedPlayer(sel?null:p.id);}}>
                   {p.jersey_number && <span className="lv-plr-num">#{p.jersey_number}</span>}
                   <span className="lv-plr-name">{p.name}</span>
                   <span className="lv-plr-stats"><MiniStats s={s} /></span>
@@ -181,9 +293,42 @@ export default function LiveGame({ team, gameInfo, onEndMatch, onAbandon, resume
           </div>
         </div>
       ) : (
-        <div className="lv-st-wrap"><table className="lv-st"><thead><tr><th className="lv-st-l">#</th><th className="lv-st-l">Name</th><th>K</th><th>E</th><th>TA</th><th>K%</th><th>A</th><th>SA</th><th>SE</th><th>D</th><th>BS</th><th>BA</th></tr></thead><tbody>
-          {sortedRoster.map(p=>{const s=stats[p.id];const hp=hpct(s.kills,s.errors,s.attempts);return(<tr key={p.id}><td className="lv-st-l" style={{color:'#484f58'}}>{p.jersey_number||'—'}</td><td className="lv-st-l lv-st-n">{p.name}</td><td>{s.kills}</td><td style={{color:s.errors>0?'#f85149':'inherit'}}>{s.errors}</td><td>{s.attempts}</td><td style={{color:hcol(s.kills,s.errors,s.attempts),fontWeight:700}}>{s.attempts>0?n3(hp):'—'}</td><td>{s.assists}</td><td>{s.aces}</td><td style={{color:s.serve_errors>0?'#f85149':'inherit'}}>{s.serve_errors}</td><td>{s.digs}</td><td>{s.blocks}</td><td>{s.block_assists}</td></tr>);})}
-        </tbody></table></div>
+        <div className="lv-st-wrap">
+          {/* Set toggle segmented control */}
+          <div className="lv-set-toggle">
+            <button className={`lv-set-btn${statsView==='all'?' on':''}`} onClick={()=>setStatsView('all')}>ALL</button>
+            {Array.from({length:currentSet},(_,i)=>i+1).map(n=>(
+              <button key={n} className={`lv-set-btn${statsView===n?' on':''}`} onClick={()=>setStatsView(n)}>S{n}</button>
+            ))}
+          </div>
+          <table className="lv-st">
+            <thead>
+              <tr><th className="lv-st-l">#</th><th className="lv-st-l">Name</th><th>K</th><th>E</th><th>TA</th><th>K%</th><th>A</th><th>SA</th><th>SE</th><th>D</th><th>BS</th><th>BA</th></tr>
+            </thead>
+            <tbody>
+              {sortedRoster.map(p => {
+                const s = getViewStats(p.id);
+                const hp = hpct(s.kills, s.errors, s.attempts);
+                return (
+                  <tr key={p.id}>
+                    <td className="lv-st-l" style={{color:'#484f58'}}>{p.jersey_number||'—'}</td>
+                    <td className="lv-st-l lv-st-n">{p.name}</td>
+                    <td>{s.kills}</td>
+                    <td style={{color:s.errors>0?'#f85149':'inherit'}}>{s.errors}</td>
+                    <td>{s.attempts}</td>
+                    <td style={{color:hcol(s.kills,s.errors,s.attempts),fontWeight:700}}>{s.attempts>0?n3(hp):'—'}</td>
+                    <td>{s.assists}</td>
+                    <td>{s.aces}</td>
+                    <td style={{color:s.serve_errors>0?'#f85149':'inherit'}}>{s.serve_errors}</td>
+                    <td>{s.digs}</td>
+                    <td>{s.blocks}</td>
+                    <td>{s.block_assists}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       )}
 
       {/* Modals */}

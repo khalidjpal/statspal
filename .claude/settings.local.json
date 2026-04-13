@@ -12,7 +12,11 @@
       "Bash(\"/c/Program Files \\(x86\\)/GitHub CLI/gh.exe\" --version)",
       "Bash(grep -r \"from\\('\\\\\\\\|from\\(\\\\\"\" /c/Users/kpal/statspal/src --include=\"*.js\" --include=\"*.jsx\")",
       "Bash(awk 'NR<367 || NR>571' \"C:/Users/kpal/statspal/src/styles.css\")",
-      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:5173)"
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:5173)",
+      "Bash(grep -E \"\\\\.\\(jsx|js\\)$\")",
+      "Bash(netstat -ano)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:5173/)",
+      "Bash(curl -s -o /dev/null -w \"Dev server: %{http_code}\\\\n\" http://localhost:5173/)"
     ]
   }
 }

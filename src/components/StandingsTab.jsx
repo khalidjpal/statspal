@@ -116,46 +116,51 @@ export default function StandingsTab({ team, leagueTeams, leagueResults, isAdmin
 
       {/* ── Standings table ── */}
       <div className="lb-card">
-        <div className="lb-table" role="table">
-          <div className="lb-header" role="row">
-            <div className="lb-h-rank">RANK</div>
-            <div className="lb-h-team">TEAM</div>
-            <div className="lb-h-stat">W</div>
-            <div className="lb-h-stat">L</div>
-            <div className="lb-h-stat">SW</div>
-            <div className="lb-h-stat">SL</div>
-            <div className="lb-h-stat">PCT</div>
-          </div>
-
-          {standings.length === 0 ? (
-            <div className="lb-empty">No league teams added yet</div>
-          ) : (
-            standings.map((t, i) => {
-              const totalSets = t.setsWon + t.setsLost;
-              const pct = totalSets > 0 ? Math.round((t.setsWon / totalSets) * 100) : null;
-              const dot = t.dot_color || '#58a6ff';
-              const rowClass = ['lb-row'];
-              if (t.is_us) rowClass.push('lb-row-us');
-              if (i === 0) rowClass.push('lb-row-first');
-              return (
-                <div key={t.id} className={rowClass.join(' ')} role="row">
-                  <div className="lb-h-rank">
-                    <span className={rankClass(i)}>{i + 1}</span>
-                  </div>
-                  <div className="lb-h-team lb-team-cell">
-                    <span className="lb-dot" style={{ background: dot }} />
-                    <span className="lb-name">{t.name}</span>
-                    {t.is_us && <span className="lb-us-badge">★ Us</span>}
-                  </div>
-                  <div className="lb-h-stat lb-w">{t.wins}</div>
-                  <div className="lb-h-stat lb-l">{t.losses}</div>
-                  <div className="lb-h-stat lb-mono">{t.setsWon}</div>
-                  <div className="lb-h-stat lb-mono">{t.setsLost}</div>
-                  <div className="lb-h-stat lb-mono">{pct == null ? '—' : `${pct}%`}</div>
-                </div>
-              );
-            })
-          )}
+        <div className="lb-table-wrap">
+          <table className="lb-tbl">
+            <thead>
+              <tr>
+                <th className="lb-col-rank">#</th>
+                <th className="lb-col-team">TEAM</th>
+                <th className="lb-col-stat lb-w">W</th>
+                <th className="lb-col-stat lb-l">L</th>
+                <th className="lb-col-stat">SW</th>
+                <th className="lb-col-stat">SL</th>
+                <th className="lb-col-stat">PCT</th>
+              </tr>
+            </thead>
+            <tbody>
+              {standings.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="lb-empty">No league teams added yet</td>
+                </tr>
+              ) : (
+                standings.map((t, i) => {
+                  const totalSets = t.setsWon + t.setsLost;
+                  const pct = totalSets > 0 ? Math.round((t.setsWon / totalSets) * 100) : null;
+                  const dot = t.dot_color || '#58a6ff';
+                  return (
+                    <tr key={t.id} className={t.is_us ? 'lb-tr-us' : ''}>
+                      <td className="lb-col-rank">
+                        <span className={rankClass(i)}>{i + 1}</span>
+                      </td>
+                      <td className="lb-col-team">
+                        <div className="lb-tbl-team-cell">
+                          <span className="lb-dot" style={{ background: dot, flexShrink: 0 }} />
+                          <span className="lb-tbl-name">{t.name}{t.is_us ? ' ★' : ''}</span>
+                        </div>
+                      </td>
+                      <td className="lb-col-stat lb-w">{t.wins}</td>
+                      <td className="lb-col-stat lb-l">{t.losses}</td>
+                      <td className="lb-col-stat lb-mono">{t.setsWon}</td>
+                      <td className="lb-col-stat lb-mono">{t.setsLost}</td>
+                      <td className="lb-col-stat lb-mono">{pct == null ? '—' : `${pct}%`}</td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
         </div>
       </div>
 

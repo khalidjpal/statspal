@@ -5,12 +5,31 @@ import { hpct, n3, hcol, playerTotals } from '../utils/stats';
 import { sortByJersey } from '../utils/sort';
 import PlayerBadge from '../components/PlayerBadge';
 import ManualResultModal from '../components/modals/ManualResultModal';
+import { resetGame } from '../utils/resetGame';
+import { useToast } from '../contexts/ToastContext';
 
 export default function GameSummary({ game, team, onBack, onSelectPlayer, asModal = false }) {
   const { players, playerGameStats, refresh } = useData();
   const { currentUser } = useAuth();
   const isAdmin = currentUser?.role === 'admin';
   const [editingGame, setEditingGame] = useState(null);
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [resetting, setResetting] = useState(false);
+  const { addToast } = useToast();
+
+  async function confirmReset() {
+    setResetting(true);
+    const { error } = await resetGame({ game, teamId: team.id });
+    setResetting(false);
+    if (error) {
+      addToast('Reset failed: ' + error.message);
+      return;
+    }
+    setShowResetConfirm(false);
+    addToast('Game reset. You can now start live tracking again.', 'success');
+    await refresh();
+    if (onBack) onBack();
+  }
 
   useEffect(() => { refresh(); }, [refresh]);
 
@@ -75,9 +94,17 @@ export default function GameSummary({ game, team, onBack, onSelectPlayer, asModa
           <button
             onClick={() => setEditingGame(game)}
             className="modal-btn-primary"
-            style={{ width: '100%', marginBottom: 16 }}
+            style={{ width: '100%', marginBottom: 10 }}
           >
             Edit Stats
+          </button>
+        )}
+        {isAdmin && (
+          <button
+            onClick={() => setShowResetConfirm(true)}
+            style={{ width: '100%', marginBottom: 16, background: 'transparent', color: '#f85149', padding: '11px 16px', borderRadius: 10, fontSize: 13, fontWeight: 700, border: '1px solid rgba(248,81,73,0.35)', cursor: 'pointer' }}
+          >
+            Reset Game
           </button>
         )}
 
@@ -144,6 +171,32 @@ export default function GameSummary({ game, team, onBack, onSelectPlayer, asModa
           </div>
         </div>
       </div>
+      {showResetConfirm && (
+        <div className="modal-overlay" onClick={() => !resetting && setShowResetConfirm(false)}>
+          <div className="modal-content" style={{ textAlign: 'center', maxWidth: 440 }} onClick={e => e.stopPropagation()}>
+            <h2>Reset this game?</h2>
+            <p style={{ color: 'var(--text-secondary)', fontSize: 14, marginBottom: 20, lineHeight: 1.5 }}>
+              All player stats for this game will be deleted and you will be able to redo live tracking. The game will remain on the schedule as upcoming. This cannot be undone.
+            </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <button
+                onClick={confirmReset}
+                disabled={resetting}
+                style={{ background: '#f85149', color: '#fff', padding: '12px 16px', borderRadius: 10, fontSize: 14, fontWeight: 700, border: 'none', cursor: resetting ? 'default' : 'pointer', opacity: resetting ? 0.6 : 1 }}
+              >
+                {resetting ? 'Resetting…' : 'Yes Reset Game'}
+              </button>
+              <button
+                onClick={() => setShowResetConfirm(false)}
+                disabled={resetting}
+                style={{ background: 'transparent', color: 'var(--text-secondary)', padding: '12px 16px', borderRadius: 10, fontSize: 14, fontWeight: 600, border: '1px solid var(--border)', cursor: 'pointer' }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {editingGame && (
         <ManualResultModal
           game={editingGame}

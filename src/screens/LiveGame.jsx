@@ -117,6 +117,8 @@ export default function LiveGame({ team, gameInfo, onEndMatch, onAbandon, resume
   const [showMatchOver, setShowMatchOver] = useState(false);
   const [pendingSet, setPendingSet] = useState(null);
   const [showAbandonConfirm, setShowAbandonConfirm] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
+  const [removeIdx, setRemoveIdx] = useState(null);
   const [isFullscreen, setIsFullscreen] = useState(() => !!document.fullscreenElement);
   useEffect(() => {
     const onFs = () => setIsFullscreen(!!document.fullscreenElement);
@@ -172,7 +174,14 @@ export default function LiveGame({ team, gameInfo, onEndMatch, onAbandon, resume
     pushHistory({
       type: 'stat',
       playerId: selectedPlayer,
+      playerName: player?.name || '?',
       setNum: currentSet,
+      actionKey: action.key,
+      actionAbbr: action.abbr,
+      actionLabel: action.label,
+      actionStat: action.stat,
+      actionAutoAtt: !!action.autoAtt,
+      actionErr: !!action.err,
       prevOverall: { ...ps.overall },
       prevSetStats: { ...(ps.sets[currentSet] || EMPTY_SET_STATS()) },
     });
@@ -217,6 +226,25 @@ export default function LiveGame({ team, gameInfo, onEndMatch, onAbandon, resume
     setLastAction('(undone)');
   }
 
+  function removeAction(idx) {
+    const entry = history[idx];
+    if (!entry || entry.type !== 'stat') return;
+    setStats(prev => {
+      const cur = prev[entry.playerId];
+      if (!cur) return prev;
+      const newOverall = { ...cur.overall };
+      newOverall[entry.actionStat] = Math.max(0, (newOverall[entry.actionStat] || 0) - 1);
+      if (entry.actionAutoAtt) newOverall.attempts = Math.max(0, (newOverall.attempts || 0) - 1);
+      const curSet = cur.sets[entry.setNum] || EMPTY_SET_STATS();
+      const newSet = { ...curSet };
+      newSet[entry.actionStat] = Math.max(0, (newSet[entry.actionStat] || 0) - 1);
+      if (entry.actionAutoAtt) newSet.attempts = Math.max(0, (newSet.attempts || 0) - 1);
+      return { ...prev, [entry.playerId]: { ...cur, overall: newOverall, sets: { ...cur.sets, [entry.setNum]: newSet } } };
+    });
+    setHistory(prev => prev.filter((_, i) => i !== idx));
+    setLastAction(`Removed: ${entry.playerName?.split(' ')[0] || '?'} → ${entry.actionLabel}`);
+  }
+
   function handleMatchConfirm() {
     // Flatten to overall stats for DB save
     const flatStats = {};
@@ -245,6 +273,7 @@ export default function LiveGame({ team, gameInfo, onEndMatch, onAbandon, resume
           <div className="lv-sb-row1">
             <button className="lv-sb-pill lv-sb-pill-abandon" onClick={()=>setShowAbandonConfirm(true)} title="Abandon game" aria-label="Abandon game">✕</button>
             <button className="lv-sb-pill" onClick={handleUndo} disabled={!history.length}>↩</button>
+            <button className="lv-sb-pill" onClick={()=>setShowHistory(true)} title="Action history" aria-label="Action history">🕐</button>
             <div className="lv-sb-set">SET {currentSet}</div>
             <div className="lv-sb-tabs">
               <button className={`lv-sb-tabtn ${view==='track'?'on':''}`} onClick={()=>setView('track')}>Live</button>
@@ -256,14 +285,12 @@ export default function LiveGame({ team, gameInfo, onEndMatch, onAbandon, resume
           <div className="lv-sb-scores">
             <div className="lv-sb-team">
               <div className="lv-sb-label">{team.name}</div>
-              <div className="lv-sb-score">{homeScore}</div>
-              <div className="lv-sb-btns"><button className="lv-sb-b lv-sb-b-m" onClick={()=>subPoint('home')}>−</button><button className="lv-sb-b lv-sb-b-p" onClick={()=>addPoint('home')}>+</button></div>
+              <div className="lv-sb-btns"><button className="lv-sb-b lv-sb-b-m" onClick={()=>subPoint('home')}>−</button><div className="lv-sb-score">{homeScore}</div><button className="lv-sb-b lv-sb-b-p" onClick={()=>addPoint('home')}>+</button></div>
             </div>
             <div className="lv-sb-center"><div className="lv-sb-setw">{homeSetsWon}–{awaySetsWon}</div></div>
             <div className="lv-sb-team lv-sb-opp">
               <div className="lv-sb-label">{gameInfo.opponent}</div>
-              <div className="lv-sb-score">{awayScore}</div>
-              <div className="lv-sb-btns"><button className="lv-sb-b lv-sb-b-m" onClick={()=>subPoint('away')}>−</button><button className="lv-sb-b lv-sb-b-p" onClick={()=>addPoint('away')}>+</button></div>
+              <div className="lv-sb-btns"><button className="lv-sb-b lv-sb-b-m" onClick={()=>subPoint('away')}>−</button><div className="lv-sb-score">{awayScore}</div><button className="lv-sb-b lv-sb-b-p" onClick={()=>addPoint('away')}>+</button></div>
             </div>
           </div>
           {(sets.length>0||isDeuce) && <div className="lv-sb-foot">{sets.map((s,i)=><span key={i} className="lv-sb-chip">S{i+1}: {s.home}–{s.away}</span>)}{isDeuce&&<span className="lv-sb-deuce">DEUCE</span>}</div>}
@@ -363,6 +390,50 @@ export default function LiveGame({ team, gameInfo, onEndMatch, onAbandon, resume
       {/* Modals */}
       {showSetOver&&pendingSet&&(<div className="modal-overlay"><div className="modal-content" style={{textAlign:'center'}}><h2>Set {currentSet} Over!</h2><div style={{fontSize:40,fontWeight:900,margin:'12px 0',color:'var(--text)',fontFamily:'var(--mono)'}}>{pendingSet.home} – {pendingSet.away}</div><div style={{fontSize:13,color:'var(--text-secondary)',marginBottom:20}}>Sets: {pendingSet.nhs} – {pendingSet.nas}</div><div style={{display:'flex',gap:12,justifyContent:'center'}}><button className="modal-btn-cancel" onClick={keepPlaying}>Keep Playing</button><button className="modal-btn-primary" onClick={confirmEndSet}>End Set</button></div></div></div>)}
       {showMatchOver&&(<div className="modal-overlay"><div className="modal-content" style={{textAlign:'center'}}><h2>Match Over!</h2><div style={{fontSize:52,fontWeight:900,margin:'12px 0',color:'var(--text)',fontFamily:'var(--mono)'}}>{homeSetsWon} – {awaySetsWon}</div><div style={{fontSize:18,fontWeight:700,marginBottom:16,color:homeSetsWon>awaySetsWon?'#3fb950':'#f85149'}}>{homeSetsWon>awaySetsWon?'Victory!':'Defeat'}</div>{sets.map((s,i)=><div key={i} style={{fontSize:13,color:'var(--text-secondary)',marginBottom:4,fontFamily:'var(--mono)'}}>Set {i+1}: {s.home}–{s.away}</div>)}<button className="modal-btn-primary" onClick={handleMatchConfirm} style={{marginTop:20,width:'100%',padding:14,fontSize:16}}>Save &amp; Finish</button></div></div>)}
+      {showHistory && (
+        <div className="lv-hist-ov" onClick={()=>setShowHistory(false)}>
+          <div className="lv-hist" onClick={e=>e.stopPropagation()}>
+            <div className="lv-hist-hd">
+              <span>Action History</span>
+              <button className="lv-hist-x" onClick={()=>setShowHistory(false)} aria-label="Close">✕</button>
+            </div>
+            <div className="lv-hist-body">
+              {history.filter(h=>h.type==='stat').length === 0 ? (
+                <div className="lv-hist-empty">No actions logged yet</div>
+              ) : (
+                history.map((h, i) => ({h, i})).filter(({h})=>h.type==='stat').reverse().map(({h, i}) => (
+                  <div key={i} className={`lv-hist-row ${h.actionErr?'lv-hist-err':'lv-hist-ok'}`}>
+                    <span className="lv-hist-set">S{h.setNum}</span>
+                    <span className="lv-hist-name">{h.playerName}</span>
+                    <span className="lv-hist-stat"><b>{h.actionAbbr}</b> — {h.actionLabel}</span>
+                    <button className="lv-hist-del" onClick={()=>setRemoveIdx(i)} aria-label="Remove">✕</button>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+      {removeIdx !== null && (
+        <div className="modal-overlay" onClick={()=>setRemoveIdx(null)}>
+          <div className="modal-content" style={{ textAlign: 'center', maxWidth: 360 }} onClick={e=>e.stopPropagation()}>
+            <h2 style={{marginBottom:8}}>Remove this stat?</h2>
+            <p style={{ color: 'var(--text-secondary)', fontSize: 13, marginBottom: 18 }}>
+              {history[removeIdx]?.playerName} → {history[removeIdx]?.actionLabel}
+            </p>
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
+              <button
+                onClick={()=>setRemoveIdx(null)}
+                style={{ background: 'transparent', color: 'var(--text-secondary)', padding: '10px 20px', borderRadius: 10, fontSize: 14, fontWeight: 600, border: '1px solid var(--border)', cursor: 'pointer' }}
+              >No</button>
+              <button
+                onClick={()=>{removeAction(removeIdx); setRemoveIdx(null);}}
+                style={{ background: '#f85149', color: '#fff', padding: '10px 20px', borderRadius: 10, fontSize: 14, fontWeight: 700, border: 'none', cursor: 'pointer' }}
+              >Yes, Remove</button>
+            </div>
+          </div>
+        </div>
+      )}
       {showAbandonConfirm && (
         <div className="modal-overlay" onClick={()=>setShowAbandonConfirm(false)}>
           <div className="modal-content" style={{ textAlign: 'center', maxWidth: 420 }} onClick={e=>e.stopPropagation()}>

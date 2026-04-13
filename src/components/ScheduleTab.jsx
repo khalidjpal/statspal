@@ -5,6 +5,8 @@ import { sortedUpcoming, sortedCompleted } from '../utils/sort';
 import { getActiveSession } from '../utils/liveSession';
 import AddGameModal from './modals/AddGameModal';
 import ManualResultModal from './modals/ManualResultModal';
+import { resetGame } from '../utils/resetGame';
+import { useToast } from '../contexts/ToastContext';
 
 function getToday() {
   return new Date().toISOString().slice(0, 10);
@@ -36,7 +38,24 @@ export default function ScheduleTab({ team, schedule, completedGames, players, p
   const { leagueResults } = useData();
   const [showAdd, setShowAdd]     = useState(false);
   const [manualGame, setManualGame] = useState(null);
+  const [resetTarget, setResetTarget] = useState(null);
+  const [resetting, setResetting] = useState(false);
   const [activeSession, setActiveSession] = useState(null);
+  const { addToast } = useToast();
+
+  async function confirmReset() {
+    if (!resetTarget) return;
+    setResetting(true);
+    const { error } = await resetGame({ game: resetTarget, teamId: team.id });
+    setResetting(false);
+    if (error) {
+      addToast('Reset failed: ' + error.message);
+      return;
+    }
+    setResetTarget(null);
+    addToast('Game reset. You can now start live tracking again.', 'success');
+    refresh();
+  }
 
   const timelineRef  = useRef(null);
   const nextGameRef  = useRef(null);
@@ -263,6 +282,7 @@ export default function ScheduleTab({ team, schedule, completedGames, players, p
                     {g.home_sets != null && g.away_sets != null && <span className="sch-tl-score">{g.home_sets}–{g.away_sets}</span>}
                     <span className={`game-result-badge ${g.result === 'W' ? 'win' : 'loss'}`}>{g.result}</span>
                     {isAdmin && <button className="sch-edit-btn" onClick={e => { e.stopPropagation(); setManualGame(g); }}>Edit</button>}
+                    {isAdmin && <button className="sch-reset-btn" onClick={e => { e.stopPropagation(); setResetTarget(g); }}>Reset</button>}
                   </>
                 ) : (
                   isAdmin && <button className="sch-enter-btn" onClick={e => { e.stopPropagation(); setManualGame(g); }}>Enter Result</button>
@@ -410,6 +430,33 @@ export default function ScheduleTab({ team, schedule, completedGames, players, p
           onClose={() => setShowAdd(false)}
           onSaved={() => { setShowAdd(false); refresh(); }}
         />
+      )}
+
+      {resetTarget && (
+        <div className="modal-overlay" onClick={() => !resetting && setResetTarget(null)}>
+          <div className="modal-content" style={{ textAlign: 'center', maxWidth: 440 }} onClick={e => e.stopPropagation()}>
+            <h2>Reset this game?</h2>
+            <p style={{ color: 'var(--text-secondary)', fontSize: 14, marginBottom: 20, lineHeight: 1.5 }}>
+              All player stats for this game will be deleted and you will be able to redo live tracking. The game will remain on the schedule as upcoming. This cannot be undone.
+            </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <button
+                onClick={confirmReset}
+                disabled={resetting}
+                style={{ background: '#f85149', color: '#fff', padding: '12px 16px', borderRadius: 10, fontSize: 14, fontWeight: 700, border: 'none', cursor: resetting ? 'default' : 'pointer', opacity: resetting ? 0.6 : 1 }}
+              >
+                {resetting ? 'Resetting…' : 'Yes Reset Game'}
+              </button>
+              <button
+                onClick={() => setResetTarget(null)}
+                disabled={resetting}
+                style={{ background: 'transparent', color: 'var(--text-secondary)', padding: '12px 16px', borderRadius: 10, fontSize: 14, fontWeight: 600, border: '1px solid var(--border)', cursor: 'pointer' }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {manualGame && (

@@ -9,7 +9,7 @@ export default function Export({ team, onBack }) {
   const teamGames = sortedCompleted(completedGames.filter(g => g.team_id === team.id));
 
   function buildCSV() {
-    const headers = ['Player', 'SP', 'K', 'E', 'TA', 'K%', 'A', 'SA', 'SE', 'Digs', 'BS', 'BA'];
+    const headers = ['Player', 'SP', 'K', 'E', 'TA', 'K%', 'A', 'BHE', 'SA', 'SE', 'R', 'Digs', 'DE', 'BS', 'BA', 'BE'];
     const rows = teamPlayers.map(p => {
       const stats = playerGameStats.filter(s => s.player_id === p.id);
       const t = playerTotals(stats);
@@ -22,11 +22,15 @@ export default function Export({ team, onBack }) {
         t.attempts,
         h !== null ? n3(h) : '',
         t.assists,
+        t.ball_handling_errors || 0,
         t.aces,
         t.serve_errors,
+        t.receives || 0,
         t.digs,
+        t.digging_errors || 0,
         t.blocks,
         t.block_assists,
+        t.blocking_errors || 0,
       ];
     });
     return [headers, ...rows].map(r => r.join(',')).join('\n');

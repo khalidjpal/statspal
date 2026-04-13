@@ -135,6 +135,16 @@ export default function PlayerDetail({ player, team, onBack, onSelectGame, asMod
         </div>
       </div>
 
+      {/* ── Ball Handling ── */}
+      <div className="pgd-card pd-cat-card" style={{ borderLeftColor: '#fb923c' }}>
+        <div className="pgd-section-label" style={{ color: '#fb923c' }}>Ball Handling</div>
+        <div className="pd-cat-grid pd-cat-3">
+          <StatCell value={totals.assists}                      label="A" />
+          <StatCell value={astsPerSet}                          label="Per Set" muted />
+          <StatCell value={totals.ball_handling_errors || 0}   label="BHE" color={totals.ball_handling_errors > 0 ? '#f85149' : undefined} />
+        </div>
+      </div>
+
       {/* ── Serve ── */}
       <div className="pgd-card pd-cat-card" style={{ borderLeftColor: '#f5c95a' }}>
         <div className="pgd-section-label" style={{ color: '#f5c95a' }}>Serve</div>
@@ -147,28 +157,24 @@ export default function PlayerDetail({ player, team, onBack, onSelectGame, asMod
       {/* ── Reception & Defense ── */}
       <div className="pgd-card pd-cat-card" style={{ borderLeftColor: '#2dd4bf' }}>
         <div className="pgd-section-label" style={{ color: '#2dd4bf' }}>Reception & Defense</div>
-        <div className="pd-cat-grid pd-cat-2">
-          <StatCell value={totals.digs} label="Digs" />
-          <StatCell value={digsPerSet}  label="Per Set" muted />
+        <div className="pd-cat-grid pd-cat-3">
+          <StatCell value={totals.receives || 0}       label="R" />
+          <StatCell value={totals.digs}                label="Digs" />
+          <StatCell value={totals.digging_errors || 0} label="DE" color={totals.digging_errors > 0 ? '#f85149' : undefined} />
+        </div>
+        <div className="pd-cat-grid pd-cat-2" style={{ marginTop: 6 }}>
+          <StatCell value={digsPerSet} label="Digs / Set" muted />
         </div>
       </div>
 
       {/* ── Blocking ── */}
       <div className="pgd-card pd-cat-card" style={{ borderLeftColor: '#a78bfa' }}>
         <div className="pgd-section-label" style={{ color: '#a78bfa' }}>Blocking</div>
-        <div className="pd-cat-grid pd-cat-3">
-          <StatCell value={totals.blocks}        label="BS" />
-          <StatCell value={totals.block_assists}  label="BA" />
-          <StatCell value={totalBlocks}           label="Total" color="#a78bfa" accent />
-        </div>
-      </div>
-
-      {/* ── Ball Handling ── */}
-      <div className="pgd-card pd-cat-card" style={{ borderLeftColor: '#fb923c' }}>
-        <div className="pgd-section-label" style={{ color: '#fb923c' }}>Ball Handling</div>
-        <div className="pd-cat-grid pd-cat-2">
-          <StatCell value={totals.assists} label="A — Assists" />
-          <StatCell value={astsPerSet}     label="Per Set" muted />
+        <div className="pd-cat-grid pd-cat-4">
+          <StatCell value={totals.blocks}                   label="BS" />
+          <StatCell value={totals.block_assists}            label="BA" />
+          <StatCell value={totalBlocks}                     label="Total" color="#a78bfa" accent />
+          <StatCell value={totals.blocking_errors || 0}    label="BE" color={totals.blocking_errors > 0 ? '#f85149' : undefined} />
         </div>
       </div>
 

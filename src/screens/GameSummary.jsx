@@ -19,7 +19,7 @@ export default function GameSummary({ game, team, onBack, onSelectPlayer, asModa
 
   function getPlayerStats(playerId) {
     return gameStats.find(s => s.player_id === playerId) || {
-      kills: 0, aces: 0, digs: 0, assists: 0, blocks: 0, errors: 0, attempts: 0, sets_played: 0, block_assists: 0, serve_errors: 0,
+      kills: 0, aces: 0, digs: 0, assists: 0, blocks: 0, errors: 0, attempts: 0, sets_played: 0, block_assists: 0, serve_errors: 0, blocking_errors: 0, digging_errors: 0, ball_handling_errors: 0, receives: 0,
     };
   }
 
@@ -52,11 +52,16 @@ export default function GameSummary({ game, team, onBack, onSelectPlayer, asModa
               { label: 'E',    value: totals.errors },
               { label: 'TA',   value: totals.attempts },
               { label: 'K%',   value: n3(hpct(totals.kills, totals.errors, totals.attempts)), color: hcol(totals.kills, totals.errors, totals.attempts) },
+              { label: 'A',    value: totals.assists },
+              { label: 'BHE',  value: totals.ball_handling_errors || 0 },
               { label: 'SA',   value: totals.aces },
               { label: 'SE',   value: totals.serve_errors },
+              { label: 'R',    value: totals.receives || 0 },
               { label: 'Digs', value: totals.digs },
+              { label: 'DE',   value: totals.digging_errors || 0 },
               { label: 'BS',   value: totals.blocks },
               { label: 'BA',   value: totals.block_assists },
+              { label: 'BE',   value: totals.blocking_errors || 0 },
             ].map((item, i) => (
               <div key={i} style={{ minWidth: 36 }}>
                 <div style={{ fontSize: 10, fontWeight: 600, color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase' }}>{item.label}</div>
@@ -89,11 +94,15 @@ export default function GameSummary({ game, team, onBack, onSelectPlayer, asModa
                   <th style={{ padding: '10px 4px', fontWeight: 600 }}>TA</th>
                   <th style={{ padding: '10px 4px', fontWeight: 600 }}>K%</th>
                   <th style={{ padding: '10px 4px', fontWeight: 600 }}>A</th>
+                  <th style={{ padding: '10px 4px', fontWeight: 600 }}>BHE</th>
                   <th style={{ padding: '10px 4px', fontWeight: 600 }}>SA</th>
                   <th style={{ padding: '10px 4px', fontWeight: 600 }}>SE</th>
+                  <th style={{ padding: '10px 4px', fontWeight: 600 }}>R</th>
                   <th style={{ padding: '10px 4px', fontWeight: 600 }}>Digs</th>
+                  <th style={{ padding: '10px 4px', fontWeight: 600 }}>DE</th>
                   <th style={{ padding: '10px 4px', fontWeight: 600 }}>BS</th>
                   <th style={{ padding: '10px 4px', fontWeight: 600 }}>BA</th>
+                  <th style={{ padding: '10px 4px', fontWeight: 600 }}>BE</th>
                 </tr>
               </thead>
               <tbody>
@@ -118,11 +127,15 @@ export default function GameSummary({ game, team, onBack, onSelectPlayer, asModa
                         {n3(hpct(s.kills, s.errors, s.attempts))}
                       </td>
                       <td style={{ textAlign: 'center', padding: '8px 4px' }}>{s.assists}</td>
+                      <td style={{ textAlign: 'center', padding: '8px 4px', color: (s.ball_handling_errors||0) > 0 ? '#dc2626' : 'var(--text)' }}>{s.ball_handling_errors || 0}</td>
                       <td style={{ textAlign: 'center', padding: '8px 4px' }}>{s.aces}</td>
                       <td style={{ textAlign: 'center', padding: '8px 4px', color: s.serve_errors > 0 ? '#dc2626' : 'var(--text)' }}>{s.serve_errors || 0}</td>
+                      <td style={{ textAlign: 'center', padding: '8px 4px' }}>{s.receives || 0}</td>
                       <td style={{ textAlign: 'center', padding: '8px 4px' }}>{s.digs}</td>
+                      <td style={{ textAlign: 'center', padding: '8px 4px', color: (s.digging_errors||0) > 0 ? '#dc2626' : 'var(--text)' }}>{s.digging_errors || 0}</td>
                       <td style={{ textAlign: 'center', padding: '8px 4px' }}>{s.blocks}</td>
                       <td style={{ textAlign: 'center', padding: '8px 4px' }}>{s.block_assists || 0}</td>
+                      <td style={{ textAlign: 'center', padding: '8px 4px', color: (s.blocking_errors||0) > 0 ? '#dc2626' : 'var(--text)' }}>{s.blocking_errors || 0}</td>
                     </tr>
                   );
                 })}

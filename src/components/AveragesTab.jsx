@@ -108,17 +108,21 @@ export default function AveragesTab({ players, playerGameStats, completedGames, 
   function getPlayerStats(player) {
     const stats = scopedStats.filter(s => s.player_id === player.id);
     if (stats.length === 0) return null;
-    const sp   = stats.reduce((a, s) => a + (s.sets_played   || 0), 0);
-    const k    = stats.reduce((a, s) => a + (s.kills         || 0), 0);
-    const e    = stats.reduce((a, s) => a + (s.errors        || 0), 0);
-    const att  = stats.reduce((a, s) => a + (s.attempts      || 0), 0);
-    const ast  = stats.reduce((a, s) => a + (s.assists       || 0), 0);
-    const sa   = stats.reduce((a, s) => a + (s.aces          || 0), 0);
-    const se   = stats.reduce((a, s) => a + (s.serve_errors  || 0), 0);
-    const digs = stats.reduce((a, s) => a + (s.digs          || 0), 0);
-    const bs   = stats.reduce((a, s) => a + (s.blocks        || 0), 0);
-    const ba   = stats.reduce((a, s) => a + (s.block_assists || 0), 0);
-    return { sp, k, e, att, ast, sa, se, digs, bs, ba, h: hpct(k, e, att) };
+    const sp   = stats.reduce((a, s) => a + (s.sets_played         || 0), 0);
+    const k    = stats.reduce((a, s) => a + (s.kills               || 0), 0);
+    const e    = stats.reduce((a, s) => a + (s.errors              || 0), 0);
+    const att  = stats.reduce((a, s) => a + (s.attempts            || 0), 0);
+    const ast  = stats.reduce((a, s) => a + (s.assists             || 0), 0);
+    const sa   = stats.reduce((a, s) => a + (s.aces                || 0), 0);
+    const se   = stats.reduce((a, s) => a + (s.serve_errors        || 0), 0);
+    const digs = stats.reduce((a, s) => a + (s.digs                || 0), 0);
+    const bs   = stats.reduce((a, s) => a + (s.blocks              || 0), 0);
+    const ba   = stats.reduce((a, s) => a + (s.block_assists       || 0), 0);
+    const r    = stats.reduce((a, s) => a + (s.receives            || 0), 0);
+    const be   = stats.reduce((a, s) => a + (s.blocking_errors     || 0), 0);
+    const de   = stats.reduce((a, s) => a + (s.digging_errors      || 0), 0);
+    const bhe  = stats.reduce((a, s) => a + (s.ball_handling_errors|| 0), 0);
+    return { sp, k, e, att, ast, sa, se, digs, bs, ba, r, be, de, bhe, h: hpct(k, e, att) };
   }
 
   // Build sorted player+stats pairs — recalculates whenever filter or sort changes
@@ -272,11 +276,15 @@ export default function AveragesTab({ players, playerGameStats, completedGames, 
                   <SortTh col="att"  {...sortProps}>TA</SortTh>
                   <SortTh col="h"    {...sortProps}>K%</SortTh>
                   <SortTh col="ast"  {...sortProps}>A</SortTh>
+                  <SortTh col="bhe"  {...sortProps}>BHE</SortTh>
                   <SortTh col="sa"   {...sortProps}>SA</SortTh>
                   <SortTh col="se"   {...sortProps}>SE</SortTh>
+                  <SortTh col="r"    {...sortProps}>R</SortTh>
                   <SortTh col="digs" {...sortProps}>Digs</SortTh>
+                  <SortTh col="de"   {...sortProps}>DE</SortTh>
                   <SortTh col="bs"   {...sortProps}>BS</SortTh>
                   <SortTh col="ba"   {...sortProps}>BA</SortTh>
+                  <SortTh col="be"   {...sortProps}>BE</SortTh>
                 </tr>
               </thead>
               <tbody>
@@ -311,11 +319,15 @@ export default function AveragesTab({ players, playerGameStats, completedGames, 
                         {a ? n3(a.h) : '—'}
                       </td>
                       <td style={{ textAlign: 'center', padding: '8px 4px', color: 'var(--text)' }}>{a ? a.ast : dash}</td>
+                      <td style={{ textAlign: 'center', padding: '8px 4px', color: a && a.bhe > 0 ? '#dc2626' : 'var(--text)' }}>{a ? a.bhe : dash}</td>
                       <td style={{ textAlign: 'center', padding: '8px 4px', color: 'var(--text)' }}>{a ? a.sa : dash}</td>
                       <td style={{ textAlign: 'center', padding: '8px 4px', color: a && a.se > 0 ? '#dc2626' : 'var(--text)' }}>{a ? a.se : dash}</td>
+                      <td style={{ textAlign: 'center', padding: '8px 4px', color: 'var(--text)' }}>{a ? a.r : dash}</td>
                       <td style={{ textAlign: 'center', padding: '8px 4px', color: 'var(--text)' }}>{a ? a.digs : dash}</td>
+                      <td style={{ textAlign: 'center', padding: '8px 4px', color: a && a.de > 0 ? '#dc2626' : 'var(--text)' }}>{a ? a.de : dash}</td>
                       <td style={{ textAlign: 'center', padding: '8px 4px', color: 'var(--text)' }}>{a ? a.bs : dash}</td>
                       <td style={{ textAlign: 'center', padding: '8px 4px', color: 'var(--text)' }}>{a ? a.ba : dash}</td>
+                      <td style={{ textAlign: 'center', padding: '8px 4px', color: a && a.be > 0 ? '#dc2626' : 'var(--text)' }}>{a ? a.be : dash}</td>
                     </tr>
                   );
                 })}

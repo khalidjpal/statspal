@@ -87,7 +87,7 @@ export function n3(v) {
 }
 
 // Stat fields that belong in player_game_stats rows
-const STAT_FIELDS = ['kills', 'aces', 'digs', 'assists', 'blocks', 'errors', 'attempts', 'sets_played', 'block_assists', 'serve_errors'];
+const STAT_FIELDS = ['kills', 'aces', 'digs', 'assists', 'blocks', 'errors', 'attempts', 'sets_played', 'block_assists', 'serve_errors', 'blocking_errors', 'digging_errors', 'ball_handling_errors', 'receives'];
 
 // Extract only valid stat fields from an object, coerce to integer, default 0.
 // Use this before inserting into player_game_stats to prevent DB row field leaks
@@ -107,7 +107,7 @@ export function hasStats(row) {
 
 // Compute totals for a single player across games
 export function playerTotals(statsRows) {
-  const t = { kills: 0, aces: 0, digs: 0, assists: 0, blocks: 0, errors: 0, attempts: 0, sets_played: 0, block_assists: 0, serve_errors: 0 };
+  const t = { kills: 0, aces: 0, digs: 0, assists: 0, blocks: 0, errors: 0, attempts: 0, sets_played: 0, block_assists: 0, serve_errors: 0, blocking_errors: 0, digging_errors: 0, ball_handling_errors: 0, receives: 0 };
   for (const r of statsRows) {
     t.kills += r.kills || 0;
     t.aces += r.aces || 0;
@@ -119,6 +119,10 @@ export function playerTotals(statsRows) {
     t.sets_played += r.sets_played || 0;
     t.block_assists += r.block_assists || 0;
     t.serve_errors += r.serve_errors || 0;
+    t.blocking_errors += r.blocking_errors || 0;
+    t.digging_errors += r.digging_errors || 0;
+    t.ball_handling_errors += r.ball_handling_errors || 0;
+    t.receives += r.receives || 0;
   }
   return t;
 }

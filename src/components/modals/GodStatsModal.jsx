@@ -4,8 +4,8 @@ import { validateStats, cleanStatRow, hasStats } from '../../utils/stats';
 import { sortByJersey } from '../../utils/sort';
 import { useToast } from '../../contexts/ToastContext';
 
-const STAT_FIELDS = ['sets_played', 'kills', 'errors', 'attempts', 'assists', 'aces', 'serve_errors', 'digs', 'blocks', 'block_assists'];
-const STAT_LABELS = { sets_played: 'SP', kills: 'K', errors: 'E', attempts: 'TA', assists: 'A', aces: 'SA', serve_errors: 'SE', digs: 'Digs', blocks: 'BS', block_assists: 'BA' };
+const STAT_FIELDS = ['sets_played', 'kills', 'errors', 'attempts', 'assists', 'ball_handling_errors', 'aces', 'serve_errors', 'receives', 'digs', 'digging_errors', 'blocks', 'block_assists', 'blocking_errors'];
+const STAT_LABELS = { sets_played: 'SP', kills: 'K', errors: 'E', attempts: 'TA', assists: 'A', ball_handling_errors: 'BHE', aces: 'SA', serve_errors: 'SE', receives: 'R', digs: 'Digs', digging_errors: 'DE', blocks: 'BS', block_assists: 'BA', blocking_errors: 'BE' };
 
 export default function GodStatsModal({ game, players, existingStats, onClose, onSaved }) {
   const { addToast } = useToast();
@@ -16,7 +16,7 @@ export default function GodStatsModal({ game, players, existingStats, onClose, o
       const existing = existingStats.find(s => s.player_id === p.id);
       init[p.id] = existing
         ? { ...existing }
-        : { kills: 0, aces: 0, digs: 0, assists: 0, blocks: 0, errors: 0, attempts: 0, sets_played: 0, block_assists: 0, serve_errors: 0 };
+        : { kills: 0, aces: 0, digs: 0, assists: 0, blocks: 0, errors: 0, attempts: 0, sets_played: 0, block_assists: 0, serve_errors: 0, blocking_errors: 0, digging_errors: 0, ball_handling_errors: 0, receives: 0 };
     });
     return init;
   });
@@ -43,6 +43,7 @@ export default function GodStatsModal({ game, players, existingStats, onClose, o
             sets_played: 0,
             kills: 0, aces: 0, digs: 0, assists: 0, blocks: 0,
             errors: 0, attempts: 0, block_assists: 0, serve_errors: 0,
+            blocking_errors: 0, digging_errors: 0, ball_handling_errors: 0, receives: 0,
           },
         }));
       } else {

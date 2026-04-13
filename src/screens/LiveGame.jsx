@@ -3,22 +3,33 @@ import { hpct, n3, hcol } from '../utils/stats';
 import { saveSession, abandonSession } from '../utils/liveSession';
 import { sortByJersey } from '../utils/sort';
 
-const GOOD = [
-  { key:'kill', abbr:'K', label:'Kill', stat:'kills', autoAtt:true, big:true },
-  { key:'assist', abbr:'A', label:'Assist', stat:'assists' },
-  { key:'dig', abbr:'D', label:'Dig', stat:'digs' },
-  { key:'ace', abbr:'SA', label:'Ace', stat:'aces' },
-  { key:'block_solo', abbr:'BS', label:'Block', stat:'blocks' },
-  { key:'block_assist', abbr:'BA', label:'Blk Ast', stat:'block_assists' },
-  { key:'attempt', abbr:'Att', label:'Attempt', stat:'attempts' },
-];
-const ERR = [
-  { key:'attack_error', abbr:'E', label:'Atk Err', stat:'errors', autoAtt:true },
-  { key:'serve_error', abbr:'SE', label:'Srv Err', stat:'serve_errors' },
-  { key:'recv_error', abbr:'RE', label:'Rcv Err', stat:'digs' },
+const CATEGORIES = [
+  { label: 'ATTACK', actions: [
+    { key:'kill',         abbr:'K',   label:'Kill',    stat:'kills',              autoAtt:true, err:false },
+    { key:'attack_error', abbr:'E',   label:'Atk Err', stat:'errors',             autoAtt:true, err:true  },
+    { key:'attempt',      abbr:'Att', label:'Attempt', stat:'attempts',                          err:false },
+  ]},
+  { label: 'SERVE', actions: [
+    { key:'ace',          abbr:'SA',  label:'Ace',     stat:'aces',                              err:false },
+    { key:'serve_error',  abbr:'SE',  label:'Srv Err', stat:'serve_errors',                      err:true  },
+  ]},
+  { label: 'DEFENSE', actions: [
+    { key:'dig',          abbr:'D',   label:'Dig',     stat:'digs',                              err:false },
+    { key:'receive',      abbr:'R',   label:'Receive', stat:'receives',                          err:false },
+    { key:'dig_error',    abbr:'DE',  label:'Dig Err', stat:'digging_errors',                    err:true  },
+  ]},
+  { label: 'BLOCKING', actions: [
+    { key:'block_solo',   abbr:'BS',  label:'Block',   stat:'blocks',                            err:false },
+    { key:'block_assist', abbr:'BA',  label:'Blk Ast', stat:'block_assists',                     err:false },
+    { key:'block_error',  abbr:'BE',  label:'Blk Err', stat:'blocking_errors',                   err:true  },
+  ]},
+  { label: 'BALL HANDLING', actions: [
+    { key:'assist',       abbr:'A',   label:'Assist',  stat:'assists',                           err:false },
+    { key:'bhe',          abbr:'BHE', label:'BH Err',  stat:'ball_handling_errors',              err:true  },
+  ]},
 ];
 
-const EMPTY_SET_STATS = () => ({ kills:0, aces:0, digs:0, assists:0, blocks:0, errors:0, attempts:0, block_assists:0, serve_errors:0 });
+const EMPTY_SET_STATS = () => ({ kills:0, aces:0, digs:0, assists:0, blocks:0, errors:0, attempts:0, block_assists:0, serve_errors:0, blocking_errors:0, digging_errors:0, ball_handling_errors:0, receives:0 });
 
 function initStats(rs, roster) {
   if (rs?.player_stats && Object.keys(rs.player_stats).length > 0) {
@@ -35,7 +46,7 @@ function initStats(rs, roster) {
   const o = {};
   roster.forEach(p => {
     o[p.id] = {
-      overall: { kills:0, aces:0, digs:0, assists:0, blocks:0, errors:0, attempts:0, sets_played:0, block_assists:0, serve_errors:0 },
+      overall: { kills:0, aces:0, digs:0, assists:0, blocks:0, errors:0, attempts:0, sets_played:0, block_assists:0, serve_errors:0, blocking_errors:0, digging_errors:0, ball_handling_errors:0, receives:0 },
       sets: {},
     };
   });
@@ -49,6 +60,7 @@ function MiniStats({ s }) {
     [s.kills,'K'],[s.errors,'E'],[s.attempts,'TA'],
     [s.assists,'A'],[s.aces,'SA'],[s.serve_errors,'SE'],
     [s.digs,'D'],[s.blocks,'BS'],[s.block_assists,'BA'],
+    [s.receives,'R'],[s.blocking_errors,'BE'],[s.digging_errors,'DE'],[s.ball_handling_errors,'BHE'],
   ];
   const nonZero = pairs.filter(([v])=>v>0);
   if (nonZero.length === 0 && !s.attempts) return <span className="lv-ms-empty">—</span>;
@@ -275,16 +287,18 @@ export default function LiveGame({ team, gameInfo, onEndMatch, onAbandon, resume
                   <span className="lv-sr-name">{selPlayer.name}</span>
                   <span className="lv-sr-line"><FullStats s={selStats} /></span>
                 </div>
-                {/* Action buttons fill remaining space */}
+                {/* Action buttons — category grid */}
                 <div className="lv-btns">
-                  <div className="lv-btns-label lv-btns-ok-l">POSITIVE</div>
-                  <div className="lv-btns-row">
-                    {GOOD.map(a=><ActBtn key={a.key} a={a} err={false} fid={flashId} fk={flashKey} onClick={()=>recordAction(a)} count={selStats[a.stat]||0} />)}
-                  </div>
-                  <div className="lv-btns-label lv-btns-err-l">ERROR</div>
-                  <div className="lv-btns-row">
-                    {ERR.map(a=><ActBtn key={a.key} a={a} err={true} fid={flashId} fk={flashKey} onClick={()=>recordAction(a)} count={selStats[a.stat]||0} />)}
-                  </div>
+                  {CATEGORIES.map(cat => (
+                    <div key={cat.label} className="lv-btns-cat">
+                      <div className="lv-btns-cat-label">{cat.label}</div>
+                      <div className="lv-btns-row">
+                        {cat.actions.map(a => (
+                          <ActBtn key={a.key} a={a} err={a.err} fid={flashId} fk={flashKey} onClick={()=>recordAction(a)} count={selStats[a.stat]||0} />
+                        ))}
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </>
             ) : (
@@ -303,7 +317,7 @@ export default function LiveGame({ team, gameInfo, onEndMatch, onAbandon, resume
           </div>
           <table className="lv-st">
             <thead>
-              <tr><th className="lv-st-l">#</th><th className="lv-st-l">Name</th><th>K</th><th>E</th><th>TA</th><th>K%</th><th>A</th><th>SA</th><th>SE</th><th>D</th><th>BS</th><th>BA</th></tr>
+              <tr><th className="lv-st-l">#</th><th className="lv-st-l">Name</th><th>K</th><th>E</th><th>TA</th><th>K%</th><th>A</th><th>BHE</th><th>SA</th><th>SE</th><th>R</th><th>D</th><th>DE</th><th>BS</th><th>BA</th><th>BE</th></tr>
             </thead>
             <tbody>
               {sortedRoster.map(p => {
@@ -318,11 +332,15 @@ export default function LiveGame({ team, gameInfo, onEndMatch, onAbandon, resume
                     <td>{s.attempts}</td>
                     <td style={{color:hcol(s.kills,s.errors,s.attempts),fontWeight:700}}>{s.attempts>0?n3(hp):'—'}</td>
                     <td>{s.assists}</td>
+                    <td style={{color:(s.ball_handling_errors||0)>0?'#f85149':'inherit'}}>{s.ball_handling_errors||0}</td>
                     <td>{s.aces}</td>
                     <td style={{color:s.serve_errors>0?'#f85149':'inherit'}}>{s.serve_errors}</td>
+                    <td>{s.receives||0}</td>
                     <td>{s.digs}</td>
+                    <td style={{color:(s.digging_errors||0)>0?'#f85149':'inherit'}}>{s.digging_errors||0}</td>
                     <td>{s.blocks}</td>
                     <td>{s.block_assists}</td>
+                    <td style={{color:(s.blocking_errors||0)>0?'#f85149':'inherit'}}>{s.blocking_errors||0}</td>
                   </tr>
                 );
               })}
@@ -365,8 +383,9 @@ export default function LiveGame({ team, gameInfo, onEndMatch, onAbandon, resume
 function ActBtn({ a, err, fid, fk, onClick, count = 0 }) {
   const [fl,setFl]=useState(false); const pk=useRef(fk);
   useEffect(()=>{if(fk!==pk.current&&fid===a.key){setFl(true);const t=setTimeout(()=>setFl(false),150);pk.current=fk;return()=>clearTimeout(t);}pk.current=fk;},[fk,fid,a.key]);
+  const flClass = fl ? (err ? 'lv-ab-fl-err' : 'lv-ab-fl-ok') : '';
   return (
-    <button className={`lv-ab ${err?'lv-ab-err':'lv-ab-ok'} ${a.big?'lv-ab-big':''} ${fl?'lv-ab-fl':''}`} onClick={onClick}>
+    <button className={`lv-ab ${err?'lv-ab-err':'lv-ab-ok'} ${flClass}`} onClick={onClick}>
       {count > 0 && <span className={`lv-ab-badge ${err?'lv-ab-badge-err':''}`}>{count}</span>}
       <span className="lv-ab-a">{a.abbr}</span>
       <span className="lv-ab-l">{a.label}</span>

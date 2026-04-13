@@ -13,6 +13,34 @@ function formatGameLabel(g, short = false) {
   return `vs ${g.opponent} · ${date}${result}`;
 }
 
+// Sortable column header
+function SortTh({ col, sortCol, sortDir, onSort, left, noArrow, style, children }) {
+  const active = !noArrow && sortCol === col;
+  const arrow = active ? (sortDir === 'desc' ? ' ↓' : ' ↑') : '';
+  return (
+    <th
+      onClick={() => onSort(col)}
+      style={{
+        padding: left ? '10px 8px' : '10px 4px',
+        textAlign: left ? 'left' : 'center',
+        fontWeight: 600,
+        whiteSpace: 'nowrap',
+        cursor: 'pointer',
+        userSelect: 'none',
+        color: active ? 'var(--text)' : 'var(--text-secondary)',
+        background: active ? 'rgba(88,166,255,0.07)' : 'transparent',
+        transition: 'color 0.12s, background 0.12s',
+        ...style,
+      }}
+      onMouseEnter={e => { if (!active) e.currentTarget.style.background = 'rgba(128,128,128,0.08)'; }}
+      onMouseLeave={e => { e.currentTarget.style.background = active ? 'rgba(88,166,255,0.07)' : 'transparent'; }}
+    >
+      {children}
+      {arrow && <span style={{ fontSize: 10, opacity: 0.65, marginLeft: 2 }}>{arrow}</span>}
+    </th>
+  );
+}
+
 export default function AveragesTab({ players, playerGameStats, completedGames, teamId, onSelectPlayer, onSelectPlayerGame }) {
   const { teams } = useData();
   const team = teams.find(t => t.id === teamId);
@@ -21,10 +49,11 @@ export default function AveragesTab({ players, playerGameStats, completedGames, 
   const [scope, setScope] = useState('all'); // 'all' | 'league'
   const [selectedGameId, setSelectedGameId] = useState(null);
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [sortCol, setSortCol] = useState(null);   // null = jersey order
+  const [sortDir, setSortDir] = useState('desc'); // 'desc' | 'asc'
 
   const dropdownRef = useRef(null);
 
-  // Close dropdown on outside click
   useEffect(() => {
     if (!dropdownOpen) return;
     function onMouseDown(e) {
@@ -34,16 +63,13 @@ export default function AveragesTab({ players, playerGameStats, completedGames, 
     return () => document.removeEventListener('mousedown', onMouseDown);
   }, [dropdownOpen]);
 
-  // Games for this team, sorted most recent first
   const teamGames = useMemo(
     () => sortedCompleted((completedGames || []).filter(g => g.team_id === teamId)),
     [completedGames, teamId]
   );
   const leagueGames = useMemo(() => teamGames.filter(g => g.is_league), [teamGames]);
-
   const selectedGame = selectedGameId ? teamGames.find(g => g.id === selectedGameId) : null;
 
-  // Build the set of game IDs to filter stats by
   const scopedGameIds = useMemo(() => {
     if (selectedGameId) return new Set([selectedGameId]);
     const src = scope === 'league' ? leagueGames : teamGames;
@@ -59,7 +85,7 @@ export default function AveragesTab({ players, playerGameStats, completedGames, 
 
   function handleScopeChange(newScope) {
     setScope(newScope);
-    setSelectedGameId(null); // reset game selector when toggling scope
+    setSelectedGameId(null);
   }
 
   function handleSelectGame(gameId) {
@@ -67,27 +93,74 @@ export default function AveragesTab({ players, playerGameStats, completedGames, 
     setDropdownOpen(false);
   }
 
+  function handleSort(col) {
+    if (col === 'player') {
+      setSortCol(null); // always reset to jersey order
+    } else {
+      if (sortCol === col) {
+        setSortDir(d => d === 'desc' ? 'asc' : 'desc');
+      } else {
+        setSortCol(col); setSortDir('desc');
+      }
+    }
+  }
+
   function getPlayerStats(player) {
     const stats = scopedStats.filter(s => s.player_id === player.id);
     if (stats.length === 0) return null;
-    const sp  = stats.reduce((a, s) => a + (s.sets_played  || 0), 0);
-    const k   = stats.reduce((a, s) => a + (s.kills        || 0), 0);
-    const e   = stats.reduce((a, s) => a + (s.errors       || 0), 0);
-    const att = stats.reduce((a, s) => a + (s.attempts     || 0), 0);
-    const ast = stats.reduce((a, s) => a + (s.assists      || 0), 0);
-    const sa  = stats.reduce((a, s) => a + (s.aces         || 0), 0);
-    const se  = stats.reduce((a, s) => a + (s.serve_errors || 0), 0);
-    const digs = stats.reduce((a, s) => a + (s.digs        || 0), 0);
-    const bs  = stats.reduce((a, s) => a + (s.blocks       || 0), 0);
-    const ba  = stats.reduce((a, s) => a + (s.block_assists|| 0), 0);
+    const sp   = stats.reduce((a, s) => a + (s.sets_played   || 0), 0);
+    const k    = stats.reduce((a, s) => a + (s.kills         || 0), 0);
+    const e    = stats.reduce((a, s) => a + (s.errors        || 0), 0);
+    const att  = stats.reduce((a, s) => a + (s.attempts      || 0), 0);
+    const ast  = stats.reduce((a, s) => a + (s.assists       || 0), 0);
+    const sa   = stats.reduce((a, s) => a + (s.aces          || 0), 0);
+    const se   = stats.reduce((a, s) => a + (s.serve_errors  || 0), 0);
+    const digs = stats.reduce((a, s) => a + (s.digs          || 0), 0);
+    const bs   = stats.reduce((a, s) => a + (s.blocks        || 0), 0);
+    const ba   = stats.reduce((a, s) => a + (s.block_assists || 0), 0);
     return { sp, k, e, att, ast, sa, se, digs, bs, ba, h: hpct(k, e, att) };
   }
 
-  const dropdownLabel = 'Select Game';
+  // Build sorted player+stats pairs — recalculates whenever filter or sort changes
+  const sortedRows = useMemo(() => {
+    const rows = teamPlayers.map(p => ({ p, a: getPlayerStats(p) }));
+
+    if (!sortCol) return rows; // default: jersey order
+
+    return [...rows].sort(({ p: pa, a: aa }, { p: pb, a: ab }) => {
+      // Player name (alphabetical)
+      if (sortCol === 'player') {
+        const cmp = pa.name.localeCompare(pb.name);
+        return sortDir === 'asc' ? cmp : -cmp;
+      }
+
+      // K%: push no-attempts rows to bottom regardless of direction
+      if (sortCol === 'h') {
+        const ha = aa && aa.att > 0 ? aa.h : null;
+        const hb = ab && ab.att > 0 ? ab.h : null;
+        if (ha === null && hb === null) return 0;
+        if (ha === null) return 1;
+        if (hb === null) return -1;
+        return sortDir === 'desc' ? hb - ha : ha - hb;
+      }
+
+      // Players with no stats at all → always bottom
+      if (!aa && !ab) return 0;
+      if (!aa) return 1;
+      if (!ab) return -1;
+
+      const va = aa[sortCol] ?? 0;
+      const vb = ab[sortCol] ?? 0;
+      return sortDir === 'desc' ? vb - va : va - vb;
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sortCol, sortDir, teamPlayers, scopedStats]);
+
+  const sortProps = { sortCol, sortDir, onSort: handleSort };
 
   return (
     <div>
-      {/* ── Controls row — all three buttons grouped center ── */}
+      {/* ── Controls row ── */}
       <div className="avg-scope-bar avg-scope-bar-center">
         <div className="avg-seg" ref={dropdownRef} style={{ position: 'relative' }}>
           <button
@@ -108,62 +181,60 @@ export default function AveragesTab({ players, playerGameStats, completedGames, 
 
           <div className="avg-seg-sep" />
 
-          {/* Game selector — styled as a segment button */}
           <div className="avg-game-sel">
-          <button
-            type="button"
-            className={`avg-game-sel-btn${dropdownOpen ? ' open' : ''}${selectedGameId ? ' avg-game-sel-btn-active' : ''}`}
-            onClick={() => setDropdownOpen(v => !v)}
-          >
-            <span className="avg-game-sel-label">{dropdownLabel}</span>
-            <span className={`avg-game-sel-chevron${dropdownOpen ? ' open' : ''}`}>▾</span>
-          </button>
+            <button
+              type="button"
+              className={`avg-game-sel-btn${dropdownOpen ? ' open' : ''}${selectedGameId ? ' avg-game-sel-btn-active' : ''}`}
+              onClick={() => setDropdownOpen(v => !v)}
+            >
+              <span className="avg-game-sel-label">Select Game</span>
+              <span className={`avg-game-sel-chevron${dropdownOpen ? ' open' : ''}`}>▾</span>
+            </button>
 
-          {dropdownOpen && (
-            <div className="avg-game-sel-menu">
-              {/* Season Average (reset) */}
-              <button
-                type="button"
-                className={`avg-game-sel-item avg-game-sel-reset${!selectedGameId ? ' selected' : ''}`}
-                onClick={() => handleSelectGame(null)}
-              >
-                <span>Season Average</span>
-                {!selectedGameId && <span className="avg-game-sel-check">✓</span>}
-              </button>
-
-              {teamGames.length > 0 && <div className="avg-game-sel-divider" />}
-
-              {teamGames.map(g => (
+            {dropdownOpen && (
+              <div className="avg-game-sel-menu">
                 <button
-                  key={g.id}
                   type="button"
-                  className={`avg-game-sel-item${selectedGameId === g.id ? ' selected' : ''}`}
-                  onClick={() => handleSelectGame(g.id)}
+                  className={`avg-game-sel-item avg-game-sel-reset${!selectedGameId ? ' selected' : ''}`}
+                  onClick={() => handleSelectGame(null)}
                 >
-                  <div className="avg-game-sel-item-main">
-                    <span className="avg-game-sel-opp">vs {g.opponent}</span>
-                    <span className="avg-game-sel-date">
-                      {new Date(g.game_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                      {g.home_sets != null && g.away_sets != null && ` · ${g.home_sets}–${g.away_sets}`}
-                    </span>
-                  </div>
-                  <div className="avg-game-sel-item-right">
-                    {g.result && (
-                      <span className={`game-result-badge ${g.result === 'W' ? 'win' : 'loss'}`}>{g.result}</span>
-                    )}
-                    {selectedGameId === g.id && <span className="avg-game-sel-check">✓</span>}
-                  </div>
+                  <span>Season Average</span>
+                  {!selectedGameId && <span className="avg-game-sel-check">✓</span>}
                 </button>
-              ))}
 
-              {teamGames.length === 0 && (
-                <div className="avg-game-sel-empty">No completed games</div>
-              )}
-            </div>
-          )}
-          </div>{/* end avg-game-sel */}
-        </div>{/* end avg-seg */}
-      </div>{/* end avg-scope-bar */}
+                {teamGames.length > 0 && <div className="avg-game-sel-divider" />}
+
+                {teamGames.map(g => (
+                  <button
+                    key={g.id}
+                    type="button"
+                    className={`avg-game-sel-item${selectedGameId === g.id ? ' selected' : ''}`}
+                    onClick={() => handleSelectGame(g.id)}
+                  >
+                    <div className="avg-game-sel-item-main">
+                      <span className="avg-game-sel-opp">vs {g.opponent}</span>
+                      <span className="avg-game-sel-date">
+                        {new Date(g.game_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                        {g.home_sets != null && g.away_sets != null && ` · ${g.home_sets}–${g.away_sets}`}
+                      </span>
+                    </div>
+                    <div className="avg-game-sel-item-right">
+                      {g.result && (
+                        <span className={`game-result-badge ${g.result === 'W' ? 'win' : 'loss'}`}>{g.result}</span>
+                      )}
+                      {selectedGameId === g.id && <span className="avg-game-sel-check">✓</span>}
+                    </div>
+                  </button>
+                ))}
+
+                {teamGames.length === 0 && (
+                  <div className="avg-game-sel-empty">No completed games</div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
 
       {/* ── Active game filter label ── */}
       {selectedGame && (
@@ -178,7 +249,7 @@ export default function AveragesTab({ players, playerGameStats, completedGames, 
         </div>
       )}
 
-      {/* ── Meta line (when no game selected) ── */}
+      {/* ── Meta line ── */}
       {!selectedGame && (
         <div className="avg-scope-meta" style={{ marginBottom: 8 }}>
           Based on {gameCount} {scope === 'league' ? 'league' : 'total'} {gameCount === 1 ? 'game' : 'games'}
@@ -194,23 +265,22 @@ export default function AveragesTab({ players, playerGameStats, completedGames, 
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
               <thead>
                 <tr style={{ background: 'rgba(128,128,128,0.07)', textAlign: 'center' }}>
-                  <th style={{ padding: '10px 8px', textAlign: 'left', fontWeight: 600, whiteSpace: 'nowrap' }}>Player</th>
-                  <th style={{ padding: '10px 4px', fontWeight: 600 }}>SP</th>
-                  <th style={{ padding: '10px 4px', fontWeight: 600 }}>K</th>
-                  <th style={{ padding: '10px 4px', fontWeight: 600 }}>E</th>
-                  <th style={{ padding: '10px 4px', fontWeight: 600 }}>TA</th>
-                  <th style={{ padding: '10px 4px', fontWeight: 600 }}>K%</th>
-                  <th style={{ padding: '10px 4px', fontWeight: 600 }}>A</th>
-                  <th style={{ padding: '10px 4px', fontWeight: 600 }}>SA</th>
-                  <th style={{ padding: '10px 4px', fontWeight: 600 }}>SE</th>
-                  <th style={{ padding: '10px 4px', fontWeight: 600 }}>Digs</th>
-                  <th style={{ padding: '10px 4px', fontWeight: 600 }}>BS</th>
-                  <th style={{ padding: '10px 4px', fontWeight: 600 }}>BA</th>
+                  <SortTh col="player" left noArrow {...sortProps}>Player</SortTh>
+                  <SortTh col="sp"   {...sortProps}>SP</SortTh>
+                  <SortTh col="k"    {...sortProps}>K</SortTh>
+                  <SortTh col="e"    {...sortProps}>E</SortTh>
+                  <SortTh col="att"  {...sortProps}>TA</SortTh>
+                  <SortTh col="h"    {...sortProps}>K%</SortTh>
+                  <SortTh col="ast"  {...sortProps}>A</SortTh>
+                  <SortTh col="sa"   {...sortProps}>SA</SortTh>
+                  <SortTh col="se"   {...sortProps}>SE</SortTh>
+                  <SortTh col="digs" {...sortProps}>Digs</SortTh>
+                  <SortTh col="bs"   {...sortProps}>BS</SortTh>
+                  <SortTh col="ba"   {...sortProps}>BA</SortTh>
                 </tr>
               </thead>
               <tbody>
-                {teamPlayers.map(p => {
-                  const a = getPlayerStats(p);
+                {sortedRows.map(({ p, a }) => {
                   const dash = <span style={{ color: 'var(--text-muted)' }}>—</span>;
                   const handleRowClick = () => {
                     if (selectedGame && onSelectPlayerGame) {

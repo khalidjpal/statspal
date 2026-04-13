@@ -7,10 +7,15 @@ import { useToast } from '../../contexts/ToastContext';
 const STAT_FIELDS = ['sets_played', 'kills', 'errors', 'attempts', 'assists', 'aces', 'serve_errors', 'digs', 'blocks', 'block_assists'];
 const STAT_LABELS = { sets_played: 'SP', kills: 'K', errors: 'E', attempts: 'TA', assists: 'A', aces: 'SA', serve_errors: 'SE', digs: 'Digs', blocks: 'BS', block_assists: 'BA' };
 
+// SP = 0 or blank → player is locked (no other stats allowed)
+function spLocked(playerStats) {
+  return !(playerStats?.sets_played > 0);
+}
+
 export default function ManualResultModal({ game, team, players, existingStats, onClose, onSaved }) {
   const { addToast } = useToast();
   const teamPlayers = sortByJersey(players.filter(p => p.team_id === team.id));
-  const isNew = !game.result; // No result yet = entering fresh
+  const isNew = !game.result;
 
   const [result, setResult] = useState(game.result || 'W');
   const [homeSets, setHomeSets] = useState(game.home_sets || 3);
@@ -34,7 +39,6 @@ export default function ManualResultModal({ game, team, players, existingStats, 
   const [tab, setTab] = useState('score');
   const [validationError, setValidationError] = useState('');
 
-  // Update set scores array when set counts change
   useEffect(() => {
     const count = homeSets + awaySets;
     if (count > 0 && count !== setScores.length) {
@@ -54,43 +58,111 @@ export default function ManualResultModal({ game, team, players, existingStats, 
     });
   }
 
-  function updateStat(playerId, field, value) {
-    setStats(prev => ({
-      ...prev,
-      [playerId]: { ...prev[playerId], [field]: Math.max(0, parseInt(value) || 0) },
-    }));
+  function updateStat(playerId, field, rawValue, rIdx, tableEl) {
+    const num = Math.max(0, parseInt(rawValue) || 0);
+
+    if (field === 'sets_played') {
+      const wasLocked = spLocked(stats[playerId]);
+      const nowLocked = num === 0;
+
+      if (!wasLocked && nowLocked) {
+        // Going from unlocked → locked: clear all non-SP stats
+        setStats(prev => ({
+          ...prev,
+          [playerId]: {
+            sets_played: 0,
+            kills: 0, aces: 0, digs: 0, assists: 0, blocks: 0,
+            errors: 0, attempts: 0, block_assists: 0, serve_errors: 0,
+          },
+        }));
+      } else {
+        setStats(prev => ({
+          ...prev,
+          [playerId]: { ...prev[playerId], sets_played: num },
+        }));
+
+        // Unlocking for the first time: auto-focus K field
+        if (wasLocked && num > 0) {
+          setTimeout(() => {
+            const kInput = tableEl?.querySelector(`input[data-row="${rIdx}"][data-col="1"]`);
+            if (kInput) { kInput.focus(); kInput.select?.(); }
+          }, 0);
+        }
+      }
+    } else {
+      setStats(prev => ({
+        ...prev,
+        [playerId]: { ...prev[playerId], [field]: num },
+      }));
+    }
   }
 
   function handleStatKeyDown(e, rowIdx, colIdx) {
     const key = e.key;
     if (key !== 'ArrowUp' && key !== 'ArrowDown' && key !== 'ArrowLeft' && key !== 'ArrowRight') return;
     e.preventDefault();
+
     const rows = teamPlayers.length;
     const cols = STAT_FIELDS.length;
     let r = rowIdx, c = colIdx;
-    if (key === 'ArrowUp')    r = Math.max(0, r - 1);
-    if (key === 'ArrowDown')  r = Math.min(rows - 1, r + 1);
-    if (key === 'ArrowLeft')  { if (c > 0) c--; else if (r > 0) { r--; c = cols - 1; } }
-    if (key === 'ArrowRight') { if (c < cols - 1) c++; else if (r < rows - 1) { r++; c = 0; } }
+    const rowLocked = (ri) => spLocked(stats[teamPlayers[ri].id]);
+
+    if (key === 'ArrowDown') {
+      if (c === 0) {
+        // SP column: always move to next row's SP
+        if (r < rows - 1) r++;
+      } else {
+        // Skip locked rows
+        let nr = r + 1;
+        while (nr < rows && rowLocked(nr)) nr++;
+        if (nr < rows) r = nr;
+      }
+    } else if (key === 'ArrowUp') {
+      if (c === 0) {
+        if (r > 0) r--;
+      } else {
+        let nr = r - 1;
+        while (nr >= 0 && rowLocked(nr)) nr--;
+        if (nr >= 0) r = nr;
+      }
+    } else if (key === 'ArrowRight') {
+      if (rowLocked(r)) {
+        // Locked row: only SP accessible, Right wraps to next row's SP
+        if (r < rows - 1) { r++; c = 0; }
+      } else if (c < cols - 1) {
+        c++;
+      } else if (r < rows - 1) {
+        r++; c = 0;
+      }
+    } else if (key === 'ArrowLeft') {
+      if (rowLocked(r)) {
+        // Locked row on SP: Left wraps to prev row's last accessible col
+        if (r > 0) {
+          r--;
+          c = rowLocked(r) ? 0 : cols - 1;
+        }
+      } else if (c > 0) {
+        c--;
+      } else if (r > 0) {
+        r--;
+        c = rowLocked(r) ? 0 : cols - 1;
+      }
+    }
+
     const next = e.currentTarget.closest('table')?.querySelector(`input[data-row="${r}"][data-col="${c}"]`);
-    if (next) { next.focus(); next.select?.(); }
+    if (next && !next.disabled) { next.focus(); next.select?.(); }
   }
 
   async function handleSave() {
     setValidationError('');
     for (const p of teamPlayers) {
       const s = stats[p.id];
-      if (!s) continue;
+      if (!s || spLocked(s)) continue;
       const err = validateStats(s.kills, s.errors, s.attempts);
-      if (err) {
-        setValidationError(`${p.name}: ${err}`);
-        setTab('stats');
-        return;
-      }
+      if (err) { setValidationError(`${p.name}: ${err}`); setTab('stats'); return; }
     }
     setSaving(true);
 
-    // Update the completed game record
     const updRes = await supabase.from('completed_games').update({
       result,
       home_sets: homeSets,
@@ -99,10 +171,10 @@ export default function ManualResultModal({ game, team, players, existingStats, 
     }).eq('id', game.id);
     if (updRes.error) addToast('Failed to update game: ' + updRes.error.message);
 
-    // Delete existing stats and insert new ones — cleanStatRow strips DB-only fields
     await supabase.from('player_game_stats').delete().eq('game_id', game.id);
 
     const rows = teamPlayers
+      .filter(p => !spLocked(stats[p.id]))
       .map(p => ({
         game_id: game.id,
         player_id: p.id,
@@ -121,23 +193,15 @@ export default function ManualResultModal({ game, team, players, existingStats, 
       addToast('Result saved', 'success');
     }
 
-    // If league game, auto-sync standings
     if (game.is_league && game.league_team_id) {
-      // Find the "us" league team
       const { data: leagueTeams } = await supabase.from('league_teams')
-        .select('*')
-        .eq('team_id', team.id)
-        .eq('is_us', true);
+        .select('*').eq('team_id', team.id).eq('is_us', true);
       const usTeam = leagueTeams?.[0];
-
       if (usTeam) {
-        // Remove any existing league result for this game date + opponent combo
         await supabase.from('league_results').delete()
           .eq('team_id', team.id)
           .or(`and(home_league_team_id.eq.${usTeam.id},away_league_team_id.eq.${game.league_team_id}),and(home_league_team_id.eq.${game.league_team_id},away_league_team_id.eq.${usTeam.id})`)
           .eq('game_date', game.game_date);
-
-        // Determine home/away based on location
         const isHome = (game.location || 'Home') === 'Home';
         await supabase.from('league_results').insert({
           team_id: team.id,
@@ -238,33 +302,63 @@ export default function ManualResultModal({ game, team, players, existingStats, 
                 </tr>
               </thead>
               <tbody>
-                {teamPlayers.map((p, rIdx) => (
-                  <tr key={p.id} style={{ borderTop: '1px solid var(--border)' }}>
-                    <td style={{ padding: '4px 8px', fontWeight: 600, fontSize: 12, whiteSpace: 'nowrap', color: 'var(--text)' }}>{p.name}</td>
-                    {STAT_FIELDS.map((f, cIdx) => {
-                      const v = stats[p.id]?.[f] || 0;
-                      return (
-                        <td key={f} style={{ padding: '2px' }}>
-                          <input
-                            type="number"
-                            min={0}
-                            inputMode="numeric"
-                            value={v === 0 ? '' : v}
-                            placeholder="0"
-                            data-row={rIdx}
-                            data-col={cIdx}
-                            onChange={e => updateStat(p.id, f, e.target.value)}
-                            onKeyDown={e => handleStatKeyDown(e, rIdx, cIdx)}
-                            className="stat-cell-input"
-                            style={{ width: 42, textAlign: 'center', padding: '4px 2px', borderRadius: 4, fontSize: 12 }}
-                          />
-                        </td>
-                      );
-                    })}
-                  </tr>
-                ))}
+                {teamPlayers.map((p, rIdx) => {
+                  const locked = spLocked(stats[p.id]);
+                  return (
+                    <tr key={p.id} style={{ borderTop: '1px solid var(--border)', opacity: locked ? 0.75 : 1, transition: 'opacity 0.15s' }}>
+                      <td style={{ padding: '4px 8px', fontWeight: 600, fontSize: 12, whiteSpace: 'nowrap', color: 'var(--text)' }}>
+                        {p.name}
+                        {locked && (
+                          <div style={{ fontSize: 9, fontWeight: 400, color: 'var(--text-secondary)', marginTop: 1, letterSpacing: '0.02em' }}>
+                            Enter SP to unlock
+                          </div>
+                        )}
+                      </td>
+                      {STAT_FIELDS.map((f, cIdx) => {
+                        const isSP = f === 'sets_played';
+                        const fieldLocked = !isSP && locked;
+                        const v = stats[p.id]?.[f] || 0;
+                        return (
+                          <td key={f} style={{ padding: '2px' }}>
+                            <input
+                              type="number"
+                              min={0}
+                              inputMode="numeric"
+                              value={v === 0 ? '' : v}
+                              placeholder={fieldLocked ? '—' : ''}
+                              disabled={fieldLocked}
+                              data-row={rIdx}
+                              data-col={cIdx}
+                              onChange={e => updateStat(p.id, f, e.target.value, rIdx, e.target.closest('table'))}
+                              onKeyDown={e => handleStatKeyDown(e, rIdx, cIdx)}
+                              onFocus={e => e.target.select?.()}
+                              className="stat-cell-input"
+                              style={{
+                                width: 42,
+                                textAlign: 'center',
+                                padding: '4px 2px',
+                                borderRadius: 4,
+                                fontSize: 12,
+                                transition: 'opacity 0.15s, background 0.15s',
+                                ...(fieldLocked ? {
+                                  opacity: 0.3,
+                                  background: 'rgba(0,0,0,0.2)',
+                                  cursor: 'not-allowed',
+                                  color: 'var(--text-secondary)',
+                                } : {}),
+                              }}
+                            />
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
+            <div style={{ marginTop: 8, fontSize: 11, color: 'var(--text-secondary)' }}>
+              Players without SP entered will not be saved.
+            </div>
           </div>
         )}
 

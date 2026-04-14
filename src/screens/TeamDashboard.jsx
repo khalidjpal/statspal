@@ -48,6 +48,7 @@ export default function TeamDashboard({ team, onBack, onPreGame, onStartLive, on
 
   const isAdmin = currentUser?.role === 'admin';
   const isCoachOrAdmin = isAdmin || currentUser?.role === 'coach';
+  const isTeamAdmin = isAdmin || (currentUser?.role === 'coach' && (currentUser?.teamIds || []).includes(team.id));
 
   const teamColor = team.color || '#1a3a8f';
   const headerBg = `linear-gradient(135deg, ${teamColor}, ${teamColor}CC)`;
@@ -103,8 +104,8 @@ export default function TeamDashboard({ team, onBack, onPreGame, onStartLive, on
             </button>
           )}
 
-          {/* Admin */}
-          {isAdmin && (
+          {/* Admin — coaches see this for their own team, admins always see it */}
+          {isTeamAdmin && (
             <button
               className="app-header-btn"
               onClick={() => onTeamAdmin(team)}
@@ -153,7 +154,7 @@ export default function TeamDashboard({ team, onBack, onPreGame, onStartLive, on
               team={team}
               leagueTeams={leagueTeams}
               leagueResults={leagueResults}
-              isAdmin={isAdmin}
+              isAdmin={isTeamAdmin}
               refresh={refresh}
             />
           )}
@@ -173,7 +174,7 @@ export default function TeamDashboard({ team, onBack, onPreGame, onStartLive, on
               players={players}
               accounts={accounts}
               coachAssignments={coachAssignments}
-              isAdmin={isAdmin}
+              isAdmin={isTeamAdmin}
               currentUser={currentUser}
               refresh={refresh}
               onSelectPlayer={openPlayer}

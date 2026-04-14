@@ -5,7 +5,7 @@ import CoachLoginModal from './modals/CoachLoginModal';
 import PlayerLoginModal from './modals/PlayerLoginModal';
 import CredsModal from './modals/CredsModal';
 
-export default function AccountsTab({ team, accounts, players, refresh }) {
+export default function AccountsTab({ team, accounts, players, refresh, hideCoachLogin = false }) {
   const [showCoach, setShowCoach] = useState(false);
   const [showPlayer, setShowPlayer] = useState(false);
   const [editAccount, setEditAccount] = useState(null);
@@ -21,10 +21,12 @@ export default function AccountsTab({ team, accounts, players, refresh }) {
   return (
     <div>
       <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-        <button className="modal-btn-primary" onClick={() => setShowCoach(true)} style={{ flex: 1 }}>
-          + Coach Login
-        </button>
-        <button className="modal-btn-primary" onClick={() => setShowPlayer(true)} style={{ flex: 1 }}>
+        {!hideCoachLogin && (
+          <button className="modal-btn-primary" onClick={() => setShowCoach(true)} style={{ flex: 1 }}>
+            + Coach Login
+          </button>
+        )}
+        <button className="modal-btn-primary" onClick={() => setShowPlayer(true)} style={{ flex: hideCoachLogin ? undefined : 1 }}>
           + Player Login
         </button>
       </div>

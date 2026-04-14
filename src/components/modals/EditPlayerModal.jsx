@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { supabase } from '../../supabase';
 import { mkInit } from '../../utils/colors';
+import { gradesFor } from '../../utils/schoolType';
 
 function luminance(hex) {
   const r = parseInt(hex.slice(1, 3), 16) / 255;
@@ -13,7 +14,7 @@ function contrastText(hex) {
   return luminance(hex) > 0.35 ? '#000000' : '#ffffff';
 }
 
-export default function EditPlayerModal({ player, onClose, onSaved }) {
+export default function EditPlayerModal({ player, schoolType = 'high_school', onClose, onSaved }) {
   const [name,     setName]     = useState(player.name || '');
   const [position, setPosition] = useState(player.position || '');
   const [jersey,   setJersey]   = useState(player.jersey_number || '');
@@ -21,6 +22,8 @@ export default function EditPlayerModal({ player, onClose, onSaved }) {
   const [grade,    setGrade]    = useState(player.grade || '');
   const [bgColor,  setBgColor]  = useState(player.colors?.bg || '#1a3a8f');
   const [saving,   setSaving]   = useState(false);
+
+  const grades = gradesFor(schoolType);
 
   async function handleSave() {
     if (!name.trim()) return;
@@ -67,10 +70,7 @@ export default function EditPlayerModal({ player, onClose, onSaved }) {
         <label>Grade</label>
         <select value={grade} onChange={e => setGrade(e.target.value)}>
           <option value="">Select...</option>
-          <option>Freshman</option>
-          <option>Sophomore</option>
-          <option>Junior</option>
-          <option>Senior</option>
+          {grades.map(g => <option key={g}>{g}</option>)}
         </select>
 
         <label>Badge Color</label>

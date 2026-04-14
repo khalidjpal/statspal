@@ -176,6 +176,7 @@ export default function RosterTab({ team, players, accounts = [], coachAssignmen
         <AddPlayerModal
           teamId={team.id}
           playerCount={teamPlayers.length}
+          schoolType={team.school_type || 'high_school'}
           onClose={() => setShowAdd(false)}
           onSaved={() => { setShowAdd(false); refresh(); }}
         />

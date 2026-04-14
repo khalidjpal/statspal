@@ -277,6 +277,7 @@ export default function TeamAdmin({ team, onBack, onExport }) {
         <AddPlayerModal
           teamId={team.id}
           playerCount={teamPlayers.length}
+          schoolType={team.school_type || 'high_school'}
           onClose={() => setShowAddPlayer(false)}
           onSaved={() => { setShowAddPlayer(false); refresh(); }}
         />
@@ -285,6 +286,7 @@ export default function TeamAdmin({ team, onBack, onExport }) {
       {editingPlayer && (
         <EditPlayerModal
           player={editingPlayer}
+          schoolType={team.school_type || 'high_school'}
           onClose={() => setEditingPlayer(null)}
           onSaved={() => { setEditingPlayer(null); refresh(); }}
         />

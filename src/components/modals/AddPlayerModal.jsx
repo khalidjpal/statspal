@@ -1,14 +1,17 @@
 import { useState } from 'react';
 import { supabase } from '../../supabase';
 import { pColors, mkInit } from '../../utils/colors';
+import { gradesFor } from '../../utils/schoolType';
 
-export default function AddPlayerModal({ teamId, playerCount, onClose, onSaved }) {
-  const [name, setName] = useState('');
+export default function AddPlayerModal({ teamId, playerCount, schoolType = 'high_school', onClose, onSaved }) {
+  const [name,     setName]     = useState('');
   const [position, setPosition] = useState('');
-  const [jersey, setJersey] = useState('');
-  const [height, setHeight] = useState('');
-  const [grade, setGrade] = useState('');
-  const [saving, setSaving] = useState(false);
+  const [jersey,   setJersey]   = useState('');
+  const [height,   setHeight]   = useState('');
+  const [grade,    setGrade]    = useState('');
+  const [saving,   setSaving]   = useState(false);
+
+  const grades = gradesFor(schoolType);
 
   async function handleSave() {
     if (!name.trim()) return;
@@ -48,14 +51,11 @@ export default function AddPlayerModal({ teamId, playerCount, onClose, onSaved }
         <label>Jersey #</label>
         <input value={jersey} onChange={e => setJersey(e.target.value)} placeholder="e.g. 12" />
         <label>Height</label>
-        <input value={height} onChange={e => setHeight(e.target.value)} placeholder="e.g. 5'10" />
+        <input value={height} onChange={e => setHeight(e.target.value)} placeholder="e.g. 5'10&quot;" />
         <label>Grade</label>
         <select value={grade} onChange={e => setGrade(e.target.value)}>
           <option value="">Select...</option>
-          <option>Freshman</option>
-          <option>Sophomore</option>
-          <option>Junior</option>
-          <option>Senior</option>
+          {grades.map(g => <option key={g}>{g}</option>)}
         </select>
         <div className="modal-actions">
           <button className="modal-btn-cancel" onClick={onClose}>Cancel</button>

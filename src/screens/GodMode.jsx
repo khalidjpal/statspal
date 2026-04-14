@@ -532,6 +532,7 @@ export default function GodMode({ onBack }) {
         <AddPlayerModal
           teamId={addingPlayerTeam.id}
           playerCount={players.filter(p => p.team_id === addingPlayerTeam.id).length}
+          schoolType={addingPlayerTeam.school_type || 'high_school'}
           onClose={() => setAddingPlayerTeam(null)}
           onSaved={() => { setAddingPlayerTeam(null); refresh(); }}
         />
@@ -540,6 +541,7 @@ export default function GodMode({ onBack }) {
       {editingPlayer && (
         <EditPlayerModal
           player={editingPlayer}
+          schoolType={teams.find(t => t.id === editingPlayer.team_id)?.school_type || 'high_school'}
           onClose={() => setEditingPlayer(null)}
           onSaved={() => { setEditingPlayer(null); refresh(); }}
         />

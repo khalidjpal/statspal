@@ -17,8 +17,11 @@ export default function Login() {
 
   return (
     <div className="login-container">
-      <div className="login-logo">🏐</div>
-      <div className="login-title">StatPal</div>
+      <div className="login-title">
+        <span className="login-title-main">Volleyball</span>
+        <span className="login-title-accent">Pal</span>
+      </div>
+      <div className="login-subtitle">Rotation planning &amp; stats tracking</div>
 
       <div className="login-card">
         {error && <div className="login-error">{error}</div>}

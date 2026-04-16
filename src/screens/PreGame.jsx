@@ -1,13 +1,16 @@
 import { useState, useEffect } from 'react';
 import { useData } from '../contexts/DataContext';
+import { useVolleyballPal } from '../contexts/VolleyballPalContext';
 import { sortedUpcoming, sortByJersey } from '../utils/sort';
 import PlayerBadge from '../components/PlayerBadge';
 import { getActiveSession } from '../utils/liveSession';
+import { IconLink } from '../components/Icons';
 
 const STEPS = ['setup', 'format', 'lineup'];
 
 export default function PreGame({ team, scheduledGame, onBack, onStartGame, onResumeGame }) {
   const { players, schedule, refresh } = useData();
+  const { activeSession: rpSession, isLinked } = useVolleyballPal();
   const [step, setStep] = useState('setup');
   const [opponent, setOpponent] = useState(scheduledGame?.opponent || '');
   const [location, setLocation] = useState(scheduledGame?.location || 'Home');
@@ -17,6 +20,10 @@ export default function PreGame({ team, scheduledGame, onBack, onStartGame, onRe
   const [bestOf, setBestOf] = useState(5);
   const [selectedPlayers, setSelectedPlayers] = useState([]);
   const [activeSession, setActiveSession] = useState(null);
+
+  // Is RotationPal currently tracking this team's lineup?
+  const rpSessionForThisTeam =
+    rpSession && rpSession.teamId === team.id && isLinked(team.id) ? rpSession : null;
 
   useEffect(() => { refresh(); }, [refresh]);
 
@@ -58,6 +65,16 @@ export default function PreGame({ team, scheduledGame, onBack, onStartGame, onRe
     );
   }
 
+  function applyRotationPalLineup() {
+    if (!rpSessionForThisTeam) return;
+    const lineup = rpSessionForThisTeam.baseLineup || {};
+    const onCourt = new Set(Object.values(lineup).filter(Boolean));
+    const matched = teamPlayers.filter(p => onCourt.has(p.id));
+    if (matched.length > 0) {
+      setSelectedPlayers(matched.map(p => p.id));
+    }
+  }
+
   function handleStart() {
     if (!opponent.trim()) return;
     const roster = teamPlayers.filter(p => selectedPlayers.includes(p.id));
@@ -94,6 +111,19 @@ export default function PreGame({ team, scheduledGame, onBack, onStartGame, onRe
       </div>
 
       <div style={{ padding: '16px 20px', maxWidth: 600, margin: '0 auto' }}>
+        {/* RotationPal-linked banner */}
+        {rpSessionForThisTeam && step === 'setup' && (
+          <div className="vp-pregame-hint">
+            <IconLink size={16} />
+            <div>
+              RotationPal is tracking this team
+              {' '}({rpSessionForThisTeam.ourScore ?? 0}-{rpSessionForThisTeam.oppScore ?? 0},
+              set {rpSessionForThisTeam.setNum ?? 1})
+            </div>
+            <button onClick={applyRotationPalLineup}>Use lineup</button>
+          </div>
+        )}
+
         {/* Resume active session banner */}
         {activeSession && onResumeGame && step === 'setup' && (
           <button

@@ -6,7 +6,11 @@ import { supabase } from './supabase';
 import { completeSession } from './utils/liveSession';
 import { cleanStatRow, hasStats } from './utils/stats';
 import Login from './screens/Login';
+import Landing from './screens/Landing';
+import RotationPalPrompt from './screens/RotationPalPrompt';
+import RotationPalScreen from './screens/RotationPal';
 import Hub from './screens/Hub';
+import { useVolleyballPal } from './contexts/VolleyballPalContext';
 import TeamDashboard from './screens/TeamDashboard';
 import PreGame from './screens/PreGame';
 import LiveGame from './screens/LiveGame';
@@ -21,6 +25,8 @@ import PlayerGameDetailPlayer from './screens/PlayerGameDetailPlayer';
 
 const SCREENS = {
   LOGIN: 'login',
+  LANDING: 'landing',
+  ROTATIONPAL: 'rotationpal',
   HUB: 'hub',
   TEAM_DASHBOARD: 'team_dashboard',
   PRE_GAME: 'pre_game',
@@ -39,6 +45,7 @@ export default function App() {
   const { currentUser } = useAuth();
   const { teams, refresh } = useData();
   const { addToast } = useToast();
+  const { links } = useVolleyballPal();
 
   const [screen, setScreen] = useState(SCREENS.LOGIN);
   const [selectedTeam, setSelectedTeam] = useState(null);
@@ -49,43 +56,55 @@ export default function App() {
   const [resumeSession, setResumeSession] = useState(null);
   const [autoRouted, setAutoRouted] = useState(false);
 
+  // RotationPal entry state.
+  //   showRpPrompt — show the "Use X roster?" confirm dialog.
+  //   activeEntry  — resolved entry: { mode: 'linked'|'standalone', teamId? }
+  const [showRpPrompt, setShowRpPrompt] = useState(false);
+  const [activeEntry, setActiveEntry] = useState(null);
+
   const nav = useCallback((s) => setScreen(s), []);
+
+  const linkedTeamList = teams.filter(t => links[t.id]);
+
+  function openStatsPal() {
+    nav(SCREENS.HUB);
+  }
+
+  function openRotationPal() {
+    if (linkedTeamList.length === 0) {
+      setActiveEntry({ mode: 'standalone' });
+      nav(SCREENS.ROTATIONPAL);
+    } else {
+      setShowRpPrompt(true);
+    }
+  }
+
+  function handleRpPromptConfirm(choice) {
+    setShowRpPrompt(false);
+    setActiveEntry(choice);
+    nav(SCREENS.ROTATIONPAL);
+  }
 
   const getHomeScreen = () => {
     if (!currentUser) return SCREENS.LOGIN;
     if (currentUser.role === 'player') return SCREENS.PLAYER_HOME;
-    return SCREENS.HUB;
+    return SCREENS.LANDING;
   };
 
   const effectiveScreen = !currentUser ? SCREENS.LOGIN : screen;
 
-  // Auto-route on login: players and single-team coaches go straight to team dashboard
+  // Auto-route on login: send everyone to the VolleyballPal landing (except
+  // player accounts, which have their own dedicated home).
   if (currentUser && screen === SCREENS.LOGIN) {
     const home = getHomeScreen();
     if (screen !== home) setScreen(home);
   }
 
-  // After data loads, auto-route single-team users directly to dashboard
+  // We deliberately do NOT auto-route single-team coaches/players into a
+  // specific module anymore — the VolleyballPal landing is the intended first
+  // stop so users can pick between RotationPal and StatsPal.
   if (currentUser && !autoRouted && teams.length > 0) {
-    const role = currentUser.role;
-    const tids = currentUser.teamIds || [];
-    if (role === 'coach' && tids.length === 1) {
-      const t = teams.find(tm => tm.id === tids[0]);
-      if (t) {
-        setSelectedTeam(t);
-        setScreen(SCREENS.TEAM_DASHBOARD);
-        setAutoRouted(true);
-      }
-    } else if (role === 'player' && tids.length === 1) {
-      const t = teams.find(tm => tm.id === tids[0]);
-      if (t) {
-        setSelectedTeam(t);
-        setScreen(SCREENS.TEAM_DASHBOARD);
-        setAutoRouted(true);
-      }
-    } else {
-      setAutoRouted(true);
-    }
+    setAutoRouted(true);
   }
 
   // Reset auto-route flag on logout
@@ -318,8 +337,39 @@ export default function App() {
     case SCREENS.LOGIN:
       return <Login />;
 
+    case SCREENS.LANDING:
+      return (
+        <>
+          <Landing
+            onOpenStatsPal={openStatsPal}
+            onOpenRotationPal={openRotationPal}
+          />
+          {showRpPrompt && (
+            <RotationPalPrompt
+              linkedTeams={linkedTeamList}
+              onCancel={() => setShowRpPrompt(false)}
+              onConfirm={handleRpPromptConfirm}
+            />
+          )}
+        </>
+      );
+
+    case SCREENS.ROTATIONPAL:
+      return (
+        <RotationPalScreen
+          entry={activeEntry}
+          onHome={() => { setActiveEntry(null); nav(SCREENS.LANDING); }}
+        />
+      );
+
     case SCREENS.HUB:
-      return <Hub onSelectTeam={handleSelectTeam} onGodMode={handleGodMode} />;
+      return (
+        <Hub
+          onSelectTeam={handleSelectTeam}
+          onGodMode={handleGodMode}
+          onHome={() => nav(SCREENS.LANDING)}
+        />
+      );
 
     case SCREENS.TEAM_DASHBOARD:
       return (

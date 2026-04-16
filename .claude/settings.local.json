@@ -16,7 +16,13 @@
       "Bash(grep -E \"\\\\.\\(jsx|js\\)$\")",
       "Bash(netstat -ano)",
       "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:5173/)",
-      "Bash(curl -s -o /dev/null -w \"Dev server: %{http_code}\\\\n\" http://localhost:5173/)"
+      "Bash(curl -s -o /dev/null -w \"Dev server: %{http_code}\\\\n\" http://localhost:5173/)",
+      "Bash(node scripts/scope-rotationpal-css.mjs C:/Users/kpal/rotationpal/src/index.css src/modules/rotationpal/rotationpal.css)",
+      "Bash(cp C:/Users/kpal/rotationpal/src/formations.js C:/Users/kpal/statspal/src/modules/rotationpal/formations.js)",
+      "Bash(cp C:/Users/kpal/rotationpal/src/serveReceive.js C:/Users/kpal/statspal/src/modules/rotationpal/serveReceive.js)",
+      "Read(//dev/**)",
+      "Bash(sed -i '2509,2618d' C:/Users/kpal/statspal/src/modules/rotationpal/RotationPalApp.jsx)",
+      "Bash(cat C:\\\\\\\\Users\\\\\\\\kpal\\\\\\\\AppData\\\\\\\\Local\\\\\\\\Temp\\\\\\\\claude\\\\\\\\C--Users-kpal-statspal\\\\\\\\c4906a4c-ad29-46b7-b17e-fca08e7b4736\\\\\\\\tasks\\\\\\\\bqd8klphp.output)"
     ]
   }
 }

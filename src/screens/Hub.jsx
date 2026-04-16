@@ -1,10 +1,12 @@
 import { useEffect, useMemo } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useData } from '../contexts/DataContext';
+import { useVolleyballPal } from '../contexts/VolleyballPalContext';
 import { teamRecord } from '../utils/stats';
 import { useState } from 'react';
 import CreateTeamModal from '../components/modals/CreateTeamModal';
 import ManageAccountsModal from '../components/modals/ManageAccountsModal';
+import { IconHome, IconLink, IconUsers, IconBolt } from '../components/Icons';
 
 function formatNextGame(game) {
   if (!game) return null;
@@ -26,9 +28,10 @@ function getStreak(games) {
   return { type: last, count };
 }
 
-export default function Hub({ onSelectTeam, onGodMode }) {
+export default function Hub({ onSelectTeam, onGodMode, onHome }) {
   const { currentUser, logout } = useAuth();
   const { teams, completedGames, schedule, leagueTeams, refresh, loading } = useData();
+  const { isLinked, activeSession } = useVolleyballPal();
   const [showCreateTeam, setShowCreateTeam] = useState(false);
   const [showAccounts, setShowAccounts] = useState(false);
 
@@ -79,7 +82,12 @@ export default function Hub({ onSelectTeam, onGodMode }) {
     <div className="hub-container">
       <header className="hub-header">
         <div className="hub-header-left">
-          <h1 className="hub-logo">StatPal</h1>
+          {onHome && (
+            <button className="hub-home-btn" onClick={onHome} title="VolleyballPal home" aria-label="Home">
+              <IconHome size={18} />
+            </button>
+          )}
+          <h1 className="hub-logo">StatsPal</h1>
         </div>
         <div className="hub-user-info">
           <span className="hub-user-name">{currentUser?.name}</span>
@@ -92,10 +100,10 @@ export default function Hub({ onSelectTeam, onGodMode }) {
         {isAdmin && (
           <div className="hub-admin-bar">
             <button className="hub-admin-pill" onClick={() => setShowAccounts(true)}>
-              <span className="hub-admin-pill-icon">👤</span> Accounts
+              <span className="hub-admin-pill-icon"><IconUsers size={14} /></span> Accounts
             </button>
             <button className="hub-admin-pill hub-admin-pill-god" onClick={onGodMode}>
-              <span className="hub-admin-pill-icon">⚡</span> God Mode
+              <span className="hub-admin-pill-icon"><IconBolt size={14} /></span> God Mode
             </button>
           </div>
         )}
@@ -125,7 +133,22 @@ export default function Hub({ onSelectTeam, onGodMode }) {
 
                   {/* Team identity */}
                   <div className="hub-banner-identity">
-                    <div className="hub-banner-name">{team.name}</div>
+                    <div className="hub-banner-name">
+                      {team.name}
+                      {isLinked(team.id) && (
+                        <span
+                          className="vp-sync-badge"
+                          style={{ marginLeft: 10 }}
+                          title="Linked with RotationPal"
+                        >
+                          {activeSession?.teamId === team.id && (
+                            <span className="vp-sync-badge-dot" />
+                          )}
+                          <IconLink size={12} />
+                          Linked
+                        </span>
+                      )}
+                    </div>
                     {meta && <div className="hub-banner-meta">{meta}</div>}
                     {team.season && <div className="hub-banner-season">{team.season}</div>}
                   </div>

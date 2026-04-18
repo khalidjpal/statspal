@@ -137,7 +137,7 @@ export default function LiveGame({ team, gameInfo, onEndMatch, onAbandon, resume
 
   function isSetDone(hs,as){const t=currentSet>=bestOf?15:25;return(hs>=t||as>=t)&&Math.abs(hs-as)>=2;}
   function pushHistory(e){setHistory(p=>[...p,e]);}
-  function addPoint(side){const nh=side==='home'?homeScore+1:homeScore,na=side==='away'?awayScore+1:awayScore;pushHistory({type:'point',homeScore,awayScore,currentSet,homeSetsWon,awaySetsWon});setHomeScore(nh);setAwayScore(na);if(isSetDone(nh,na)){const hw=nh>na,nhs=homeSetsWon+(hw?1:0),nas=awaySetsWon+(hw?0:1);setPendingSet({home:nh,away:na,nhs,nas});if(nhs>=setsToWin||nas>=setsToWin){setSets(p=>[...p,{home:nh,away:na}]);setHomeSetsWon(nhs);setAwaySetsWon(nas);setShowMatchOver(true);}else{setShowSetOver(true);}}}
+  function addPoint(side){const nh=side==='home'?homeScore+1:homeScore,na=side==='away'?awayScore+1:awayScore;pushHistory({type:'point',homeScore,awayScore,currentSet,homeSetsWon,awaySetsWon});setHomeScore(nh);setAwayScore(na);if(isSetDone(nh,na)){const hw=nh>na,nhs=homeSetsWon+(hw?1:0),nas=awaySetsWon+(hw?0:1);setPendingSet({home:nh,away:na,nhs,nas});if(nhs>=setsToWin||nas>=setsToWin){finishSet(nh,na,nhs,nas);}else{setShowSetOver(true);}}}
   function subPoint(side){if(side==='home'&&homeScore>0){pushHistory({type:'point',homeScore,awayScore,currentSet,homeSetsWon,awaySetsWon});setHomeScore(homeScore-1);}if(side==='away'&&awayScore>0){pushHistory({type:'point',homeScore,awayScore,currentSet,homeSetsWon,awaySetsWon});setAwayScore(awayScore-1);}}
   function confirmEndSet(){if(!pendingSet)return;finishSet(pendingSet.home,pendingSet.away,pendingSet.nhs,pendingSet.nas);setPendingSet(null);setShowSetOver(false);}
   function keepPlaying(){setPendingSet(null);setShowSetOver(false);}

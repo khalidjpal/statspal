@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useData } from '../contexts/DataContext';
+import { useToast } from '../contexts/ToastContext';
 import { supabase } from '../supabase';
+import { levelsFor } from '../utils/schoolType';
 import AccountsTab from '../components/AccountsTab';
-import EditTeamModal from '../components/modals/EditTeamModal';
 import AddPlayerModal from '../components/modals/AddPlayerModal';
 import EditPlayerModal from '../components/modals/EditPlayerModal';
 import QuickLoginModal from '../components/modals/QuickLoginModal';
@@ -13,18 +14,18 @@ import ManualResultModal from '../components/modals/ManualResultModal';
 import GodStatsModal from '../components/modals/GodStatsModal';
 import { sortByJersey, sortedCompleted, sortedUpcoming } from '../utils/sort';
 
-export default function TeamAdmin({ team, onBack, onExport }) {
+export default function TeamDetails({ team, onBack, onExport }) {
   const { currentUser } = useAuth();
   const { accounts, players, schedule, completedGames, playerGameStats, leagueTeams, refresh } = useData();
+  const { addToast } = useToast();
 
   const isCoach = currentUser?.role === 'coach';
 
   const TABS = isCoach
-    ? ['Roster', 'Schedule', 'Stats', 'Accounts']
-    : ['Accounts', 'Schedule', 'Roster', 'Stats', 'Danger'];
+    ? ['Roster', 'Schedule', 'Team Info', 'Stats', 'Accounts']
+    : ['Team Info', 'Roster', 'Schedule', 'Stats', 'Accounts', 'Danger'];
 
-  const [tab, setTab] = useState(isCoach ? 'Roster' : 'Accounts');
-  const [showEditTeam, setShowEditTeam] = useState(false);
+  const [tab, setTab] = useState(isCoach ? 'Roster' : 'Team Info');
 
   // Roster state
   const [showAddPlayer, setShowAddPlayer] = useState(false);
@@ -39,7 +40,25 @@ export default function TeamAdmin({ team, onBack, onExport }) {
   // Stats state
   const [editStatsGame, setEditStatsGame] = useState(null);
 
+  // Team Info form state — mirrors the old EditTeamModal
+  const [name, setName]             = useState(team.name || '');
+  const [gender, setGender]         = useState(team.gender || 'Girls');
+  const [schoolType, setSchoolType] = useState(team.school_type || 'high_school');
+  const [level, setLevel]           = useState(team.level || 'Varsity');
+  const [color, setColor]           = useState(team.color || '#1a3a8f');
+  const [season, setSeason]         = useState(team.season || '2025-26');
+  const [leagueName, setLeagueName] = useState(team.league_name || '');
+  const [savingInfo, setSavingInfo] = useState(false);
+
   useEffect(() => { refresh(); }, [refresh]);
+
+  const levels = levelsFor(schoolType);
+
+  function handleSchoolTypeChange(val) {
+    setSchoolType(val);
+    const newLevels = levelsFor(val);
+    if (!newLevels.includes(level)) setLevel(newLevels[0]);
+  }
 
   const myLeagueTeams = (leagueTeams || []).filter(lt => lt.team_id === team.id);
   const teamSchedule = sortedUpcoming(schedule.filter(s => s.team_id === team.id));
@@ -80,6 +99,33 @@ export default function TeamAdmin({ team, onBack, onExport }) {
     onBack();
   }
 
+  async function saveTeamInfo() {
+    if (!name.trim()) return;
+    setSavingInfo(true);
+    const payload = {
+      name: name.trim(),
+      gender,
+      level,
+      color,
+      season,
+      league_name: leagueName.trim() || null,
+      school_type: schoolType,
+    };
+    let { error } = await supabase.from('teams').update(payload).eq('id', team.id);
+    if (error && error.message?.includes('school_type')) {
+      const { school_type: _st, ...rest } = payload;
+      const res = await supabase.from('teams').update(rest).eq('id', team.id);
+      error = res.error;
+    }
+    setSavingInfo(false);
+    if (error) {
+      addToast('Failed to save: ' + error.message);
+    } else {
+      addToast('Team info saved', 'success');
+      refresh();
+    }
+  }
+
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg)' }}>
       <div style={{
@@ -90,19 +136,13 @@ export default function TeamAdmin({ team, onBack, onExport }) {
           <button onClick={onBack} style={{ background: 'rgba(255,255,255,0.15)', color: '#fff', padding: '6px 14px', borderRadius: 8, fontSize: 13, fontWeight: 600, border: 'none', cursor: 'pointer' }}>
             Back
           </button>
-          {/* Edit Team and Export are admin-only — coaches manage their team but don't edit its identity */}
-          {!isCoach && (
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button onClick={() => setShowEditTeam(true)} style={{ background: 'rgba(255,255,255,0.15)', color: '#fff', padding: '6px 14px', borderRadius: 8, fontSize: 13, fontWeight: 600, border: 'none', cursor: 'pointer' }}>
-                Edit Team
-              </button>
-              <button onClick={() => onExport(team)} style={{ background: 'rgba(255,255,255,0.15)', color: '#fff', padding: '6px 14px', borderRadius: 8, fontSize: 13, fontWeight: 600, border: 'none', cursor: 'pointer' }}>
-                Export
-              </button>
-            </div>
+          {!isCoach && onExport && (
+            <button onClick={() => onExport(team)} style={{ background: 'rgba(255,255,255,0.15)', color: '#fff', padding: '6px 14px', borderRadius: 8, fontSize: 13, fontWeight: 600, border: 'none', cursor: 'pointer' }}>
+              Export
+            </button>
           )}
         </div>
-        <h1 style={{ fontSize: 20, fontWeight: 700, marginTop: 8 }}>{team.name} — {isCoach ? 'Team Admin' : 'Admin'}</h1>
+        <h1 style={{ fontSize: 20, fontWeight: 700, marginTop: 8 }}>{team.name} — Team Details</h1>
       </div>
 
       <div className="page-wrap">
@@ -114,6 +154,66 @@ export default function TeamAdmin({ team, onBack, onExport }) {
             </button>
           ))}
         </div>
+
+        {tab === 'Team Info' && (
+          <div className="card" style={{ maxWidth: 520 }}>
+            <label>Team Name</label>
+            <input value={name} onChange={e => setName(e.target.value)} />
+
+            <label>School Type</label>
+            <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+              {[
+                { val: 'high_school',   label: 'High School' },
+                { val: 'middle_school', label: 'Middle School' },
+              ].map(opt => (
+                <button
+                  key={opt.val}
+                  type="button"
+                  onClick={() => handleSchoolTypeChange(opt.val)}
+                  style={{
+                    flex: 1, padding: '9px 0', borderRadius: 8, fontSize: 13, fontWeight: 600,
+                    border: schoolType === opt.val ? '2px solid var(--accent)' : '1px solid var(--border)',
+                    background: schoolType === opt.val ? 'var(--accent)' : 'var(--surface)',
+                    color: schoolType === opt.val ? '#fff' : 'var(--text)',
+                    cursor: 'pointer',
+                  }}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+
+            <label>Gender</label>
+            <select value={gender} onChange={e => setGender(e.target.value)}>
+              <option>Girls</option>
+              <option>Boys</option>
+              <option>Coed</option>
+            </select>
+
+            <label>Level</label>
+            <select value={level} onChange={e => setLevel(e.target.value)}>
+              {levels.map(l => <option key={l}>{l}</option>)}
+            </select>
+
+            <label>Team Color</label>
+            <input type="color" value={color} onChange={e => setColor(e.target.value)} />
+
+            <label>Season</label>
+            <input value={season} onChange={e => setSeason(e.target.value)} />
+
+            <label>League Name</label>
+            <input value={leagueName} onChange={e => setLeagueName(e.target.value)} />
+
+            <button
+              className="modal-btn-primary"
+              onClick={saveTeamInfo}
+              disabled={savingInfo || !name.trim()}
+              style={{ width: '100%', marginTop: 16 }}
+            >
+              {savingInfo ? 'Saving...' : 'Save'}
+            </button>
+          </div>
+        )}
 
         {tab === 'Accounts' && (
           <AccountsTab
@@ -269,10 +369,6 @@ export default function TeamAdmin({ team, onBack, onExport }) {
       </div>
 
       {/* Modals */}
-      {showEditTeam && (
-        <EditTeamModal team={team} onClose={() => setShowEditTeam(false)} onSaved={() => { setShowEditTeam(false); refresh(); onBack(); }} />
-      )}
-
       {showAddPlayer && (
         <AddPlayerModal
           teamId={team.id}

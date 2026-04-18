@@ -10,7 +10,7 @@ const STEPS = ['setup', 'format', 'lineup'];
 
 export default function PreGame({ team, scheduledGame, onBack, onStartGame, onResumeGame }) {
   const { players, schedule, refresh } = useData();
-  const { activeSession: rpSession, isLinked } = useVolleyballPal();
+  const { activeSession: rpSession } = useVolleyballPal();
   const [step, setStep] = useState('setup');
   const [opponent, setOpponent] = useState(scheduledGame?.opponent || '');
   const [location, setLocation] = useState(scheduledGame?.location || 'Home');
@@ -23,7 +23,7 @@ export default function PreGame({ team, scheduledGame, onBack, onStartGame, onRe
 
   // Is RotationPal currently tracking this team's lineup?
   const rpSessionForThisTeam =
-    rpSession && rpSession.teamId === team.id && isLinked(team.id) ? rpSession : null;
+    rpSession && rpSession.teamId === team.id ? rpSession : null;
 
   useEffect(() => { refresh(); }, [refresh]);
 

@@ -6,7 +6,7 @@ import { teamRecord } from '../utils/stats';
 import { useState } from 'react';
 import CreateTeamModal from '../components/modals/CreateTeamModal';
 import ManageAccountsModal from '../components/modals/ManageAccountsModal';
-import { IconHome, IconLink, IconUsers, IconBolt } from '../components/Icons';
+import { IconHome, IconUsers, IconBolt } from '../components/Icons';
 
 function formatNextGame(game) {
   if (!game) return null;
@@ -31,7 +31,7 @@ function getStreak(games) {
 export default function Hub({ onSelectTeam, onGodMode, onHome }) {
   const { currentUser, logout } = useAuth();
   const { teams, completedGames, schedule, leagueTeams, refresh, loading } = useData();
-  const { isLinked, activeSession } = useVolleyballPal();
+  const { activeSession } = useVolleyballPal();
   const [showCreateTeam, setShowCreateTeam] = useState(false);
   const [showAccounts, setShowAccounts] = useState(false);
 
@@ -135,17 +135,14 @@ export default function Hub({ onSelectTeam, onGodMode, onHome }) {
                   <div className="hub-banner-identity">
                     <div className="hub-banner-name">
                       {team.name}
-                      {isLinked(team.id) && (
+                      {activeSession?.teamId === team.id && (
                         <span
                           className="vp-sync-badge"
                           style={{ marginLeft: 10 }}
-                          title="Linked with RotationPal"
+                          title="Live in RotationPal"
                         >
-                          {activeSession?.teamId === team.id && (
-                            <span className="vp-sync-badge-dot" />
-                          )}
-                          <IconLink size={12} />
-                          Linked
+                          <span className="vp-sync-badge-dot" />
+                          Live
                         </span>
                       )}
                     </div>

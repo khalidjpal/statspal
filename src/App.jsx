@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useAuth } from './contexts/AuthContext';
 import { useData } from './contexts/DataContext';
 import { useToast } from './contexts/ToastContext';
@@ -6,18 +6,17 @@ import { supabase } from './supabase';
 import { completeSession } from './utils/liveSession';
 import { cleanStatRow, hasStats } from './utils/stats';
 import Login from './screens/Login';
-import Landing from './screens/Landing';
-import RotationPalPrompt from './screens/RotationPalPrompt';
+import TeamPicker from './screens/TeamPicker';
+import TeamLaunch from './screens/TeamLaunch';
 import RotationPalScreen from './screens/RotationPal';
 import Hub from './screens/Hub';
-import { useVolleyballPal } from './contexts/VolleyballPalContext';
 import TeamDashboard from './screens/TeamDashboard';
 import PreGame from './screens/PreGame';
 import LiveGame from './screens/LiveGame';
 import GameSummary from './screens/GameSummary';
 import PlayerDetail from './screens/PlayerDetail';
 import PlayerGameDetail from './screens/PlayerGameDetail';
-import TeamAdmin from './screens/TeamAdmin';
+import TeamDetails from './screens/TeamDetails';
 import Export from './screens/Export';
 import GodMode from './screens/GodMode';
 import PlayerHome from './screens/PlayerHome';
@@ -26,6 +25,8 @@ import PlayerGameDetailPlayer from './screens/PlayerGameDetailPlayer';
 const SCREENS = {
   LOGIN: 'login',
   LANDING: 'landing',
+  TEAM_PICKER: 'team_picker',
+  TEAM_LAUNCH: 'team_launch',
   ROTATIONPAL: 'rotationpal',
   HUB: 'hub',
   TEAM_DASHBOARD: 'team_dashboard',
@@ -34,18 +35,19 @@ const SCREENS = {
   GAME_SUMMARY: 'game_summary',
   PLAYER_DETAIL: 'player_detail',
   PLAYER_GAME_DETAIL: 'player_game_detail',
-  TEAM_ADMIN: 'team_admin',
+  TEAM_DETAILS: 'team_details',
   EXPORT: 'export',
   GOD_MODE: 'god_mode',
   PLAYER_HOME: 'player_home',
   PLAYER_GAME_DETAIL_PLAYER: 'player_game_detail_player',
 };
 
+const lastTeamKey = (userId) => `vp-last-team:${userId}`;
+
 export default function App() {
   const { currentUser } = useAuth();
   const { teams, refresh } = useData();
   const { addToast } = useToast();
-  const { links } = useVolleyballPal();
 
   const [screen, setScreen] = useState(SCREENS.LOGIN);
   const [selectedTeam, setSelectedTeam] = useState(null);
@@ -55,61 +57,91 @@ export default function App() {
   const [scheduledGameForLive, setScheduledGameForLive] = useState(null);
   const [resumeSession, setResumeSession] = useState(null);
   const [autoRouted, setAutoRouted] = useState(false);
+  const [initialDataLoaded, setInitialDataLoaded] = useState(false);
 
-  // RotationPal entry state.
-  //   showRpPrompt — show the "Use X roster?" confirm dialog.
-  //   activeEntry  — resolved entry: { mode: 'linked'|'standalone', teamId? }
-  const [showRpPrompt, setShowRpPrompt] = useState(false);
+  // Resolved RotationPal entry. StatsPal teams are always linked (roster
+  // auto-read from the `players` table); standalone is only used for the
+  // `sa-*` local-only lineup records, which still live outside this screen.
   const [activeEntry, setActiveEntry] = useState(null);
 
   const nav = useCallback((s) => setScreen(s), []);
 
-  const linkedTeamList = teams.filter(t => links[t.id]);
+  const isAdmin = currentUser?.role === 'admin';
+  const userTeamIds = currentUser?.teamIds || [];
+  const candidateTeams = isAdmin
+    ? teams
+    : teams.filter(t => userTeamIds.includes(t.id));
 
-  function openStatsPal() {
-    nav(SCREENS.HUB);
-  }
-
-  function openRotationPal() {
-    if (linkedTeamList.length === 0) {
-      setActiveEntry({ mode: 'standalone' });
-      nav(SCREENS.ROTATIONPAL);
+  function launchStatsPalForTeam(team) {
+    setSelectedTeam(team);
+    if (currentUser?.role === 'player') {
+      nav(SCREENS.PLAYER_HOME);
     } else {
-      setShowRpPrompt(true);
+      nav(SCREENS.TEAM_DASHBOARD);
     }
   }
 
-  function handleRpPromptConfirm(choice) {
-    setShowRpPrompt(false);
-    setActiveEntry(choice);
+  function launchRotationPalForTeam(team) {
+    setSelectedTeam(team);
+    setActiveEntry({ mode: 'linked', teamId: team.id });
     nav(SCREENS.ROTATIONPAL);
   }
 
-  const getHomeScreen = () => {
-    if (!currentUser) return SCREENS.LOGIN;
-    if (currentUser.role === 'player') return SCREENS.PLAYER_HOME;
-    return SCREENS.LANDING;
-  };
+  function launchTeamDetailsForTeam(team) {
+    setSelectedTeam(team);
+    nav(SCREENS.TEAM_DETAILS);
+  }
+
+  function handleSelectTeamFromPicker(team) {
+    setSelectedTeam(team);
+    if (currentUser?.id) {
+      try {
+        localStorage.setItem(lastTeamKey(currentUser.id), String(team.id));
+      } catch { /* localStorage unavailable — remembered team just won't persist */ }
+    }
+    nav(SCREENS.TEAM_LAUNCH);
+  }
+
+  function handleSwitchTeam() {
+    nav(SCREENS.TEAM_PICKER);
+  }
 
   const effectiveScreen = !currentUser ? SCREENS.LOGIN : screen;
 
-  // Auto-route on login: send everyone to the VolleyballPal landing (except
-  // player accounts, which have their own dedicated home).
-  if (currentUser && screen === SCREENS.LOGIN) {
-    const home = getHomeScreen();
-    if (screen !== home) setScreen(home);
-  }
+  // Load Supabase data once on login so auto-routing can see `teams`.
+  const currentUserId = currentUser?.id;
+  useEffect(() => {
+    if (!currentUserId) return;
+    let cancelled = false;
+    refresh().finally(() => { if (!cancelled) setInitialDataLoaded(true); });
+    return () => { cancelled = true; };
+  }, [currentUserId, refresh]);
 
-  // We deliberately do NOT auto-route single-team coaches/players into a
-  // specific module anymore — the VolleyballPal landing is the intended first
-  // stop so users can pick between RotationPal and StatsPal.
-  if (currentUser && !autoRouted && teams.length > 0) {
+  // Reset flags on logout.
+  if (!currentUser && autoRouted) setAutoRouted(false);
+  if (!currentUser && initialDataLoaded) setInitialDataLoaded(false);
+
+  // Post-login auto-route: admin → picker always. Others → remembered team if
+  // still accessible, else picker (2+ teams) or direct launch (1 team).
+  if (currentUser && !autoRouted && initialDataLoaded && screen === SCREENS.LOGIN) {
+    let rememberedTeam = null;
+    try {
+      const stored = localStorage.getItem(lastTeamKey(currentUser.id));
+      if (stored) rememberedTeam = candidateTeams.find(t => String(t.id) === stored) || null;
+    } catch { /* localStorage unavailable — fall through */ }
+
+    if (isAdmin || candidateTeams.length === 0) {
+      setScreen(SCREENS.TEAM_PICKER);
+    } else if (candidateTeams.length === 1) {
+      setSelectedTeam(candidateTeams[0]);
+      setScreen(SCREENS.TEAM_LAUNCH);
+    } else if (rememberedTeam) {
+      setSelectedTeam(rememberedTeam);
+      setScreen(SCREENS.TEAM_LAUNCH);
+    } else {
+      setScreen(SCREENS.TEAM_PICKER);
+    }
     setAutoRouted(true);
-  }
-
-  // Reset auto-route flag on logout
-  if (!currentUser && autoRouted) {
-    setAutoRouted(false);
   }
 
   // Route guard: players cannot access live tracking screens
@@ -317,9 +349,9 @@ export default function App() {
     setResumeSession(null);
   }
 
-  function handleTeamAdmin(team) {
+  function handleTeamDetails(team) {
     setSelectedTeam(team);
-    nav(SCREENS.TEAM_ADMIN);
+    nav(SCREENS.TEAM_DETAILS);
   }
 
   function handleExport(team) {
@@ -337,28 +369,33 @@ export default function App() {
     case SCREENS.LOGIN:
       return <Login />;
 
-    case SCREENS.LANDING:
+    case SCREENS.TEAM_PICKER:
       return (
-        <>
-          <Landing
-            onOpenStatsPal={openStatsPal}
-            onOpenRotationPal={openRotationPal}
-          />
-          {showRpPrompt && (
-            <RotationPalPrompt
-              linkedTeams={linkedTeamList}
-              onCancel={() => setShowRpPrompt(false)}
-              onConfirm={handleRpPromptConfirm}
-            />
-          )}
-        </>
+        <TeamPicker
+          availableTeams={candidateTeams}
+          onSelectTeam={handleSelectTeamFromPicker}
+          onGodMode={isAdmin ? handleGodMode : null}
+        />
+      );
+
+    case SCREENS.TEAM_LAUNCH:
+      return (
+        <TeamLaunch
+          team={selectedTeam}
+          canSwitchTeam={isAdmin || candidateTeams.length > 1}
+          canOpenTeamDetails={isAdmin || currentUser?.role === 'coach'}
+          onSwitchTeam={handleSwitchTeam}
+          onLaunchStatsPal={() => launchStatsPalForTeam(selectedTeam)}
+          onLaunchRotationPal={() => launchRotationPalForTeam(selectedTeam)}
+          onOpenTeamDetails={() => launchTeamDetailsForTeam(selectedTeam)}
+        />
       );
 
     case SCREENS.ROTATIONPAL:
       return (
         <RotationPalScreen
           entry={activeEntry}
-          onHome={() => { setActiveEntry(null); nav(SCREENS.LANDING); }}
+          onHome={() => { setActiveEntry(null); nav(SCREENS.TEAM_LAUNCH); }}
         />
       );
 
@@ -367,7 +404,7 @@ export default function App() {
         <Hub
           onSelectTeam={handleSelectTeam}
           onGodMode={handleGodMode}
-          onHome={() => nav(SCREENS.LANDING)}
+          onHome={() => nav(SCREENS.TEAM_PICKER)}
         />
       );
 
@@ -375,13 +412,13 @@ export default function App() {
       return (
         <TeamDashboard
           team={selectedTeam}
-          onBack={() => nav(SCREENS.HUB)}
+          onBack={() => nav(SCREENS.TEAM_LAUNCH)}
           onSelectGame={handleSelectGame}
           onSelectPlayer={handleSelectPlayer}
           onPreGame={handlePreGame}
           onStartLive={handleStartLive}
           onResumeGame={handleResumeGame}
-          onTeamAdmin={() => handleTeamAdmin(selectedTeam)}
+          onTeamDetails={() => handleTeamDetails(selectedTeam)}
         />
       );
 
@@ -437,9 +474,9 @@ export default function App() {
         />
       );
 
-    case SCREENS.TEAM_ADMIN:
+    case SCREENS.TEAM_DETAILS:
       return (
-        <TeamAdmin
+        <TeamDetails
           team={selectedTeam}
           onBack={() => nav(SCREENS.TEAM_DASHBOARD)}
           onExport={handleExport}
@@ -450,14 +487,14 @@ export default function App() {
       return (
         <Export
           team={selectedTeam}
-          onBack={() => nav(SCREENS.TEAM_ADMIN)}
+          onBack={() => nav(SCREENS.TEAM_DETAILS)}
         />
       );
 
     case SCREENS.GOD_MODE:
       return (
         <GodMode
-          onBack={() => nav(SCREENS.HUB)}
+          onBack={() => nav(SCREENS.TEAM_PICKER)}
         />
       );
 

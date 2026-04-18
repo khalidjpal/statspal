@@ -14,7 +14,7 @@ import InboxModal from '../components/modals/InboxModal';
 
 const TABS = ['Schedule', 'Standings', 'Averages', 'Roster'];
 
-export default function TeamDashboard({ team, onBack, onPreGame, onStartLive, onResumeGame, onTeamAdmin }) {
+export default function TeamDashboard({ team, onBack, onPreGame, onStartLive, onResumeGame, onTeamDetails }) {
   const { currentUser } = useAuth();
   const data = useData();
   const { players, schedule, completedGames, playerGameStats, leagueTeams, leagueResults, accounts, coachAssignments, refresh } = data;
@@ -108,7 +108,7 @@ export default function TeamDashboard({ team, onBack, onPreGame, onStartLive, on
           {isTeamAdmin && (
             <button
               className="app-header-btn"
-              onClick={() => onTeamAdmin(team)}
+              onClick={() => onTeamDetails(team)}
               title="Admin"
             >
               ⚙

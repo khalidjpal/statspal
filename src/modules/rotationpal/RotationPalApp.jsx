@@ -193,7 +193,6 @@ export default function RotationPalApp({
   session,
   statsPalTeams = [],
   statsPalPlayers = [],
-  linkedTeamIds = [],
   entryMode = 'linked',
   onHome,
   onLogout,
@@ -205,7 +204,6 @@ export default function RotationPalApp({
   const refresh = () => setTick(t => t + 1)
 
   const isStandalone = entryMode === 'standalone'
-  const linkedSet = useMemo(() => new Set(linkedTeamIds), [linkedTeamIds])
 
   // Build a roster-per-team lookup (StatsPal players → RotationPal format).
   // Only populated in linked mode — standalone teams edit rosters directly.
@@ -224,19 +222,15 @@ export default function RotationPalApp({
   }, [statsPalPlayers, isStandalone])
 
   // Ensure a local RotationPal record exists for every team the user can see.
-  // In linked mode, push StatsPal's roster in. In standalone mode, leave the
-  // roster intact so the coach can edit it directly.
+  // In linked mode, push StatsPal's roster in — roles are derived from the
+  // StatsPal position on every sync, so edits to position in Team Details
+  // flow through without a separate override. Standalone teams edit rosters
+  // directly.
   useEffect(() => {
     for (const t of statsPalTeams) {
-      const rec = ensureTeamRecord(t, session?.username)
+      ensureTeamRecord(t, session?.username)
       if (isStandalone) continue
-      const latestRoster = rosterByTeamId[t.id] || []
-      const existingById = Object.fromEntries((rec.roster || []).map(p => [p.id, p]))
-      const merged = latestRoster.map(p => {
-        const prev = existingById[p.id]
-        return prev ? { ...p, role: prev.role || p.role } : p
-      })
-      saveRoster(t.id, merged)
+      saveRoster(t.id, rosterByTeamId[t.id] || [])
     }
   }, [statsPalTeams, rosterByTeamId, session?.username, isStandalone])
 
@@ -254,7 +248,6 @@ export default function RotationPalApp({
         {...headerProps}
         tick={tick}
         statsPalTeams={statsPalTeams}
-        linkedSet={linkedSet}
         isStandalone={isStandalone}
         onOpenTeam={(id) => setNav({ screen: 'teamHome', teamId: id })}
       />
@@ -312,7 +305,8 @@ export default function RotationPalApp({
     const team = getTeam(nav.teamId)
     const game = team ? (team.games || []).find(g => g.id === nav.gameId) : null
     if (!team || !game) { setNav({ screen: 'teams' }); return null }
-    const isTeamLinked = linkedSet.has(team.id)
+    // StatsPal teams are always linked; standalone teams never publish sessions.
+    const canPublish = !isStandalone
     screen = (
       <GameApp
         {...headerProps}
@@ -320,8 +314,8 @@ export default function RotationPalApp({
         team={team}
         game={game}
         onBack={() => { refresh(); setNav({ screen: 'schedule', teamId: team.id }) }}
-        onPublishSession={isTeamLinked ? onPublishSession : null}
-        onClearSession={isTeamLinked ? onClearSession : null}
+        onPublishSession={canPublish ? onPublishSession : null}
+        onClearSession={canPublish ? onClearSession : null}
       />
     )
   }
@@ -372,7 +366,7 @@ function HeaderBar({ session, onHome, onLogout, modeBadge, title, subtitle, left
 // ============================================================
 function MyTeamsView({
   session, onHome, onLogout, modeBadge,
-  onOpenTeam, statsPalTeams, linkedSet, isStandalone, tick,
+  onOpenTeam, statsPalTeams, isStandalone, tick,
 }) {
   // Pick up the latest RotationPal-local record for each team so we can
   // display game/formation counts.
@@ -425,7 +419,8 @@ function MyTeamsView({
           {teams.map(t => {
             const rosterCount = (t.roster || []).length
             const gameCount = (t.games || []).length
-            const linked = !isStandalone && linkedSet?.has(t.id)
+            // StatsPal teams are always linked; only sa-* standalone is unlinked.
+            const linked = !isStandalone
             return (
               <div
                 key={t.id}

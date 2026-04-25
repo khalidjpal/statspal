@@ -7,7 +7,7 @@ import '../modules/rotationpal/rotationpal.css';
 
 export default function RotationPalScreen({ entry, onHome }) {
   const { currentUser, logout } = useAuth();
-  const { teams, players } = useData();
+  const { teams, players, schedule } = useData();
   const { standaloneTeams, publishSession, clearSession } = useVolleyballPal();
 
   const isAdmin = currentUser?.role === 'admin';
@@ -45,6 +45,7 @@ export default function RotationPalScreen({ entry, onHome }) {
       session={session}
       statsPalTeams={effectiveTeams}
       statsPalPlayers={effectivePlayers}
+      statsPalSchedule={entry?.mode === 'standalone' ? [] : schedule}
       entryMode={entry?.mode || 'linked'}
       onHome={onHome}
       onLogout={logout}

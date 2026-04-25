@@ -83,7 +83,8 @@ export default function App() {
 
   function launchRotationPalForTeam(team) {
     setSelectedTeam(team);
-    setActiveEntry({ mode: 'linked', teamId: team.id });
+    // No teamId — all linked teams are accessible inside RotationPal itself.
+    setActiveEntry({ mode: 'linked' });
     nav(SCREENS.ROTATIONPAL);
   }
 

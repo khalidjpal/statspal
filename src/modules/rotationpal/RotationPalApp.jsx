@@ -193,17 +193,26 @@ export default function RotationPalApp({
   session,
   statsPalTeams = [],
   statsPalPlayers = [],
+  statsPalSchedule = [],
   entryMode = 'linked',
   onHome,
   onLogout,
   onPublishSession,
   onClearSession,
 }) {
-  const [nav, setNav] = useState({ screen: 'teams' })
+  const isStandalone = entryMode === 'standalone'
+
+  // Skip the team-list screen and land directly on teamHome when there is
+  // exactly one team. With multiple teams the user picks from MyTeamsView
+  // inside the app.
+  const [nav, setNav] = useState(() => {
+    if (!isStandalone && statsPalTeams.length === 1) {
+      return { screen: 'teamHome', teamId: statsPalTeams[0].id }
+    }
+    return { screen: 'teams' }
+  })
   const [tick, setTick] = useState(0)
   const refresh = () => setTick(t => t + 1)
-
-  const isStandalone = entryMode === 'standalone'
 
   // Build a roster-per-team lookup (StatsPal players → RotationPal format).
   // Only populated in linked mode — standalone teams edit rosters directly.
@@ -259,7 +268,9 @@ export default function RotationPalApp({
       <TeamHomeView
         {...headerProps}
         team={team}
-        onBack={() => setNav({ screen: 'teams' })}
+        onBack={statsPalTeams.length <= 1
+          ? () => onHome?.()
+          : () => setNav({ screen: 'teams' })}
         onOpenRoster={() => setNav({ screen: 'roster', teamId: team.id })}
         onOpenSchedule={() => setNav({ screen: 'schedule', teamId: team.id })}
         onOpenFormations={() => setNav({ screen: 'formations', teamId: team.id })}
@@ -291,11 +302,14 @@ export default function RotationPalApp({
   } else if (nav.screen === 'schedule') {
     const team = getTeam(nav.teamId)
     if (!team) { setNav({ screen: 'teams' }); return null }
+    const teamSchedule = statsPalSchedule.filter(s => s.team_id === team.id)
     screen = (
       <ScheduleView
         {...headerProps}
         tick={tick}
         team={team}
+        statsPalSchedule={teamSchedule}
+        isStandalone={isStandalone}
         onBack={() => setNav({ screen: 'teamHome', teamId: team.id })}
         onOpenGame={(gid) => setNav({ screen: 'game', teamId: team.id, gameId: gid })}
         onChanged={refresh}
@@ -559,18 +573,23 @@ function RosterView({ session, onLogout, onHome, team, onBack }) {
 // ============================================================
 // Schedule
 // ============================================================
-function ScheduleView({ session, onLogout, onHome, team, onBack, onOpenGame, onChanged, tick }) {
+function ScheduleView({ session, onLogout, onHome, team, onBack, onOpenGame, onChanged, tick, statsPalSchedule = [], isStandalone = false }) {
   const [showAdd, setShowAdd] = useState(false)
   const [opponent, setOpponent] = useState('')
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10))
   const [format, setFormat] = useState(3)
 
-  const games = useMemo(() => {
+  const localGames = useMemo(() => {
     const team2 = getTeam(team.id)
-    const list = (team2?.games || []).slice()
+    return (team2?.games || []).slice()
+  }, [team.id, tick])
+
+  // Standalone-only: sorted local games list
+  const standaloneGames = useMemo(() => {
+    const list = localGames.slice()
     list.sort((a, b) => (a.date || '').localeCompare(b.date || ''))
     return list
-  }, [team.id, tick])
+  }, [localGames])
 
   function handleAdd(e) {
     e.preventDefault()
@@ -589,6 +608,7 @@ function ScheduleView({ session, onLogout, onHome, team, onBack, onOpenGame, onC
   }
 
   function gameStatus(g) {
+    if (!g) return { label: 'Upcoming', className: 'pending' }
     const played = (g.finishedSets || []).length > 0 || g.ourScore > 0 || g.oppScore > 0
     if (!played) return { label: 'Upcoming', className: 'pending' }
     const fs = g.finishedSets || []
@@ -599,23 +619,89 @@ function ScheduleView({ session, onLogout, onHome, team, onBack, onOpenGame, onC
     return { label: `${result} ${ourSets}-${oppSets}`, className: result === 'W' ? 'win' : (result === 'L' ? 'loss' : 'pending') }
   }
 
+  // Open or create a local rotation game linked to a StatPal schedule entry
+  function handleOpenScheduleEntry(entry) {
+    const existing = localGames.find(g => g.scheduleId === entry.id)
+    if (existing) {
+      onOpenGame(existing.id)
+    } else {
+      const gameDate = entry.game_date ? entry.game_date.slice(0, 10) : new Date().toISOString().slice(0, 10)
+      const g = createGame(team.id, {
+        opponent: entry.opponent || 'Opponent',
+        date: gameDate,
+        format: 3,
+        scheduleId: entry.id,
+      })
+      if (g) {
+        onChanged()
+        onOpenGame(g.id)
+      }
+    }
+  }
+
+  const header = (
+    <HeaderBar
+      session={session}
+      onLogout={onLogout}
+      onHome={onHome}
+      title={team.name}
+      subtitle="Schedule"
+      leftActions={<button className="ghost" onClick={onBack}>← {team.name}</button>}
+    />
+  )
+
+  // ---- Linked mode: drive schedule from StatPal ----
+  if (!isStandalone) {
+    console.log('[RotationPal] statsPalSchedule for team', team.id, statsPalSchedule)
+    return (
+      <div className="dashboard">
+        {header}
+        <div className="teams-section-header">
+          <h2>Schedule</h2>
+        </div>
+        {statsPalSchedule.length === 0 ? (
+          <div className="empty-state">
+            <h3>No games scheduled yet</h3>
+            <p>Add games in StatPal to see them here.</p>
+          </div>
+        ) : (
+          <div className="game-list">
+            {statsPalSchedule.map(entry => {
+              const localGame = localGames.find(g => g.scheduleId === entry.id)
+              const st = gameStatus(localGame)
+              const displayDate = entry.game_date ? entry.game_date.slice(0, 10) : '—'
+              return (
+                <div key={entry.id} className="game-row" onClick={() => handleOpenScheduleEntry(entry)}>
+                  <div className="game-date">{displayDate}</div>
+                  <div className="game-main">
+                    <div className="game-opponent">vs {entry.opponent}</div>
+                    {entry.location && <div className="game-meta">{entry.location}</div>}
+                  </div>
+                  <div className={`game-status ${st.className}`}>{st.label}</div>
+                  <div className="game-actions" onClick={e => e.stopPropagation()}>
+                    <button className="primary" onClick={() => handleOpenScheduleEntry(entry)}>
+                      {localGame ? 'Open' : 'Set Lineup'}
+                    </button>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  // ---- Standalone mode: original localStorage-based schedule ----
   return (
     <div className="dashboard">
-      <HeaderBar
-        session={session}
-        onLogout={onLogout}
-        onHome={onHome}
-        title={team.name}
-        subtitle="Schedule"
-        leftActions={<button className="ghost" onClick={onBack}>← {team.name}</button>}
-      />
-
+      {header}
       <div className="teams-section-header">
         <h2>Games</h2>
         <button className="primary" onClick={() => setShowAdd(true)}>+ Add Game</button>
       </div>
 
-      {games.length === 0 ? (
+      {standaloneGames.length === 0 ? (
         <div className="empty-state">
           <h3>No games scheduled</h3>
           <p>Add a game to open the live rotation and lineup tool.</p>
@@ -623,7 +709,7 @@ function ScheduleView({ session, onLogout, onHome, team, onBack, onOpenGame, onC
         </div>
       ) : (
         <div className="game-list">
-          {games.map(g => {
+          {standaloneGames.map(g => {
             const st = gameStatus(g)
             return (
               <div key={g.id} className="game-row" onClick={() => onOpenGame(g.id)}>

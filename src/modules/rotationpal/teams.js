@@ -85,7 +85,7 @@ function emptyGameState() {
   };
 }
 
-export function createGame(teamId, { opponent, date, format }) {
+export function createGame(teamId, { opponent, date, format, scheduleId }) {
   const team = getTeam(teamId);
   if (!team) return null;
   const game = {
@@ -93,6 +93,7 @@ export function createGame(teamId, { opponent, date, format }) {
     opponent: (opponent || '').trim() || 'Opponent',
     date: date || new Date().toISOString().slice(0, 10),
     format: parseInt(format) || 3,
+    ...(scheduleId ? { scheduleId } : {}),
     createdAt: Date.now(),
     updatedAt: Date.now(),
     ...emptyGameState(),

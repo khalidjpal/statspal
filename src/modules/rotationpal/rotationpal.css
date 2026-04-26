@@ -100,13 +100,98 @@
 .rotationpal-module .serve-badge.receiving { background: var(--panel-2); color: var(--muted); border: 1px solid var(--line); }
 
 .rotationpal-module .main {
-  display: grid;
-  grid-template-columns: 1fr 280px;
-  gap: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
   padding: 16px;
   flex: 1;
+  max-width: 720px;
+  margin: 0 auto;
+  width: 100%;
+  box-sizing: border-box;
 }
-@media (max-width: 1000px) { .rotationpal-module .main { grid-template-columns: 1fr; } }
+
+/* Rotation pills below court */
+.rotationpal-module .rotation-pills {
+  display: flex;
+  gap: 6px;
+  justify-content: center;
+  padding: 10px 0 4px;
+  flex-wrap: wrap;
+}
+.rotationpal-module .rot-pill {
+  padding: 5px 12px;
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: 700;
+  background: var(--panel-2);
+  color: var(--muted);
+  border: 1px solid var(--line);
+  letter-spacing: 0.5px;
+}
+.rotationpal-module .rot-pill.active {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(78,161,255,0.3);
+}
+
+/* Compact bench row */
+.rotationpal-module .bench-compact {
+  margin-top: 10px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 10px 14px;
+}
+.rotationpal-module .bench-compact-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+.rotationpal-module .bench-compact-title {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--muted);
+}
+.rotationpal-module .bench-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.rotationpal-module .bench-chip {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: var(--panel-2);
+  border: 2px solid transparent;
+  cursor: pointer;
+  min-width: 56px;
+  transition: border-color 0.15s, background 0.15s;
+}
+.rotationpal-module .bench-chip:hover { background: #223357; }
+.rotationpal-module .bench-chip.selected { border-color: var(--accent); }
+.rotationpal-module .bench-chip .chip-num {
+  width: 32px; height: 32px;
+  border-radius: 50%;
+  background: var(--role-O);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 13px; font-weight: 800; color: white;
+}
+.rotationpal-module .bench-chip.OH .chip-num { background: var(--role-OH); }
+.rotationpal-module .bench-chip.MB .chip-num { background: var(--role-MB); }
+.rotationpal-module .bench-chip.RS .chip-num { background: var(--role-RS); }
+.rotationpal-module .bench-chip.S .chip-num { background: var(--role-S); color: #3a2c00; }
+.rotationpal-module .bench-chip.L .chip-num { background: var(--role-L); }
+.rotationpal-module .bench-chip.DS .chip-num { background: var(--role-DS); }
+.rotationpal-module .bench-chip .chip-name { font-size: 10px; font-weight: 600; color: var(--muted); max-width: 60px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rotationpal-module .bench-chip-hint { font-size: 11px; color: var(--accent); margin-top: 6px; }
 
 .rotationpal-module .court-wrap {
   background: var(--panel);
@@ -202,6 +287,14 @@
   50% { box-shadow: 0 6px 18px rgba(0,0,0,0.4), inset 0 -4px 0 rgba(0,0,0,0.2), 0 0 0 5px rgba(61,220,151,0.8), 0 0 36px 8px rgba(61,220,151,0.6); }
 }
 .rotationpal-module .player.selected { outline: 3px solid var(--accent); outline-offset: 3px; }
+.rotationpal-module .player.pending-sub {
+  box-shadow: 0 0 0 3px rgba(255, 200, 80, 0.9), 0 0 18px 4px rgba(255, 200, 80, 0.5);
+  animation: pendingSubPulse 1s ease-in-out infinite;
+}
+@keyframes pendingSubPulse {
+  0%, 100% { box-shadow: 0 0 0 3px rgba(255, 200, 80, 0.8), 0 0 14px 3px rgba(255, 200, 80, 0.4); }
+  50%       { box-shadow: 0 0 0 5px rgba(255, 200, 80, 1.0), 0 0 24px 6px rgba(255, 200, 80, 0.7); }
+}
 .rotationpal-module .player.illegal::after {
   content: "!";
   position: absolute;
@@ -237,12 +330,17 @@
 }
 .rotationpal-module .slot-label {
   position: absolute;
-  font-size: 10px;
-  color: rgba(232,238,252,0.35);
-  font-weight: 600;
-  letter-spacing: 1px;
+  font-size: 13px;
+  font-weight: 900;
+  color: #fff;
+  letter-spacing: 0.5px;
   transform: translate(-50%, -50%);
   pointer-events: none;
+  background: rgba(0, 0, 0, 0.6);
+  border-radius: 5px;
+  padding: 2px 6px;
+  line-height: 1;
+  z-index: 1;
 }
 
 .rotationpal-module .sidebar { display: flex; flex-direction: column; gap: 14px; }
@@ -1715,6 +1813,23 @@
   flex-direction: column;
   gap: 10px;
 }
+.rotationpal-module .sub-card.sub-card-libero {
+  border-color: rgba(167, 139, 250, 0.4);
+  background: rgba(167, 139, 250, 0.06);
+}
+.rotationpal-module .sub-card-slot label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+.rotationpal-module .sub-card-slot input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+  cursor: pointer;
+  flex-shrink: 0;
+}
 .rotationpal-module .sub-card-head {
   display: flex;
   align-items: center;
@@ -2613,4 +2728,501 @@
 .rotationpal-module .migration-modal {
   max-width: 460px;
 }
+
+/* ============================================================
+   Gameplans
+   ============================================================ */
+
+/* List */
+.rotationpal-module .gp-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 0 20px 40px;
+}
+
+/* Card */
+.rotationpal-module .gp-card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 18px 20px;
+  display: flex;
+  gap: 18px;
+  align-items: flex-start;
+  transition: border-color 0.15s ease;
+}
+.rotationpal-module .gp-card:hover { border-color: var(--accent); }
+
+.rotationpal-module .gp-card-preview {
+  flex-shrink: 0;
+}
+
+.rotationpal-module .gp-card-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.rotationpal-module .gp-card-name {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 4px;
+}
+
+.rotationpal-module .gp-card-game {
+  font-size: 13px;
+  color: var(--accent);
+  margin-bottom: 4px;
+}
+
+.rotationpal-module .gp-card-notes {
+  font-size: 13px;
+  color: var(--muted);
+  margin-bottom: 6px;
+  font-style: italic;
+  white-space: pre-wrap;
+}
+
+.rotationpal-module .gp-card-meta {
+  font-size: 11px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.rotationpal-module .gp-card-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex-shrink: 0;
+  align-items: stretch;
+  min-width: 100px;
+}
+
+.rotationpal-module .gp-load-btn {
+  font-size: 15px;
+  font-weight: 800;
+  padding: 12px 20px;
+  letter-spacing: 0.3px;
+}
+
+.rotationpal-module .gp-no-game-hint {
+  font-size: 11px;
+  color: var(--muted);
+  text-align: center;
+  padding: 6px 0;
+  line-height: 1.4;
+}
+
+/* Mini-court preview on gameplan cards */
+.rotationpal-module .gp-preview-court {
+  position: relative;
+  width: 90px;
+  height: 110px;
+  background: var(--court);
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  overflow: hidden;
+}
+
+.rotationpal-module .gp-preview-net {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: rgba(255,255,255,0.35);
+}
+
+.rotationpal-module .gp-preview-dot {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  font-weight: 800;
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--line);
+}
+.rotationpal-module .gp-preview-dot.OH { background: var(--role-OH); color: #fff; border-color: transparent; }
+.rotationpal-module .gp-preview-dot.MB { background: var(--role-MB); color: #000; border-color: transparent; }
+.rotationpal-module .gp-preview-dot.RS { background: var(--role-RS); color: #fff; border-color: transparent; }
+.rotationpal-module .gp-preview-dot.S  { background: var(--role-S);  color: #000; border-color: transparent; }
+.rotationpal-module .gp-preview-dot.L  { background: var(--role-L);  color: #fff; border-color: transparent; }
+.rotationpal-module .gp-preview-dot.DS { background: var(--role-DS); color: #000; border-color: transparent; }
+.rotationpal-module .gp-preview-dot.empty { opacity: 0.3; }
+.rotationpal-module .gp-preview-empty {
+  font-size: 11px;
+  color: var(--muted);
+  padding: 8px;
+  text-align: center;
+}
+
+/* Editor */
+.rotationpal-module .gp-editor {
+  padding: 0 20px;
+}
+
+/* Rotation tabs */
+.rotationpal-module .rot-tabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 18px;
+  flex-wrap: wrap;
+}
+
+.rotationpal-module .rot-tab {
+  padding: 8px 18px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 700;
+  background: var(--panel-2);
+  color: var(--muted);
+  border: 1px solid var(--line);
+  transition: all 0.15s ease;
+}
+.rotationpal-module .rot-tab:hover { color: var(--text); border-color: var(--accent); }
+.rotationpal-module .rot-tab.active {
+  background: var(--accent);
+  color: #06142a;
+  border-color: var(--accent);
+}
+
+.rotationpal-module .panel-hint {
+  font-size: 13px;
+  color: var(--muted);
+  margin: -6px 0 16px;
+}
+
+.rotationpal-module .gp-rot-preview {
+  padding: 12px 0;
+}
+.rotationpal-module .gp-rot-preview-label {
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 14px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* Schedule gameplan section */
+.rotationpal-module .schedule-entry {
+  border-bottom: 1px solid var(--line);
+}
+.rotationpal-module .schedule-entry:last-child { border-bottom: none; }
+.rotationpal-module .schedule-entry .game-row {
+  border-bottom: none;
+}
+
+.rotationpal-module .schedule-gameplans {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 16px 10px 16px;
+  flex-wrap: wrap;
+}
+
+.rotationpal-module .schedule-gp-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  padding: 4px 6px 4px 10px;
+}
+
+.rotationpal-module .schedule-gp-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.rotationpal-module .schedule-gp-load {
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 700;
+  border-radius: 14px;
+}
+
+.rotationpal-module .schedule-gp-add {
+  font-size: 12px;
+  padding: 4px 12px;
+  border-radius: 16px;
+}
+
+@media (max-width: 600px) {
+  .rotationpal-module .gp-card {
+    flex-direction: column;
+  }
+  .rotationpal-module .gp-card-actions {
+    flex-direction: row;
+    flex-wrap: wrap;
+    min-width: unset;
+  }
+  .rotationpal-module .gp-preview-court {
+    width: 100%;
+    height: 90px;
+  }
+}
+
+/* ============================================================
+   Libero swap popup
+   ============================================================ */
+.rotationpal-module .libero-popup-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.75);
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: fadeIn 0.15s ease;
+}
+.rotationpal-module .libero-popup {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  padding: 32px 28px 24px;
+  max-width: 400px;
+  width: 90%;
+  text-align: center;
+  animation: slideUp 0.2s ease;
+}
+.rotationpal-module .libero-popup-badge {
+  display: inline-block;
+  background: var(--role-L);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  padding: 4px 14px;
+  border-radius: 999px;
+  margin-bottom: 16px;
+}
+.rotationpal-module .libero-popup h2 {
+  font-size: 22px;
+  font-weight: 800;
+  margin: 0 0 8px;
+  color: var(--text);
+}
+.rotationpal-module .libero-popup-sub {
+  font-size: 14px;
+  color: var(--muted);
+  line-height: 1.6;
+  margin-bottom: 24px;
+}
+.rotationpal-module .libero-popup-sub strong { color: var(--text); }
+.rotationpal-module .libero-popup-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+}
+.rotationpal-module .libero-popup-actions button {
+  padding: 12px 20px;
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  border: none;
+}
+.rotationpal-module .libero-confirm-btn {
+  background: var(--role-L) !important;
+  color: #fff !important;
+  flex: 1;
+}
+.rotationpal-module .libero-undo-btn {
+  background: var(--panel-2) !important;
+  color: var(--text) !important;
+  border: 1px solid var(--line) !important;
+  flex: 1;
+}
+
+/* ============================================================
+   3-column desktop live layout
+   ============================================================ */
+.rotationpal-module .main {
+  display: grid;
+  grid-template-columns: 220px 1fr 260px;
+  gap: 16px;
+  padding: 16px;
+  flex: 1;
+  max-width: 1400px;
+  margin: 0 auto;
+  width: 100%;
+  box-sizing: border-box;
+  align-items: start;
+}
+
+.rotationpal-module .live-left-panel,
+.rotationpal-module .live-right-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* Tablet (600–1199px): single column, panels shown below court in row wrap */
+@media (max-width: 1199px) {
+  .rotationpal-module .main {
+    grid-template-columns: 1fr;
+    padding: 10px;
+  }
+  .rotationpal-module .live-left-panel,
+  .rotationpal-module .live-right-panel {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+  .rotationpal-module .live-left-panel .panel,
+  .rotationpal-module .live-right-panel .panel {
+    flex: 1;
+    min-width: 200px;
+  }
+}
+
+/* Mobile (<600px): hide panels, show compact bench */
+@media (max-width: 599px) {
+  .rotationpal-module .main {
+    padding: 8px;
+  }
+  .rotationpal-module .live-left-panel,
+  .rotationpal-module .live-right-panel {
+    display: none;
+  }
+}
+
+/* bench-compact: hidden on desktop, shown on mobile */
+@media (min-width: 600px) {
+  .rotationpal-module .bench-compact { display: none !important; }
+}
+@media (max-width: 599px) {
+  .rotationpal-module .bench-compact { display: block; }
+}
+
+/* ============================================================
+   Sub popup overlay
+   ============================================================ */
+.rotationpal-module .sub-popup-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.8);
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: fadeIn 0.15s ease;
+}
+.rotationpal-module .sub-popup {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  padding: 32px 28px 24px;
+  max-width: 420px;
+  width: 90%;
+  text-align: center;
+  animation: slideUp 0.2s ease;
+}
+.rotationpal-module .sub-popup-badge {
+  display: inline-block;
+  background: var(--accent);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 3px;
+  padding: 4px 14px;
+  border-radius: 999px;
+  margin-bottom: 20px;
+}
+.rotationpal-module .sub-popup-players {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  margin-bottom: 20px;
+}
+.rotationpal-module .sub-popup-player {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  min-width: 100px;
+}
+.rotationpal-module .sub-popup-dot {
+  width: 60px; height: 60px;
+  border-radius: 50%;
+  background: var(--role-O);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 22px; font-weight: 900; color: #fff;
+  border: 3px solid rgba(255,255,255,0.25);
+}
+.rotationpal-module .sub-popup-dot.OH { background: var(--role-OH); }
+.rotationpal-module .sub-popup-dot.MB { background: var(--role-MB); }
+.rotationpal-module .sub-popup-dot.RS { background: var(--role-RS); }
+.rotationpal-module .sub-popup-dot.S { background: var(--role-S); color: #3a2c00; }
+.rotationpal-module .sub-popup-dot.L { background: var(--role-L); }
+.rotationpal-module .sub-popup-dot.DS { background: var(--role-DS); }
+.rotationpal-module .sub-popup-name {
+  font-size: 15px; font-weight: 800; color: var(--text);
+  max-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.rotationpal-module .sub-popup-tag {
+  font-size: 10px; font-weight: 900; letter-spacing: 2px;
+  padding: 3px 12px; border-radius: 999px;
+}
+.rotationpal-module .sub-popup-tag.in { background: rgba(61,220,151,0.2); color: var(--ok); border: 1px solid rgba(61,220,151,0.4); }
+.rotationpal-module .sub-popup-tag.out { background: rgba(255,93,108,0.15); color: var(--danger); border: 1px solid rgba(255,93,108,0.35); }
+.rotationpal-module .sub-popup-arrow { font-size: 28px; color: var(--muted); }
+.rotationpal-module .sub-popup-counter { font-size: 13px; color: var(--muted); margin-bottom: 20px; }
+.rotationpal-module .sub-popup-counter strong { color: var(--text); }
+.rotationpal-module .sub-popup-actions {
+  display: flex; gap: 10px; justify-content: center;
+}
+.rotationpal-module .sub-popup-confirm {
+  background: var(--accent) !important; color: #fff !important;
+  padding: 13px 28px !important; border-radius: 12px !important;
+  font-size: 15px !important; font-weight: 700 !important;
+  flex: 1;
+}
+.rotationpal-module .sub-popup-confirm:disabled { opacity: 0.4; cursor: not-allowed; }
+.rotationpal-module .sub-popup-skip {
+  background: var(--panel-2) !important; color: var(--muted) !important;
+  padding: 13px 20px !important; border-radius: 12px !important;
+  border: 1px solid var(--line) !important;
+  flex: 1;
+}
+
+/* ============================================================
+   Sub log and pair rows (right panel)
+   ============================================================ */
+.rotationpal-module .sub-log-entry {
+  display: flex; align-items: flex-start; gap: 8px;
+  padding: 8px 10px; border-radius: 8px;
+  background: var(--panel-2);
+  font-size: 12px; line-height: 1.4;
+  border-left: 3px solid var(--accent);
+}
+.rotationpal-module .sub-log-entry.re-entry { border-left-color: var(--muted); }
+.rotationpal-module .sub-log-entry.libero-sub { border-left-color: #a78bfa; }
+.rotationpal-module .libero-swap-icon { color: #a78bfa; font-weight: 700; }
+.rotationpal-module .sub-log-meta { font-size: 10px; color: var(--muted); margin-top: 2px; }
+.rotationpal-module .sub-pairs-section { display: flex; flex-direction: column; gap: 6px; }
+.rotationpal-module .sub-pair-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 10px; border-radius: 8px;
+  background: var(--panel-2); font-size: 12px;
+}
+.rotationpal-module .sub-pair-row.done { opacity: 0.6; }
+.rotationpal-module .sub-pair-status {
+  font-size: 10px; font-weight: 700; letter-spacing: 1px;
+  padding: 2px 8px; border-radius: 999px;
+}
+.rotationpal-module .sub-pair-status.active { background: rgba(78,161,255,0.2); color: var(--accent); }
+.rotationpal-module .sub-pair-status.done { background: rgba(100,100,120,0.2); color: var(--muted); }
 

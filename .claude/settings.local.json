@@ -22,7 +22,9 @@
       "Bash(cp C:/Users/kpal/rotationpal/src/serveReceive.js C:/Users/kpal/statspal/src/modules/rotationpal/serveReceive.js)",
       "Read(//dev/**)",
       "Bash(sed -i '2509,2618d' C:/Users/kpal/statspal/src/modules/rotationpal/RotationPalApp.jsx)",
-      "Bash(cat C:\\\\\\\\Users\\\\\\\\kpal\\\\\\\\AppData\\\\\\\\Local\\\\\\\\Temp\\\\\\\\claude\\\\\\\\C--Users-kpal-statspal\\\\\\\\c4906a4c-ad29-46b7-b17e-fca08e7b4736\\\\\\\\tasks\\\\\\\\bqd8klphp.output)"
+      "Bash(cat C:\\\\\\\\Users\\\\\\\\kpal\\\\\\\\AppData\\\\\\\\Local\\\\\\\\Temp\\\\\\\\claude\\\\\\\\C--Users-kpal-statspal\\\\\\\\c4906a4c-ad29-46b7-b17e-fca08e7b4736\\\\\\\\tasks\\\\\\\\bqd8klphp.output)",
+      "Bash(pkill -f \"vite\")",
+      "Bash(curl:*)"
     ]
   }
 }

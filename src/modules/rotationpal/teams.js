@@ -81,7 +81,13 @@ function emptyGameState() {
     setNum: 1,
     finishedSets: [],
     subs: [],
-    liveLineup: null,
+    liveLineup: null,       // kept for backward compat, ignored in new code
+    activeSubs: {},         // persistent subs across rotations { [starterId]: subId }
+    subPairs: {},           // pair tracking { [starterId]: { subId, state: 'active'|'done' } }
+    backRowSubs: {},        // front-row starters → back-row replacement { [starterId]: subId }
+    frontRowSubs: {},       // back-row starters → front-row replacement { [starterId]: subId }
+    liberoCovers: [],       // player IDs the libero is attached to (replaces MB role auto-detect)
+    subLimit: 12,           // subs per set
   };
 }
 
@@ -133,6 +139,35 @@ export function deleteGame(teamId, gameId) {
 
 export function resetGameState(teamId, gameId) {
   return updateGame(teamId, gameId, emptyGameState());
+}
+
+// ===== Gameplans =====
+
+export function listGameplans(teamId) {
+  const t = getTeam(teamId)
+  return (t && t.gameplans) || []
+}
+
+export function saveGameplan(teamId, gp) {
+  const all = loadAll()
+  const tidx = all.findIndex(t => t.id === teamId)
+  if (tidx < 0) return null
+  const list = [...(all[tidx].gameplans || [])]
+  const idx = list.findIndex(g => g.id === gp.id)
+  const now = Date.now()
+  const stamped = idx >= 0
+    ? { ...gp, updatedAt: now }
+    : { ...gp, id: gp.id || uid(), createdAt: now, updatedAt: now }
+  if (idx >= 0) list[idx] = stamped; else list.push(stamped)
+  all[tidx] = { ...all[tidx], gameplans: list, updatedAt: now }
+  saveAll(all)
+  return stamped
+}
+
+export function deleteGameplan(teamId, gpId) {
+  const t = getTeam(teamId)
+  if (!t) return
+  updateTeam(teamId, { gameplans: (t.gameplans || []).filter(g => g.id !== gpId) })
 }
 
 // ===== Custom formations =====

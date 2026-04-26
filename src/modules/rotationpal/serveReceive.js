@@ -345,6 +345,6 @@ export function getPlayXY(play) {
 // not explicitly chosen.
 export function defaultPlayIds() {
   const out = {}
-  for (const r of [1, 2, 3, 4, 5, 6]) out[r] = SERVE_RECEIVE_PLAYS[r][0].id
+  for (const r of [1, 2, 3, 4, 5, 6]) out[r] = SERVE_RECEIVE_PLAYS[r][1].id
   return out
 }

@@ -3,6 +3,7 @@ import {
   ensureTeamRecord, getTeam, updateTeam, setRoster as saveRoster,
   createGame, getGame, updateGame, deleteGame, resetGameState,
   listCustomFormations, saveCustomFormation, deleteCustomFormation,
+  listGameplans, saveGameplan, deleteGameplan,
   mapStatsPalRoster,
 } from './teams'
 import { IconUsers, IconClipboard, IconCalendar, IconPlay } from '../../components/Icons'
@@ -45,7 +46,8 @@ const BACK_SLOTS  = ['P5', 'P6', 'P1']
 // Column pairs: front player must be in front of its back counterpart
 const FB_PAIRS = [['P4', 'P5'], ['P3', 'P6'], ['P2', 'P1']]
 
-const SUB_LIMIT = 18 // NFHS
+// SUB_LIMIT kept for backward-compat reference but subLimit is now per-game state
+const SUB_LIMIT = 18 // fallback only
 
 function setTarget(setNum, format) {
   const decidingSet = format === 5 ? 5 : 3
@@ -104,14 +106,30 @@ function defaultPositions() {
   }
 }
 
-// Apply libero auto-swap: if a libero is defined, swap the first MB in back row
-// out for the libero. Returns { lineup, swapped: playerIdOrNull }.
-function applyLiberoSwap(lineup, liberoId, roster) {
+// Apply libero swap: if a libero is defined and covers a player in the back row,
+// replace that player with the libero. Returns { lineup, swapped: playerIdOrNull }.
+// liberoCovers = array of player IDs the libero is attached to.
+// Falls back to "first MB in back row" when liberoCovers is empty (backward compat).
+function applyLiberoSwap(lineup, liberoId, liberoCovers, roster) {
   if (!liberoId) return { lineup, swapped: null }
-  const byId = Object.fromEntries(roster.map(p => [p.id, p]))
-  // Don't swap if libero is already on the court
+  // Don't swap if libero is already on court
   if (Object.values(lineup).includes(liberoId)) return { lineup, swapped: null }
   const next = { ...lineup }
+
+  // New behavior: use explicit coverage list
+  if (liberoCovers && liberoCovers.length > 0) {
+    for (const slot of BACK_SLOTS) {
+      const pid = lineup[slot]
+      if (pid && liberoCovers.includes(pid)) {
+        next[slot] = liberoId
+        return { lineup: next, swapped: pid }
+      }
+    }
+    return { lineup, swapped: null }
+  }
+
+  // Fallback: cover first MB in back row (old behavior for games without liberoCovers)
+  const byId = Object.fromEntries((roster || []).map(p => [p.id, p]))
   for (const slot of BACK_SLOTS) {
     const pid = lineup[slot]
     const p = byId[pid]
@@ -274,6 +292,7 @@ export default function RotationPalApp({
         onOpenRoster={() => setNav({ screen: 'roster', teamId: team.id })}
         onOpenSchedule={() => setNav({ screen: 'schedule', teamId: team.id })}
         onOpenFormations={() => setNav({ screen: 'formations', teamId: team.id })}
+        onOpenGameplans={() => setNav({ screen: 'gameplans', teamId: team.id })}
       />
     )
   } else if (nav.screen === 'roster') {
@@ -312,7 +331,54 @@ export default function RotationPalApp({
         isStandalone={isStandalone}
         onBack={() => setNav({ screen: 'teamHome', teamId: team.id })}
         onOpenGame={(gid) => setNav({ screen: 'game', teamId: team.id, gameId: gid })}
+        onCreateGameplan={(gid) => setNav({ screen: 'gameplan_edit', teamId: team.id, presetGameId: gid })}
+        onLoadGameplan={(gp) => {
+          updateGame(team.id, gp.gameId, { baseLineup: gp.baseLineup, startingRotation: gp.startingRotation })
+          refresh()
+          setNav({ screen: 'game', teamId: team.id, gameId: gp.gameId, loadedGameplanName: gp.name })
+        }}
         onChanged={refresh}
+      />
+    )
+  } else if (nav.screen === 'gameplans') {
+    const team = getTeam(nav.teamId)
+    if (!team) { setNav({ screen: 'teams' }); return null }
+    const teamSchedule = statsPalSchedule.filter(s => s.team_id === team.id)
+    screen = (
+      <GameplansView
+        {...headerProps}
+        tick={tick}
+        team={team}
+        statsPalSchedule={teamSchedule}
+        isStandalone={isStandalone}
+        onBack={() => setNav({ screen: 'teamHome', teamId: team.id })}
+        onCreateGameplan={() => setNav({ screen: 'gameplan_edit', teamId: team.id, presetGameId: null })}
+        onEditGameplan={(gpId) => setNav({ screen: 'gameplan_edit', teamId: team.id, editGameplanId: gpId })}
+        onLoadGameplan={(gp) => {
+          updateGame(team.id, gp.gameId, { baseLineup: gp.baseLineup, startingRotation: gp.startingRotation })
+          refresh()
+          setNav({ screen: 'game', teamId: team.id, gameId: gp.gameId, loadedGameplanName: gp.name })
+        }}
+        onChanged={refresh}
+      />
+    )
+  } else if (nav.screen === 'gameplan_edit') {
+    const team = getTeam(nav.teamId)
+    if (!team) { setNav({ screen: 'teams' }); return null }
+    const existingGp = nav.editGameplanId
+      ? (team.gameplans || []).find(g => g.id === nav.editGameplanId)
+      : null
+    const teamSchedule = statsPalSchedule.filter(s => s.team_id === team.id)
+    screen = (
+      <GameplanEditView
+        {...headerProps}
+        team={team}
+        gameplan={existingGp}
+        presetGameId={nav.presetGameId || null}
+        statsPalSchedule={teamSchedule}
+        isStandalone={isStandalone}
+        onBack={() => setNav({ screen: 'gameplans', teamId: team.id })}
+        onSaved={() => { refresh(); setNav({ screen: 'gameplans', teamId: team.id }) }}
       />
     )
   } else if (nav.screen === 'game') {
@@ -327,6 +393,7 @@ export default function RotationPalApp({
         key={game.id}
         team={team}
         game={game}
+        loadedGameplanName={nav.loadedGameplanName || null}
         onBack={() => { refresh(); setNav({ screen: 'schedule', teamId: team.id }) }}
         onPublishSession={canPublish ? onPublishSession : null}
         onClearSession={canPublish ? onClearSession : null}
@@ -466,11 +533,12 @@ function MyTeamsView({
 // ============================================================
 // Team Home
 // ============================================================
-function TeamHomeView({ session, onLogout, onHome, team, onBack, onOpenRoster, onOpenSchedule, onOpenFormations }) {
+function TeamHomeView({ session, onLogout, onHome, team, onBack, onOpenRoster, onOpenSchedule, onOpenFormations, onOpenGameplans }) {
   const rosterCount = (team.roster || []).length
   const gameCount = (team.games || []).length
   const upcoming = (team.games || []).filter(g => !g.finishedSets || g.finishedSets.length === 0).length
   const customCount = (team.customFormations || []).length
+  const gameplanCount = (team.gameplans || []).length
   return (
     <div className="dashboard">
       <HeaderBar
@@ -502,6 +570,12 @@ function TeamHomeView({ session, onLogout, onHome, team, onBack, onOpenRoster, o
           <div className="home-tile-title">Schedule</div>
           <div className="home-tile-sub">{gameCount} {gameCount === 1 ? 'game' : 'games'}{upcoming > 0 ? ` · ${upcoming} open` : ''}</div>
           <div className="home-tile-hint">Upcoming and past games. Open any game to track rotations live.</div>
+        </div>
+        <div className="home-tile" onClick={onOpenGameplans}>
+          <div className="home-tile-icon"><IconPlay size={28} /></div>
+          <div className="home-tile-title">Gameplans</div>
+          <div className="home-tile-sub">{gameplanCount} {gameplanCount === 1 ? 'gameplan' : 'gameplans'}</div>
+          <div className="home-tile-hint">Save named lineups for specific opponents. Load instantly before a game.</div>
         </div>
       </div>
     </div>
@@ -573,7 +647,7 @@ function RosterView({ session, onLogout, onHome, team, onBack }) {
 // ============================================================
 // Schedule
 // ============================================================
-function ScheduleView({ session, onLogout, onHome, team, onBack, onOpenGame, onChanged, tick, statsPalSchedule = [], isStandalone = false }) {
+function ScheduleView({ session, onLogout, onHome, team, onBack, onOpenGame, onChanged, tick, statsPalSchedule = [], isStandalone = false, onCreateGameplan, onLoadGameplan }) {
   const [showAdd, setShowAdd] = useState(false)
   const [opponent, setOpponent] = useState('')
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10))
@@ -650,9 +724,14 @@ function ScheduleView({ session, onLogout, onHome, team, onBack, onOpenGame, onC
     />
   )
 
+  // All gameplans for this team (used in linked mode)
+  const allGameplans = useMemo(() => {
+    const t = getTeam(team.id)
+    return t?.gameplans || []
+  }, [team.id, tick])
+
   // ---- Linked mode: drive schedule from StatPal ----
   if (!isStandalone) {
-    console.log('[RotationPal] statsPalSchedule for team', team.id, statsPalSchedule)
     return (
       <div className="dashboard">
         {header}
@@ -670,18 +749,41 @@ function ScheduleView({ session, onLogout, onHome, team, onBack, onOpenGame, onC
               const localGame = localGames.find(g => g.scheduleId === entry.id)
               const st = gameStatus(localGame)
               const displayDate = entry.game_date ? entry.game_date.slice(0, 10) : '—'
+              const attachedPlans = localGame
+                ? allGameplans.filter(gp => gp.gameId === localGame.id)
+                : []
               return (
-                <div key={entry.id} className="game-row" onClick={() => handleOpenScheduleEntry(entry)}>
-                  <div className="game-date">{displayDate}</div>
-                  <div className="game-main">
-                    <div className="game-opponent">vs {entry.opponent}</div>
-                    {entry.location && <div className="game-meta">{entry.location}</div>}
+                <div key={entry.id} className="schedule-entry">
+                  <div className="game-row" onClick={() => handleOpenScheduleEntry(entry)}>
+                    <div className="game-date">{displayDate}</div>
+                    <div className="game-main">
+                      <div className="game-opponent">vs {entry.opponent}</div>
+                      {entry.location && <div className="game-meta">{entry.location}</div>}
+                    </div>
+                    <div className={`game-status ${st.className}`}>{st.label}</div>
+                    <div className="game-actions" onClick={e => e.stopPropagation()}>
+                      <button className="primary" onClick={() => handleOpenScheduleEntry(entry)}>
+                        {localGame ? 'Open' : 'Set Lineup'}
+                      </button>
+                    </div>
                   </div>
-                  <div className={`game-status ${st.className}`}>{st.label}</div>
-                  <div className="game-actions" onClick={e => e.stopPropagation()}>
-                    <button className="primary" onClick={() => handleOpenScheduleEntry(entry)}>
-                      {localGame ? 'Open' : 'Set Lineup'}
-                    </button>
+                  {/* Gameplans attached to this game */}
+                  <div className="schedule-gameplans" onClick={e => e.stopPropagation()}>
+                    {attachedPlans.map(gp => (
+                      <div key={gp.id} className="schedule-gp-chip">
+                        <span className="schedule-gp-name">{gp.name}</span>
+                        <button
+                          className="primary schedule-gp-load"
+                          onClick={() => onLoadGameplan && onLoadGameplan(gp)}
+                        >Load</button>
+                      </div>
+                    ))}
+                    {onCreateGameplan && localGame && (
+                      <button
+                        className="ghost schedule-gp-add"
+                        onClick={() => onCreateGameplan(localGame.id)}
+                      >+ Gameplan</button>
+                    )}
                   </div>
                 </div>
               )
@@ -760,9 +862,61 @@ function ScheduleView({ session, onLogout, onHome, team, onBack, onOpenGame, onC
 }
 
 // ============================================================
+// Sub Popup — confirmation overlay for manual and recommended subs
+// ============================================================
+function SubPopup({ pendingSub, playerById, subsUsed, subLimit, onConfirm, onSkip, onCancel }) {
+  if (!pendingSub) return null
+  const inPlayer = playerById[pendingSub.inId]
+  const outPlayer = playerById[pendingSub.outId]
+  const isReturn = pendingSub.inId === pendingSub.starterId
+  const isRecommended = pendingSub.type === 'recommended'
+
+  return (
+    <div className="sub-popup-overlay">
+      <div className="sub-popup">
+        <div className="sub-popup-badge">{isReturn ? 'RE-ENTRY' : 'SUBSTITUTION'}</div>
+        <div className="sub-popup-players">
+          <div className="sub-popup-player in">
+            <div className={`sub-popup-dot ${inPlayer?.role || ''}`}>{inPlayer?.number}</div>
+            <div className="sub-popup-name">{fullName(inPlayer)}</div>
+            <div className="sub-popup-tag in">IN</div>
+          </div>
+          <div className="sub-popup-arrow">⇄</div>
+          <div className="sub-popup-player out">
+            <div className={`sub-popup-dot ${outPlayer?.role || ''}`}>{outPlayer?.number}</div>
+            <div className="sub-popup-name">{fullName(outPlayer)}</div>
+            <div className="sub-popup-tag out">OUT</div>
+          </div>
+        </div>
+        <div className="sub-popup-counter">
+          Subs used: <strong>{subsUsed}</strong> / <strong>{subLimit}</strong>
+        </div>
+        <div className="sub-popup-actions">
+          {isRecommended ? (
+            <>
+              <button className="sub-popup-skip" onClick={onSkip}>Skip</button>
+              <button className="sub-popup-confirm" onClick={onConfirm} disabled={subsUsed >= subLimit}>
+                Make Sub
+              </button>
+            </>
+          ) : (
+            <>
+              <button className="sub-popup-skip" onClick={onCancel}>Cancel</button>
+              <button className="sub-popup-confirm" onClick={onConfirm} disabled={subsUsed >= subLimit}>
+                Confirm Sub
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ============================================================
 // Game (live rotation tool)
 // ============================================================
-function GameApp({ session, onLogout, onHome, team, game, onBack, onPublishSession, onClearSession }) {
+function GameApp({ session, onLogout, onHome, team, game, onBack, onPublishSession, onClearSession, loadedGameplanName }) {
   const [view, setView] = useState('setup') // 'setup' | 'live'
 
   // Editable per-game state
@@ -780,10 +934,17 @@ function GameApp({ session, onLogout, onHome, team, game, onBack, onPublishSessi
   const [setNum, setSetNum] = useState(game.setNum || 1)
   const [finishedSets, setFinishedSets] = useState(game.finishedSets || [])
   const [subs, setSubs] = useState(game.subs || [])
-  const [liveLineup, setLiveLineup] = useState(game.liveLineup || null)
+  const [activeSubs, setActiveSubs] = useState(game.activeSubs || {})
+  const [subPairs, setSubPairs] = useState(game.subPairs || {})
+  const [backRowSubs, setBackRowSubs] = useState(game.backRowSubs || {})
+  const [frontRowSubs, setFrontRowSubs] = useState(game.frontRowSubs || {})
+  const [liberoCovers, setLiberoCovers] = useState(game.liberoCovers || [])
+  const [subLimit, setSubLimit] = useState(game.subLimit || 12)
+  const [pendingSub, setPendingSub] = useState(null)
+  const [pendingRecommended, setPendingRecommended] = useState([])
+  const [dismissedSubKeys, setDismissedSubKeys] = useState(new Set())
   const [roleOverrides, setRoleOverrides] = useState(game.roleOverrides || {})
   const [dragPositions, setDragPositions] = useState(game.dragPositions || {})
-  const [subPairings, setSubPairings] = useState(() => migrateSubPairings(game.subPairings || {}))
   const [liberoId, setLiberoId] = useState(game.liberoId || null)
   const [mbSwitches, setMbSwitches] = useState(game.mbSwitches || {})
   const [setConfigs, setSetConfigs] = useState(game.setConfigs || {})
@@ -795,11 +956,11 @@ function GameApp({ session, onLogout, onHome, team, game, onBack, onPublishSessi
   const [benchSelected, setBenchSelected] = useState(null)
   const [toastMsg, setToastMsg] = useState(null)
   const [showFormations, setShowFormations] = useState(false)
-  const [dismissedAlertKeys, setDismissedAlertKeys] = useState([])
   const [courtSelected, setCourtSelected] = useState(null)
   const [showEndSet, setShowEndSet] = useState(false)
   const [showLineupCard, setShowLineupCard] = useState(false)
   const [showRestartConfirm, setShowRestartConfirm] = useState(false)
+  const [dismissedLiberoRotations, setDismissedLiberoRotations] = useState(new Set())
 
   const rawRoster = team.roster || []
   const roster = useMemo(
@@ -812,13 +973,15 @@ function GameApp({ session, onLogout, onHome, team, game, onBack, onPublishSessi
     if (firstSaveRef.current) { firstSaveRef.current = false; return }
     updateGame(team.id, game.id, {
       opponent, date: gameDate, format, baseLineup, startingRotation, startServing,
-      currentRotation, ourScore, oppScore, serving, setNum, finishedSets, subs, liveLineup,
-      roleOverrides, dragPositions, subPairings, liberoId, mbSwitches, setConfigs,
+      currentRotation, ourScore, oppScore, serving, setNum, finishedSets, subs,
+      activeSubs, subPairs, backRowSubs, frontRowSubs, liberoCovers, subLimit,
+      roleOverrides, dragPositions, liberoId, mbSwitches, setConfigs,
       offenseFormationId, defenseFormationId, serveReceivePlayIds,
     })
   }, [team.id, game.id, opponent, gameDate, format, baseLineup, startingRotation, startServing,
-      currentRotation, ourScore, oppScore, serving, setNum, finishedSets, subs, liveLineup,
-      roleOverrides, dragPositions, subPairings, liberoId, mbSwitches, setConfigs,
+      currentRotation, ourScore, oppScore, serving, setNum, finishedSets, subs,
+      activeSubs, subPairs, backRowSubs, frontRowSubs, liberoCovers, subLimit,
+      roleOverrides, dragPositions, liberoId, mbSwitches, setConfigs,
       offenseFormationId, defenseFormationId, serveReceivePlayIds])
 
   // (Real-time cross-device sync disabled in VolleyballPal — RotationPal uses
@@ -843,7 +1006,7 @@ function GameApp({ session, onLogout, onHome, team, game, onBack, onPublishSessi
       serving,
       setNum,
       finishedSets,
-      liveLineup,
+      activeSubs,
       liberoId,
       view,
     })
@@ -851,7 +1014,7 @@ function GameApp({ session, onLogout, onHome, team, game, onBack, onPublishSessi
     onPublishSession, team.id, game.id, opponent, gameDate, format,
     baseLineup, startingRotation, startServing,
     currentRotation, ourScore, oppScore, serving,
-    setNum, finishedSets, liveLineup, liberoId, view,
+    setNum, finishedSets, activeSubs, liberoId, view,
   ])
 
   // Clear the published session when the live game view unmounts.
@@ -863,17 +1026,20 @@ function GameApp({ session, onLogout, onHome, team, game, onBack, onPublishSessi
     () => computeLineup(baseLineup, startingRotation, currentRotation),
     [baseLineup, startingRotation, currentRotation]
   )
-  const mergedLineup = useMemo(() => {
-    if (!liveLineup) return rotatedLineup
-    const out = {}
-    for (const s of SLOTS) out[s] = liveLineup[s] ?? rotatedLineup[s]
-    return out
-  }, [rotatedLineup, liveLineup])
 
-  // Apply libero auto-swap on top of the merged lineup
+  // Apply activeSubs on top of rotated lineup (subs persist across rotations)
+  const activeSubsAppliedLineup = useMemo(() => {
+    const lineup = { ...rotatedLineup }
+    for (const [slot, pid] of Object.entries(lineup)) {
+      if (activeSubs[pid]) lineup[slot] = activeSubs[pid]
+    }
+    return lineup
+  }, [rotatedLineup, activeSubs])
+
+  // Apply libero auto-swap on top of the subs-applied lineup
   const { lineup: displayLineup, swapped: liberoSwappedOutId } = useMemo(() => {
-    return applyLiberoSwap(mergedLineup, liberoId, roster)
-  }, [mergedLineup, liberoId, roster])
+    return applyLiberoSwap(activeSubsAppliedLineup, liberoId, liberoCovers, roster)
+  }, [activeSubsAppliedLineup, liberoId, liberoCovers, roster])
 
   const playerById = useMemo(() => {
     const m = {}
@@ -906,46 +1072,89 @@ function GameApp({ session, onLogout, onHome, team, game, onBack, onPublishSessi
   const onCourtIds = new Set(Object.values(displayLineup).filter(Boolean))
   const benchPlayers = roster.filter(p => !onCourtIds.has(p.id))
 
-  // Sub alerts: check both front and back row for dual sub pairings
-  const pendingSubAlerts = useMemo(() => {
-    if (!subPairings) return []
-    const alerts = []
-    // Check back row subs
-    for (const slot of BACK_SLOTS) {
-      const pid = displayLineup[slot]
-      if (!pid) continue
-      const pairing = subPairings[pid]
-      if (!pairing) continue
-      const subId = pairing.backRow
-      if (subId && playerById[subId]) {
-        const key = `${currentRotation}:${pid}:back`
-        if (!dismissedAlertKeys.includes(key)) {
-          alerts.push({ starterId: pid, subId, slot, key, rowType: 'Back Row' })
-        }
-      }
-    }
-    // Check front row subs
-    for (const slot of FRONT_SLOTS) {
-      const pid = displayLineup[slot]
-      if (!pid) continue
-      const pairing = subPairings[pid]
-      if (!pairing) continue
-      const subId = pairing.frontRow
-      if (subId && playerById[subId]) {
-        const key = `${currentRotation}:${pid}:front`
-        if (!dismissedAlertKeys.includes(key)) {
-          alerts.push({ starterId: pid, subId, slot, key, rowType: 'Front Row' })
-        }
-      }
-    }
-    return alerts
-  }, [displayLineup, subPairings, currentRotation, playerById, dismissedAlertKeys])
-
-  const [subAlertIndex, setSubAlertIndex] = useState(0)
-  const activeSubAlert = pendingSubAlerts.length > 0 ? pendingSubAlerts[Math.min(subAlertIndex, pendingSubAlerts.length - 1)] : null
-
-  const subLimit = SUB_LIMIT
   const subsUsedThisSet = countManualSubs(subs, setNum)
+
+  // Helper: find the base starter for a player currently on court
+  function findStarterForPlayer(playerId) {
+    if (Object.values(rotatedLineup).includes(playerId)) return playerId
+    for (const [sid, subId] of Object.entries(activeSubs)) {
+      if (subId === playerId) return sid
+    }
+    return playerId
+  }
+
+  // Rotation-change effect: compute recommended back-row subs
+  const prevRotForSubRef = useRef(null)
+  const pendingSubRef = useRef(pendingSub)
+  useEffect(() => { pendingSubRef.current = pendingSub }, [pendingSub])
+
+  useEffect(() => {
+    if (view !== 'live') return
+    if (prevRotForSubRef.current === currentRotation) return
+    prevRotForSubRef.current = currentRotation
+
+    const recs = []
+
+    // Back-row substitutions: front-row starters go out when they rotate to back
+    for (const [starterId, subId] of Object.entries(backRowSubs)) {
+      if (!subId) continue
+      const pair = subPairs[starterId]
+      if (pair?.state === 'done') continue
+
+      const starterSlot = Object.entries(activeSubsAppliedLineup).find(([, pid]) => pid === starterId)?.[0]
+      const subSlot = Object.entries(activeSubsAppliedLineup).find(([, pid]) => pid === subId)?.[0]
+
+      if (starterSlot && BACK_SLOTS.includes(starterSlot) && !pair) {
+        if (!subSlot) {
+          recs.push({
+            key: `${currentRotation}:${starterId}:in`,
+            inId: subId, outId: starterId, slot: starterSlot, starterId, type: 'recommended',
+          })
+        }
+      } else if (starterSlot && FRONT_SLOTS.includes(starterSlot) && pair?.state === 'active') {
+        if (subSlot) {
+          recs.push({
+            key: `${currentRotation}:${starterId}:return`,
+            inId: starterId, outId: subId, slot: subSlot, starterId, type: 'recommended',
+          })
+        }
+      }
+    }
+
+    // Front-row substitutions: back-row starters go in when they rotate to front
+    for (const [starterId, subId] of Object.entries(frontRowSubs)) {
+      if (!subId) continue
+      const pair = subPairs[starterId]
+      if (pair?.state === 'done') continue
+
+      const starterSlot = Object.entries(activeSubsAppliedLineup).find(([, pid]) => pid === starterId)?.[0]
+      const subSlot = Object.entries(activeSubsAppliedLineup).find(([, pid]) => pid === subId)?.[0]
+
+      if (starterSlot && FRONT_SLOTS.includes(starterSlot) && !pair) {
+        if (!subSlot) {
+          recs.push({
+            key: `${currentRotation}:${starterId}:frin`,
+            inId: subId, outId: starterId, slot: starterSlot, starterId, type: 'recommended',
+          })
+        }
+      } else if (starterSlot && BACK_SLOTS.includes(starterSlot) && pair?.state === 'active') {
+        if (subSlot) {
+          recs.push({
+            key: `${currentRotation}:${starterId}:frreturn`,
+            inId: starterId, outId: subId, slot: subSlot, starterId, type: 'recommended',
+          })
+        }
+      }
+    }
+
+    setPendingRecommended(recs)
+    // Show first recommendation if nothing is already showing
+    const undismissed = recs.find(r => !dismissedSubKeys.has(r.key))
+    if (undismissed && !pendingSubRef.current) {
+      setPendingSub(undismissed)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentRotation, view])
 
   // Libero rule warnings
   const liberoWarnings = useMemo(() => {
@@ -959,6 +1168,18 @@ function GameApp({ session, onLogout, onHome, team, game, onBack, onPublishSessi
     }
     return out
   }, [displayLineup, liberoId, serving])
+
+  // Show banner when arriving from a gameplan load
+  useEffect(() => {
+    if (loadedGameplanName) {
+      setToastMsg(`Gameplan loaded: ${loadedGameplanName}`)
+      const t = setTimeout(() => setToastMsg(null), 3500)
+      return () => clearTimeout(t)
+    }
+  }, [loadedGameplanName])
+
+  // Show libero popup when libero swaps in for a new rotation
+  const showLiberoPopup = liberoSwappedOutId && !dismissedLiberoRotations.has(currentRotation)
 
   function showToast(msg) {
     setToastMsg(msg)
@@ -975,12 +1196,17 @@ function GameApp({ session, onLogout, onHome, team, game, onBack, onPublishSessi
     setOurScore(0)
     setOppScore(0)
     setServing(startServing)
-    setLiveLineup(null)
-    setDismissedAlertKeys([]); setSubAlertIndex(0)
+    setActiveSubs({})
+    setSubPairs({})
+    setDismissedSubKeys(new Set())
+    setDismissedLiberoRotations(new Set())
+    setPendingSub(null)
+    setPendingRecommended([])
+    prevRotForSubRef.current = null
     // Persist this set's config into the archive (saved per set in localStorage)
     setSetConfigs(prev => ({
       ...prev,
-      [setNum]: { baseLineup, startingRotation, startServing, subPairings, roleOverrides, mbSwitches, liberoId, dragPositions },
+      [setNum]: { baseLineup, startingRotation, startServing, backRowSubs, frontRowSubs, liberoCovers, roleOverrides, mbSwitches, liberoId, dragPositions },
     }))
     setView('live')
   }
@@ -990,7 +1216,11 @@ function GameApp({ session, onLogout, onHome, team, game, onBack, onPublishSessi
     setCurrentRotation(startingRotation)
     setOurScore(0); setOppScore(0)
     setServing(startServing); setSetNum(1)
-    setFinishedSets([]); setSubs([]); setLiveLineup(null)
+    setFinishedSets([]); setSubs([])
+    setActiveSubs({}); setSubPairs({})
+    setDismissedSubKeys(new Set())
+    setPendingSub(null); setPendingRecommended([])
+    prevRotForSubRef.current = null
     setView('setup')
   }
 
@@ -1000,9 +1230,8 @@ function GameApp({ session, onLogout, onHome, team, game, onBack, onPublishSessi
     setOurScore(newOur)
     if (wasReceiving) {
       setCurrentRotation(r => (r % 6) + 1)
-      setLiveLineup(null)
       setServing(true)
-      setDismissedAlertKeys([]); setSubAlertIndex(0)
+      setDismissedSubKeys(new Set()) // allow fresh recommendations on new rotation
     }
     const winner = checkSetWinner(newOur, oppScore, setNum, format)
     if (winner) finalizeSet(newOur, oppScore, winner)
@@ -1023,7 +1252,7 @@ function GameApp({ session, onLogout, onHome, team, game, onBack, onPublishSessi
     // Archive this set's config
     setSetConfigs(prev => ({
       ...prev,
-      [setNum]: { baseLineup, startingRotation, startServing, subPairings, roleOverrides, mbSwitches, liberoId, dragPositions },
+      [setNum]: { baseLineup, startingRotation, startServing, backRowSubs, frontRowSubs, liberoCovers, roleOverrides, mbSwitches, liberoId, dragPositions },
     }))
     setView('setOver')
   }
@@ -1034,11 +1263,13 @@ function GameApp({ session, onLogout, onHome, team, game, onBack, onPublishSessi
     setSetNum(1)
     setFinishedSets([])
     setSubs([])
-    setLiveLineup(null)
+    setActiveSubs({}); setSubPairs({})
+    setDismissedSubKeys(new Set())
+    setPendingSub(null); setPendingRecommended([])
+    prevRotForSubRef.current = null
     setCurrentRotation(startingRotation)
     setServing(startServing)
     setSetConfigs({})
-    setDismissedAlertKeys([]); setSubAlertIndex(0)
     setShowRestartConfirm(false)
     setView('setup')
   }
@@ -1049,9 +1280,43 @@ function GameApp({ session, onLogout, onHome, team, game, onBack, onPublishSessi
     setOppScore(0)
     setCurrentRotation(startingRotation)
     setServing(startServing)
-    setLiveLineup(null)
-    setDismissedAlertKeys([]); setSubAlertIndex(0)
+    setActiveSubs({}); setSubPairs({})
+    setDismissedSubKeys(new Set())
+    setPendingSub(null); setPendingRecommended([])
+    prevRotForSubRef.current = null
     setView('setup')
+  }
+
+  function applySubstitution({ inId, outId, slot, starterId }) {
+    const inPlayer = playerById[inId]
+    const outPlayer = playerById[outId]
+
+    if (inId === starterId) {
+      // Starter returning — remove their entry
+      setActiveSubs(prev => { const next = { ...prev }; delete next[starterId]; return next })
+      setSubPairs(prev => ({ ...prev, [starterId]: { ...prev[starterId], state: 'done' } }))
+    } else {
+      // Sub coming in for starter
+      setActiveSubs(prev => ({ ...prev, [starterId]: inId }))
+      setSubPairs(prev => ({ ...prev, [starterId]: { subId: inId, state: 'active' } }))
+    }
+
+    setSubs(prev => [...prev, {
+      id: uid(),
+      inPlayerId: inId,
+      outPlayerId: outId,
+      slot,
+      starterId,
+      setNum,
+      rotation: currentRotation,
+      scoreStr: `${ourScore}-${oppScore}`,
+      libero: false,
+      label: `${fullName(inPlayer)} in for ${fullName(outPlayer)}`,
+    }])
+
+    setPendingSub(null)
+    setBenchSelected(null)
+    setCourtSelected(null)
   }
 
   function handleCourtClick(slot) {
@@ -1059,18 +1324,22 @@ function GameApp({ session, onLogout, onHome, team, game, onBack, onPublishSessi
     if (benchSelected) {
       const outId = courtId
       const inId = benchSelected
-      const inPlayer = playerById[inId]
-      const outPlayer = playerById[outId]
-      const newLive = { ...(liveLineup || {}) }
-      newLive[slot] = inId
-      setLiveLineup(newLive)
-      setSubs(prev => [...prev, {
-        id: uid(), slot,
-        inPlayerId: inId, outPlayerId: outId,
-        setNum, scoreStr: `${ourScore}-${oppScore}`,
-        label: `#${inPlayer?.number} ${fullName(inPlayer)} IN for #${outPlayer?.number} ${fullName(outPlayer)}`,
-      }])
-      setBenchSelected(null)
+      const starterId = findStarterForPlayer(outId)
+      const pair = subPairs[starterId]
+
+      if (subsUsedThisSet >= subLimit) {
+        showToast(`Sub limit reached (${subLimit} per set)`)
+        setBenchSelected(null)
+        return
+      }
+      if (pair?.state === 'done') {
+        showToast('This substitution pair has been used — no more exchanges allowed')
+        setBenchSelected(null)
+        return
+      }
+
+      // Show confirmation popup
+      setPendingSub({ inId, outId, slot, starterId, type: 'manual' })
       setCourtSelected(null)
     } else {
       setCourtSelected(courtSelected === slot ? null : slot)
@@ -1123,7 +1392,10 @@ function GameApp({ session, onLogout, onHome, team, game, onBack, onPublishSessi
         roleOverrides={roleOverrides}
         setRoleOverrides={setRoleOverrides}
         liberoId={liberoId} setLiberoId={setLiberoId}
-        subPairings={subPairings} setSubPairings={setSubPairings}
+        liberoCovers={liberoCovers} setLiberoCovers={setLiberoCovers}
+        subLimit={subLimit} setSubLimit={setSubLimit}
+        backRowSubs={backRowSubs} setBackRowSubs={setBackRowSubs}
+        frontRowSubs={frontRowSubs} setFrontRowSubs={setFrontRowSubs}
         mbSwitches={mbSwitches} setMbSwitches={setMbSwitches}
         dragPositions={dragPositions} setDragPositions={setDragPositions}
         opponent={opponent} setOpponent={setOpponent}
@@ -1184,33 +1456,75 @@ function GameApp({ session, onLogout, onHome, team, game, onBack, onPublishSessi
           </div>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-          <div className="user-pill">
-            <span className="uname">{session.username}</span>
-            <span className={`rtag ${session.role}`}>{session.role}</span>
-          </div>
-          <button className="ghost" onClick={() => setView('setup')}>Edit Setup</button>
+          <button
+            onClick={() => {
+              setCurrentRotation(r => (r % 6) + 1)
+              setDismissedSubKeys(new Set())
+              setDismissedLiberoRotations(new Set())
+            }}
+          >
+            Rotate →
+          </button>
+          <button className="ghost" onClick={() => setShowFormations(true)}>Serve Receive</button>
+          <button className="ghost" onClick={() => setView('setup')}>Setup</button>
           <button className="ghost" onClick={() => setShowLineupCard(true)}>Lineup Card</button>
           <button className="danger" onClick={() => setShowEndSet(true)}>End Set</button>
-          <button className="danger" onClick={() => setShowRestartConfirm(true)}>Restart Game</button>
+          <button className="ghost" onClick={() => setShowRestartConfirm(true)}>Restart</button>
           <button className="ghost" onClick={onLogout}>Logout</button>
         </div>
       </div>
 
       <div className="main">
-        <div className="court-wrap">
-          <div className="rotation-header">
-            <div className="rot">Rotation {currentRotation} <small>(started at {startingRotation})</small></div>
-            <div style={{ fontSize: 12, color: 'var(--muted)' }}>
-              {serving ? 'We are serving — next point = hold serve' : 'We are receiving — next point = side out + rotate'}
+        {/* LEFT PANEL — bench + sub pairs (desktop/tablet) */}
+        <div className="live-left-panel">
+          <div className="panel">
+            <h3>Bench</h3>
+            <div className={`sub-counter ${subsUsedThisSet >= subLimit ? 'full' : subsUsedThisSet >= subLimit - 2 ? 'warn' : ''}`}>
+              Subs: <strong>{subsUsedThisSet}/{subLimit}</strong>
+              {subsUsedThisSet >= subLimit && <span className="tag">LIMIT</span>}
             </div>
+            {benchPlayers.length === 0
+              ? <div style={{ fontSize: 12, color: 'var(--muted)' }}>All on court</div>
+              : <div className="bench-list">
+                  {benchPlayers.map(p => (
+                    <div key={p.id}
+                      className={`bench-item ${benchSelected === p.id ? 'selected' : ''}`}
+                      onClick={() => setBenchSelected(benchSelected === p.id ? null : p.id)}
+                    >
+                      <div className={`dot ${p.role}`}>{p.number}</div>
+                      <div className="name">{fullName(p) || '—'}</div>
+                      <div className="role">{p.role}</div>
+                    </div>
+                  ))}
+                </div>
+            }
+            {benchSelected && <div className="hint">Tap court player to initiate sub.</div>}
           </div>
 
-          {liberoSwappedOutId && playerById[liberoSwappedOutId] && (
-            <div className="info-banner">
-              <strong>Libero swap:</strong>&nbsp;
-              Libero replaced #{playerById[liberoSwappedOutId].number} {fullName(playerById[liberoSwappedOutId])} in the back row.
+          {Object.keys(subPairs).length > 0 && (
+            <div className="panel">
+              <h3>Sub Pairs</h3>
+              <div className="sub-pairs-section">
+                {Object.entries(subPairs).map(([starterId, pair]) => {
+                  const starter = playerById[starterId]
+                  const sub = playerById[pair.subId]
+                  return (
+                    <div key={starterId} className={`sub-pair-row ${pair.state}`}>
+                      <div className={`dot ${starter?.role || ''}`} style={{ width: 24, height: 24, fontSize: 10 }}>{starter?.number}</div>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: 700 }}>{fullName(starter)} ↔ {fullName(sub)}</div>
+                      </div>
+                      <div className={`sub-pair-status ${pair.state}`}>{pair.state === 'done' ? 'DONE' : 'ACTIVE'}</div>
+                    </div>
+                  )
+                })}
+              </div>
             </div>
           )}
+        </div>
+
+        {/* CENTER — court */}
+        <div className="court-wrap">
           {liberoWarnings.length > 0 && (
             <div className="warn-banner">
               {liberoWarnings.map((w, i) => <div key={i}>⚠ {w}</div>)}
@@ -1225,96 +1539,104 @@ function GameApp({ session, onLogout, onHome, team, game, onBack, onPublishSessi
             positions={positions}
             onPositionChange={(slot, xy) => {
               setDragPositions(prev => {
-                const rot = currentRotation
-                const cur = prev[rot] || {}
-                return { ...prev, [rot]: { ...cur, [slot]: xy } }
+                const cur = prev[currentRotation] || {}
+                return { ...prev, [currentRotation]: { ...cur, [slot]: xy } }
               })
             }}
             onInvalidDrop={(msg) => showToast(msg)}
             mbSwitches={mbSwitches}
+            pendingSubOutId={pendingSub?.outId || null}
           />
+
+          {/* Rotation pills */}
+          <div className="rotation-pills">
+            {[1,2,3,4,5,6].map(r => (
+              <div key={r} className={`rot-pill ${r === currentRotation ? 'active' : ''}`}>R{r}</div>
+            ))}
+          </div>
+
+          {/* Compact bench (mobile only, shown via CSS) */}
+          <div className="bench-compact">
+            <div className="bench-compact-header">
+              <div className="bench-compact-title">Bench</div>
+              <div className={`sub-counter ${subsUsedThisSet >= subLimit ? 'full' : ''}`} style={{ fontSize: 12 }}>
+                Subs: <strong>{subsUsedThisSet}/{subLimit}</strong>
+              </div>
+            </div>
+            {benchPlayers.length === 0
+              ? <div style={{ fontSize: 12, color: 'var(--muted)' }}>All players on court</div>
+              : (
+                <>
+                  <div className="bench-row">
+                    {benchPlayers.map(p => (
+                      <div
+                        key={p.id}
+                        className={`bench-chip ${p.role} ${benchSelected === p.id ? 'selected' : ''}`}
+                        onClick={() => setBenchSelected(benchSelected === p.id ? null : p.id)}
+                      >
+                        <div className="chip-num">{p.number}</div>
+                        <div className="chip-name">{shortName(p)}</div>
+                      </div>
+                    ))}
+                  </div>
+                  {benchSelected && <div className="bench-chip-hint">Tap a player on the court to sub them out.</div>}
+                </>
+              )
+            }
+          </div>
         </div>
 
-        <div className="sidebar">
-          <div className="panel">
-            <h3>Bench</h3>
-            <div className={`sub-counter ${subsUsedThisSet >= 18 ? 'full' : subsUsedThisSet >= 17 ? 'critical' : subsUsedThisSet >= 15 ? 'warn' : ''}`}>
-              Subs this set: <strong>{subsUsedThisSet}/{subLimit}</strong>
-              {subsUsedThisSet >= 18 && <span className="tag">NO SUBS LEFT</span>}
-              {subsUsedThisSet === 17 && <span className="tag">1 LEFT</span>}
-              {subsUsedThisSet >= 15 && subsUsedThisSet < 17 && <span className="tag">{18 - subsUsedThisSet} LEFT</span>}
-            </div>
-            {benchPlayers.length === 0 && <div style={{ fontSize: 12, color: 'var(--muted)' }}>No bench players</div>}
-            <div className="bench-list">
-              {benchPlayers.map(p => {
-                // Is this bench player paired with any on-court starter? (dual slots)
-                const pairedInfo = []
-                for (const [sid, val] of Object.entries(subPairings)) {
-                  if (val.backRow === p.id) pairedInfo.push({ starter: playerById[sid], row: 'BR' })
-                  if (val.frontRow === p.id) pairedInfo.push({ starter: playerById[sid], row: 'FR' })
-                }
-                return (
-                  <div
-                    key={p.id}
-                    className={`bench-item ${benchSelected === p.id ? 'selected' : ''}`}
-                    onClick={() => setBenchSelected(benchSelected === p.id ? null : p.id)}
-                  >
-                    <div className={`dot ${p.role}`}>{p.number}</div>
-                    <div className="name">
-                      {fullName(p) || '—'}
-                      {pairedInfo.map((pi, i) => pi.starter && (
-                        <div key={i} style={{ fontSize: 10, color: 'var(--accent)', fontWeight: 600 }}>
-                          ↔ #{pi.starter.number} {pi.starter.lastName} ({pi.row})
-                        </div>
-                      ))}
-                    </div>
-                    <div className="role">{p.role}</div>
-                  </div>
-                )
-              })}
-            </div>
-            {benchSelected && <div className="hint">Tap a player on the court to swap them out.</div>}
-          </div>
-
+        {/* RIGHT PANEL — sub log + rotation info (desktop/tablet) */}
+        <div className="live-right-panel">
           <div className="panel">
             <h3>Sub Log</h3>
-            <div className="sub-log">
-              {subs.length === 0 && <div>No subs yet</div>}
-              {subs.slice().reverse().map(s => (
-                <div className="entry" key={s.id}>
-                  {s.label} — Set {s.setNum}, {s.scoreStr}
+            {subs.filter(s => s.setNum === setNum).length === 0
+              ? <div style={{ fontSize: 12, color: 'var(--muted)' }}>No subs this set</div>
+              : <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {(() => {
+                    const setSubsList = subs.filter(s => s.setNum === setNum)
+                    let regularCount = 0
+                    return setSubsList.map((s) => {
+                      const isReturn = s.inPlayerId === s.starterId
+                      const isLiberoSub = s.libero === true
+                      if (!isLiberoSub) regularCount++
+                      const countLabel = isLiberoSub ? null : `Sub ${regularCount}/${subLimit}`
+                      return (
+                        <div key={s.id} className={`sub-log-entry ${isReturn ? 're-entry' : ''} ${isLiberoSub ? 'libero-sub' : ''}`}>
+                          <div>
+                            <div>
+                              {isLiberoSub && <span className="libero-swap-icon">⟲ </span>}
+                              <strong>#{playerById[s.inPlayerId]?.number} {fullName(playerById[s.inPlayerId])}</strong>
+                              {' '}in for{' '}
+                              <strong>#{playerById[s.outPlayerId]?.number} {fullName(playerById[s.outPlayerId])}</strong>
+                            </div>
+                            <div className="sub-log-meta">
+                              R{s.rotation} · {s.scoreStr} · {isLiberoSub ? 'Libero' : countLabel}
+                            </div>
+                          </div>
+                        </div>
+                      )
+                    })
+                  })()}
                 </div>
-              ))}
-            </div>
+            }
           </div>
-
-          <div className="panel actions">
-            <h3>Quick</h3>
-            <button onClick={() => { setCurrentRotation(r => (r % 6) + 1); setLiveLineup(null); setDismissedAlertKeys([]); setSubAlertIndex(0) }}>
-              Advance Rotation →
-            </button>
-            <button className="ghost" onClick={() => setServing(s => !s)}>
-              Toggle Serving
-            </button>
-            <button className="ghost" onClick={() => setShowFormations(true)}>
-              Serve Receive
-            </button>
-            <button
-              className="ghost"
-              onClick={() => {
-                setDragPositions(prev => {
-                  const next = { ...prev }
-                  delete next[currentRotation]
-                  return next
-                })
-                showToast(`Rotation ${currentRotation} positions reset to default`)
-              }}
-            >
-              Reset Positions
-            </button>
-            <button className="ghost" onClick={() => window.print()}>
-              Print / Screenshot
-            </button>
+          <div className="panel">
+            <h3>Rotation {currentRotation}</h3>
+            <div style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 8 }}>
+              {serving ? 'Serving' : 'Receiving'}
+            </div>
+            <div style={{ fontSize: 12, color: 'var(--muted)' }}>
+              {serving ? 'Scored → stay on serve' : 'Scored → side out + rotate'}
+            </div>
+            <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <button className="ghost" style={{ width: '100%' }} onClick={() => setShowFormations(true)}>Serve Receive</button>
+              <button className="ghost" style={{ width: '100%' }} onClick={() => {
+                setDragPositions(prev => { const n = { ...prev }; delete n[currentRotation]; return n })
+                showToast('Positions reset')
+              }}>Reset Positions</button>
+              <button className="ghost" style={{ width: '100%' }} onClick={() => setShowLineupCard(true)}>Lineup Card</button>
+            </div>
           </div>
         </div>
       </div>
@@ -1390,75 +1712,52 @@ function GameApp({ session, onLogout, onHome, team, game, onBack, onPublishSessi
         </div>
       )}
 
-      {activeSubAlert && (() => {
-        const alert = activeSubAlert
-        const inPlayer = playerById[alert.subId]
-        const outPlayer = playerById[alert.starterId]
-        const posLabel = SLOT_ROLE_HINT[alert.slot] || alert.slot
+      {pendingSub && (
+        <SubPopup
+          pendingSub={pendingSub}
+          playerById={playerById}
+          subsUsed={subsUsedThisSet}
+          subLimit={subLimit}
+          onConfirm={() => applySubstitution(pendingSub)}
+          onSkip={() => {
+            if (pendingSub.key) setDismissedSubKeys(prev => new Set([...prev, pendingSub.key]))
+            setPendingSub(null)
+            // Show next undismissed recommendation
+            const nextRec = pendingRecommended.find(r => r.key !== pendingSub.key && !dismissedSubKeys.has(r.key))
+            if (nextRec) setTimeout(() => setPendingSub(nextRec), 100)
+          }}
+          onCancel={() => { setPendingSub(null); setBenchSelected(null) }}
+        />
+      )}
+
+      {showLiberoPopup && (() => {
+        const swappedOut = playerById[liberoSwappedOutId]
+        const liberoPlayer = liberoId ? playerById[liberoId] : null
         return (
-          <div className="sub-alert-overlay">
-            <div className="sub-alert-modal" onClick={e => e.stopPropagation()}>
-              <div className="sub-alert-title">SUBSTITUTION</div>
-              <div className="sub-alert-players">
-                <div className="sub-alert-player in">
-                  <div className={`sub-alert-dot ${inPlayer?.role || ''}`}>{inPlayer?.number}</div>
-                  <div className="sub-alert-name">{fullName(inPlayer)}</div>
-                  <div className="sub-alert-role">IN</div>
-                </div>
-                <div className="sub-alert-arrow">&#10132;</div>
-                <div className="sub-alert-player out">
-                  <div className={`sub-alert-dot ${outPlayer?.role || ''}`}>{outPlayer?.number}</div>
-                  <div className="sub-alert-name">{fullName(outPlayer)}</div>
-                  <div className="sub-alert-role">OUT</div>
-                </div>
+          <div className="libero-popup-overlay">
+            <div className="libero-popup">
+              <div className="libero-popup-badge">Libero Swap</div>
+              <h2>Libero In!</h2>
+              <div className="libero-popup-sub">
+                {liberoPlayer && <><strong>#{liberoPlayer.number} {fullName(liberoPlayer)}</strong> is coming in </>}
+                {swappedOut && <>for <strong>#{swappedOut.number} {fullName(swappedOut)}</strong></>}
+                {' '}in Rotation {currentRotation}.
               </div>
-              <div className="sub-alert-details">
-                <span>Position: <strong>{posLabel}</strong></span>
-                <span className="sub-alert-sep">|</span>
-                <span>Rotation <strong>{currentRotation}</strong></span>
-                <span className="sub-alert-sep">|</span>
-                <span>{alert.rowType}</span>
-              </div>
-              <div className="sub-alert-counter">
-                Subs used: <strong>{subsUsedThisSet}</strong> of <strong>{subLimit}</strong>
-              </div>
-              {pendingSubAlerts.length > 1 && (
-                <div className="sub-alert-queue">
-                  Sub {Math.min(subAlertIndex, pendingSubAlerts.length - 1) + 1} of {pendingSubAlerts.length}
-                </div>
-              )}
-              <div className="sub-alert-actions">
+              <div className="libero-popup-actions">
                 <button
-                  className="sub-alert-confirm"
-                  disabled={subsUsedThisSet >= subLimit}
+                  className="libero-undo-btn"
                   onClick={() => {
-                    if (subsUsedThisSet >= subLimit) {
-                      showToast(`Sub limit reached for set ${setNum} (${subLimit}, NFHS)`)
-                      return
-                    }
-                    const inId = alert.subId
-                    const outId = alert.starterId
-                    setLiveLineup(prev => ({ ...(prev || {}), [alert.slot]: inId }))
-                    setSubs(prev => [...prev, {
-                      id: uid(), slot: alert.slot,
-                      inPlayerId: inId, outPlayerId: outId,
-                      setNum, scoreStr: `${ourScore}-${oppScore}`,
-                      label: `#${inPlayer?.number} ${fullName(inPlayer)} IN for #${outPlayer?.number} ${fullName(outPlayer)}`,
-                    }])
-                    setDismissedAlertKeys(prev => [...prev, alert.key])
-                    setSubAlertIndex(i => Math.min(i, pendingSubAlerts.length - 2))
+                    setCurrentRotation(r => r === 1 ? 6 : r - 1)
+                    setDismissedLiberoRotations(new Set())
                   }}
                 >
-                  Confirm Sub
+                  ← Undo Rotation
                 </button>
                 <button
-                  className="sub-alert-skip"
-                  onClick={() => {
-                    setDismissedAlertKeys(prev => [...prev, alert.key])
-                    setSubAlertIndex(i => Math.min(i, pendingSubAlerts.length - 2))
-                  }}
+                  className="libero-confirm-btn"
+                  onClick={() => setDismissedLiberoRotations(prev => new Set([...prev, currentRotation]))}
                 >
-                  Skip / Not Now
+                  Got it
                 </button>
               </div>
             </div>
@@ -1564,7 +1863,8 @@ function SetupView(props) {
   const {
     session, onLogout, onHome,
     team, game, roster, rawRoster, roleOverrides, setRoleOverrides,
-    liberoId, setLiberoId, subPairings, setSubPairings,
+    liberoId, setLiberoId, liberoCovers, setLiberoCovers,
+    subLimit, setSubLimit, backRowSubs, setBackRowSubs, frontRowSubs, setFrontRowSubs,
     mbSwitches, setMbSwitches,
     dragPositions, setDragPositions,
     opponent, setOpponent, gameDate, setGameDate, format, setFormat,
@@ -1608,8 +1908,7 @@ function SetupView(props) {
   const STEPS = [
     { num: 1, label: 'Game Info' },
     { num: 2, label: 'Lineup' },
-    { num: 3, label: 'Formation' },
-    { num: 4, label: 'Subs' },
+    { num: 3, label: 'Sub Plan' },
   ]
 
   function assignSlot(slot, playerId) {
@@ -1628,7 +1927,7 @@ function SetupView(props) {
     else if (f.category === 'defense') setDefenseFormationId(f.id)
   }
 
-  function next() { if (step < 4) setStep(step + 1) }
+  function next() { if (step < 3) setStep(step + 1) }
   function back() { if (step > 1) setStep(step - 1) }
 
   const canAdvance = (
@@ -1661,7 +1960,7 @@ function SetupView(props) {
             <div className="step-label">{s.label}</div>
           </button>
         ))}
-        <div className="step-progress">Step {step} of 4</div>
+        <div className="step-progress">Step {step} of 3</div>
       </div>
 
       {step === 1 && (
@@ -1745,6 +2044,15 @@ function SetupView(props) {
                     onClick={() => setStartingRotation(n)}
                   >{n}</button>
                 ))}
+              </div>
+            </div>
+
+            <div className="big-field">
+              <label>Sub Limit (per set)</label>
+              <div className="seg-toggle">
+                <button type="button" className={subLimit === 6 ? 'active' : ''} onClick={() => setSubLimit(6)}>6 (NCAA)</button>
+                <button type="button" className={subLimit === 12 ? 'active' : ''} onClick={() => setSubLimit(12)}>12 (NFHS)</button>
+                <button type="button" className={subLimit === 18 ? 'active' : ''} onClick={() => setSubLimit(18)}>18 (club)</button>
               </div>
             </div>
           </div>
@@ -1864,143 +2172,11 @@ function SetupView(props) {
       {step === 3 && (
         <div className="wizard-step">
           <div className="wizard-step-head">
-            <h2>Formations & Serve Receive</h2>
-            <p>Pick your offensive and defensive systems, then choose a serve-receive play for each of the 6 rotations.</p>
+            <h2>Substitution Plan</h2>
+            <p>Assign subs for each player. You'll get automatic prompts during the game when rotation triggers them.</p>
           </div>
-
-          {CATEGORY_ORDER.map(cat => {
-            const formations = getFormationsByCategory(cat, customFormations)
-            const selectedId = cat === 'offense' ? offenseFormationId : defenseFormationId
-            const selected = cat === 'offense' ? selectedOffense : selectedDefense
-            return (
-              <div key={cat} className="formation-category-block">
-                <div className="formation-category-head">
-                  <h3>{CATEGORY_LABELS[cat]}</h3>
-                  {selected && (
-                    <span className="formation-current">Current: <strong>{selected.name}</strong></span>
-                  )}
-                </div>
-                <div className="formation-picker">
-                  {formations.map(f => {
-                    const positions = getRotationPositions(f, startingRotation)
-                    return (
-                      <button
-                        key={f.id}
-                        type="button"
-                        className={`formation-pick-card ${selectedId === f.id ? 'selected' : ''}`}
-                        onClick={() => pickFormation(f)}
-                      >
-                        <div className="big-mini-court">
-                          <div className="bmc-net" />
-                          {SLOTS.map(slot => {
-                            const pos = positions[slot]
-                            return (
-                              <div
-                                key={slot}
-                                className={`bmc-dot ${pos.passer ? 'passer' : 'nonpasser'} ${pos.setter ? 'setter' : ''}`}
-                                style={{ left: `${pos.x}%`, top: `${pos.y}%` }}
-                              >
-                                {slot}
-                              </div>
-                            )
-                          })}
-                        </div>
-                        <div className="formation-pick-title">
-                          {f.name}
-                          {!f.builtin && <span className="ft-badge custom">Custom</span>}
-                        </div>
-                        <div className="formation-pick-desc">{f.description}</div>
-                        {selectedId === f.id && <div className="selected-tag">✓ Selected</div>}
-                      </button>
-                    )
-                  })}
-                </div>
-              </div>
-            )
-          })}
-
-          <div className="formation-category-block sr-block">
-            <div className="formation-category-head">
-              <h3>Serve Receive</h3>
-              <span className="formation-current">
-                Setter is always hidden · pick one option per rotation
-              </span>
-            </div>
-
-            <div className="sr-rotation-tabs">
-              {[1,2,3,4,5,6].map(r => {
-                const picked = serveReceivePlayIds?.[r]
-                const pickedPlay = findSrPlay(picked)
-                return (
-                  <button
-                    key={r}
-                    type="button"
-                    className={`sr-rot-tab ${srRotationTab === r ? 'active' : ''}`}
-                    onClick={() => setSrRotationTab(r)}
-                  >
-                    <div className="sr-rot-num">R{r}</div>
-                    <div className="sr-rot-pick">
-                      {pickedPlay ? pickedPlay.label : '— none —'}
-                    </div>
-                  </button>
-                )
-              })}
-            </div>
-
-            <div className="sr-play-grid">
-              {getPlaysForRotation(srRotationTab).map(play => (
-                <ServeReceivePlayCard
-                  key={play.id}
-                  play={play}
-                  selected={serveReceivePlayIds?.[srRotationTab] === play.id}
-                  onPick={() => pickServeReceivePlay(srRotationTab, play.id)}
-                />
-              ))}
-            </div>
-
-            <div className="sr-legend">
-              <span className="sr-leg-item"><span className="sr-leg-dot setter" />Setter (hidden)</span>
-              <span className="sr-leg-item"><span className="sr-leg-dot libero" />Libero</span>
-              <span className="sr-leg-item"><span className="sr-leg-dot passer" />Passer</span>
-              <span className="sr-leg-item"><span className="sr-leg-dot mb" />MB hide</span>
-              <span className="sr-leg-item"><span className="sr-leg-dot hide" />Hider</span>
-              <span className="sr-leg-item"><span className="sr-leg-arrow" />→ Release / approach</span>
-            </div>
-          </div>
-
-          {(selectedOffense || selectedDefense) && (
-            <div className="cheat-sheet-wrap">
-              {[selectedOffense, selectedDefense].filter(Boolean).map(f => (
-                <FormationCheatSheet
-                  key={f.id}
-                  formation={f}
-                  collapsible
-                  activeRotation={cheatRotation || startingRotation}
-                  onPickRotation={setCheatRotation}
-                  baseLineup={lineupComplete ? baseLineup : null}
-                  playerById={playerById}
-                />
-              ))}
-            </div>
-          )}
-
-          <div className="step-hint">
-            Tap a rotation above, then pick the option you want. The coach can swap in-game from the court toolbar.
-          </div>
-        </div>
-      )}
-
-      {step === 4 && (
-        <div className="wizard-step">
-          <div className="wizard-step-head">
-            <h2>Substitution Pairings</h2>
-            <p>Pair each starter with up to two subs — one for when they rotate to the back row and one for the front row. Either slot can be left empty.</p>
-          </div>
-
-          {rosterEmpty ? (
-            <div className="empty-state">No players on the roster.</div>
-          ) : !lineupComplete ? (
-            <div className="empty-state">Finish the lineup in step 2 to set up subs for your starters.</div>
+          {!lineupComplete ? (
+            <div className="empty-state">Complete the lineup in Step 2 first.</div>
           ) : (
             <div className="sub-card-grid">
               {SLOTS.map(slot => {
@@ -2008,74 +2184,101 @@ function SetupView(props) {
                 if (!pid) return null
                 const p = playerById[pid]
                 if (!p) return null
-                const pairing = subPairings[p.id] || { backRow: null, frontRow: null }
-                const usedIds = allAssignedSubIds(subPairings)
-
-                function makeCandidates(currentVal) {
-                  return rawRoster.filter(q =>
-                    q.id !== p.id &&
-                    !assignedIds.has(q.id) &&
-                    (q.id === currentVal || !usedIds.has(q.id))
-                  )
-                }
-
-                function updateSlot(slotType, value) {
-                  setSubPairings(prev => {
-                    const next = { ...prev }
-                    const cur = next[p.id] || { backRow: null, frontRow: null }
-                    next[p.id] = { ...cur, [slotType]: value || null }
-                    if (!next[p.id].backRow && !next[p.id].frontRow) delete next[p.id]
-                    return next
-                  })
-                }
-
-                const backCandidates = makeCandidates(pairing.backRow)
-                const frontCandidates = makeCandidates(pairing.frontRow)
-
+                const isFrontRow = FRONT_SLOTS.includes(slot)
+                const isBackRow = BACK_SLOTS.includes(slot)
+                const currentBackSub = backRowSubs[pid] || ''
+                const currentFrontSub = frontRowSubs[pid] || ''
+                const isLibero = pid === liberoId
+                const coversLibero = liberoCovers.includes(pid)
+                // Candidates for subs: bench players not in starting lineup
+                const benchCandidates = rawRoster.filter(q =>
+                  q.id !== pid && !assignedIds.has(q.id) && q.id !== liberoId
+                )
                 return (
-                  <div key={p.id} className="sub-card">
+                  <div key={slot} className={`sub-card ${isLibero ? 'sub-card-libero' : ''}`}>
                     <div className="sub-card-head">
                       <div className={`sub-card-dot ${p.role}`}>{p.number}</div>
                       <div className="sub-card-info">
-                        <div className="sub-card-name">{fullName(p) || '—'}</div>
-                        <div className="sub-card-meta">{p.role} · {slot}</div>
+                        <div className="sub-card-name">{fullName(p)}</div>
+                        <div className="sub-card-meta">
+                          {p.role} · {slot} · {isFrontRow ? 'Front Row' : 'Back Row'}
+                          {isLibero ? ' · Libero' : ''}
+                        </div>
                       </div>
                     </div>
                     <div className="sub-card-slots">
-                      <div className="sub-card-slot">
-                        <label>Back Row Sub</label>
-                        <select
-                          value={pairing.backRow || ''}
-                          onChange={e => updateSlot('backRow', e.target.value)}
-                        >
-                          <option value="">— None —</option>
-                          {backCandidates.map(q => (
-                            <option key={q.id} value={q.id}>
-                              #{q.number} {fullName(q)} ({q.role})
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                      <div className="sub-card-slot">
-                        <label>Front Row Sub</label>
-                        <select
-                          value={pairing.frontRow || ''}
-                          onChange={e => updateSlot('frontRow', e.target.value)}
-                        >
-                          <option value="">— None —</option>
-                          {frontCandidates.map(q => (
-                            <option key={q.id} value={q.id}>
-                              #{q.number} {fullName(q)} ({q.role})
-                            </option>
-                          ))}
-                        </select>
-                      </div>
+                      {/* Libero covers toggle (only visible if a libero is set and this isn't the libero) */}
+                      {liberoId && !isLibero && (
+                        <div className="sub-card-slot">
+                          <label>
+                            <input
+                              type="checkbox"
+                              checked={coversLibero}
+                              onChange={e => {
+                                if (e.target.checked) {
+                                  setLiberoCovers(prev => prev.includes(pid) ? prev : [...prev, pid])
+                                } else {
+                                  setLiberoCovers(prev => prev.filter(id => id !== pid))
+                                }
+                              }}
+                            />
+                            {' '}Libero covers this player in back row
+                          </label>
+                        </div>
+                      )}
+                      {/* Back row replacement: for front-row starters */}
+                      {isFrontRow && !isLibero && (
+                        <div className="sub-card-slot">
+                          <label>Back Row Replacement</label>
+                          <select
+                            value={currentBackSub}
+                            onChange={e => {
+                              const val = e.target.value
+                              setBackRowSubs(prev => {
+                                const next = { ...prev }
+                                if (val) next[pid] = val; else delete next[pid]
+                                return next
+                              })
+                            }}
+                          >
+                            <option value="">— None —</option>
+                            {benchCandidates.map(q => (
+                              <option key={q.id} value={q.id}>#{q.number} {fullName(q)} ({q.role})</option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
+                      {/* Front row replacement: for back-row starters */}
+                      {isBackRow && !isLibero && (
+                        <div className="sub-card-slot">
+                          <label>Front Row Replacement</label>
+                          <select
+                            value={currentFrontSub}
+                            onChange={e => {
+                              const val = e.target.value
+                              setFrontRowSubs(prev => {
+                                const next = { ...prev }
+                                if (val) next[pid] = val; else delete next[pid]
+                                return next
+                              })
+                            }}
+                          >
+                            <option value="">— None —</option>
+                            {benchCandidates.map(q => (
+                              <option key={q.id} value={q.id}>#{q.number} {fullName(q)} ({q.role})</option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
                     </div>
                   </div>
                 )
               })}
             </div>
           )}
+          <div className="step-hint">
+            All optional. Subs are prompted automatically when rotation triggers them. You can always sub manually during the game.
+          </div>
         </div>
       )}
 
@@ -2084,9 +2287,9 @@ function SetupView(props) {
           {step === 1 ? '← Cancel' : '← Back'}
         </button>
         <div className="wizard-progress-bar">
-          <div className="wizard-progress-fill" style={{ width: `${(step / 4) * 100}%` }} />
+          <div className="wizard-progress-fill" style={{ width: `${(step / 3) * 100}%` }} />
         </div>
-        {step < 4 ? (
+        {step < 3 ? (
           <button
             className="primary"
             onClick={next}
@@ -2118,7 +2321,7 @@ function playerByIdIn(roster, id) {
 function Court({
   lineup, playerById, serving, selectedSlot, onSlotClick,
   positions, onPositionChange, onInvalidDrop,
-  mbSwitches,
+  mbSwitches, pendingSubOutId,
 }) {
   const courtRef = useRef(null)
   const [dragging, setDragging] = useState(null) // { slot, x, y, valid }
@@ -2224,12 +2427,13 @@ function Court({
         const isFrontRow = FRONT_SLOTS.includes(slot)
         const illegal = p && p.role === 'L' && isFrontRow
         const isServer = slot === 'P1' && serving
+        const isPendingSub = pid && pid === pendingSubOutId
         return (
           <div key={slot}>
             <div className="slot-label" style={{ left: `${basePos.x}%`, top: `${basePos.y - 10}%` }}>{slot}</div>
             {p && (
               <div
-                className={`player ${p.role} ${isServer ? 'serving' : ''} ${selectedSlot === slot ? 'selected' : ''} ${illegal ? 'illegal' : ''} ${isDragging ? `is-dragging ${dragging.valid ? 'drag-ok' : 'drag-bad'}` : ''}`}
+                className={`player ${p.role} ${isServer ? 'serving' : ''} ${selectedSlot === slot ? 'selected' : ''} ${illegal ? 'illegal' : ''} ${isDragging ? `is-dragging ${dragging.valid ? 'drag-ok' : 'drag-bad'}` : ''} ${isPendingSub ? 'pending-sub' : ''}`}
                 style={{ left: `${x}%`, top: `${y}%` }}
                 onPointerDown={(e) => onPointerDown(e, slot)}
                 onClick={(e) => { if (!dragging) onSlotClick(slot) }}
@@ -2591,6 +2795,424 @@ function FormationEditorModal({ initial, onClose, onSave }) {
         <div className="row">
           <button type="button" className="ghost" onClick={onClose}>Cancel</button>
           <button type="button" className="primary" onClick={handleSave}>Save Formation</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ============================================================
+// Gameplan — mini court preview (R1 positions)
+// ============================================================
+function GameplanPreview({ lineup, roster }) {
+  if (!lineup) return <div className="gp-preview-empty">No lineup</div>
+  const byId = {}
+  for (const p of (roster || [])) byId[p.id] = p
+  const positions = {
+    P4: { x: 14, y: 26 }, P3: { x: 50, y: 26 }, P2: { x: 86, y: 26 },
+    P5: { x: 14, y: 74 }, P6: { x: 50, y: 74 }, P1: { x: 86, y: 74 },
+  }
+  const filled = SLOTS.some(s => lineup[s])
+  if (!filled) return <div className="gp-preview-empty">No lineup set</div>
+  return (
+    <div className="gp-preview-court">
+      <div className="gp-preview-net" />
+      {SLOTS.map(slot => {
+        const p = byId[lineup[slot]]
+        const pos = positions[slot]
+        return (
+          <div
+            key={slot}
+            className={`gp-preview-dot ${p?.role || 'empty'}`}
+            style={{ left: `${pos.x}%`, top: `${pos.y}%` }}
+          >
+            {p ? (p.number || '?') : '·'}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+// ============================================================
+// Gameplans — list view
+// ============================================================
+function GameplansView({ session, onLogout, onHome, team, onBack, onCreateGameplan, onEditGameplan, onLoadGameplan, onChanged, tick, statsPalSchedule = [], isStandalone }) {
+  const gameplans = useMemo(() => {
+    const t = getTeam(team.id)
+    return (t?.gameplans || []).slice().sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
+  }, [team.id, tick])
+
+  const localGames = useMemo(() => {
+    const t = getTeam(team.id)
+    return t?.games || []
+  }, [team.id, tick])
+
+  function getAttachmentLabel(gp) {
+    if (!gp.gameId) return null
+    const localGame = localGames.find(g => g.id === gp.gameId)
+    if (!localGame) return null
+    if (localGame.scheduleId) {
+      const entry = statsPalSchedule.find(s => s.id === localGame.scheduleId)
+      if (entry) return `vs ${entry.opponent} · ${entry.game_date?.slice(0, 10) || ''}`
+    }
+    return `vs ${localGame.opponent} · ${localGame.date || ''}`
+  }
+
+  function canLoad(gp) { return !!gp.gameId && localGames.some(g => g.id === gp.gameId) }
+
+  function handleDelete(gp) {
+    if (!confirm(`Delete gameplan "${gp.name}"?`)) return
+    deleteGameplan(team.id, gp.id)
+    onChanged()
+  }
+
+  return (
+    <div className="dashboard">
+      <HeaderBar
+        session={session}
+        onLogout={onLogout}
+        onHome={onHome}
+        title={team.name}
+        subtitle="Gameplans"
+        leftActions={<button className="ghost" onClick={onBack}>← {team.name}</button>}
+      />
+      <div className="teams-section-header">
+        <h2>Gameplans</h2>
+        <button className="primary" onClick={onCreateGameplan}>+ Create Gameplan</button>
+      </div>
+
+      {gameplans.length === 0 ? (
+        <div className="empty-state">
+          <h3>No gameplans yet</h3>
+          <p>Save a named lineup for a specific opponent. Load it instantly before a game starts.</p>
+          <button className="primary" onClick={onCreateGameplan}>+ Create Gameplan</button>
+        </div>
+      ) : (
+        <div className="gp-list">
+          {gameplans.map(gp => {
+            const label = getAttachmentLabel(gp)
+            const loadable = canLoad(gp)
+            return (
+              <div key={gp.id} className="gp-card">
+                <div className="gp-card-preview">
+                  <GameplanPreview lineup={gp.baseLineup} roster={team.roster || []} />
+                </div>
+                <div className="gp-card-body">
+                  <div className="gp-card-name">{gp.name}</div>
+                  {label && <div className="gp-card-game">📅 {label}</div>}
+                  {gp.notes && <div className="gp-card-notes">{gp.notes}</div>}
+                  <div className="gp-card-meta">R{gp.startingRotation || 1} start · Created {new Date(gp.createdAt).toLocaleDateString()}</div>
+                </div>
+                <div className="gp-card-actions">
+                  {loadable && (
+                    <button className="primary gp-load-btn" onClick={() => onLoadGameplan(gp)}>
+                      ▶ Load
+                    </button>
+                  )}
+                  {!loadable && (
+                    <div className="gp-no-game-hint">Attach a game to load</div>
+                  )}
+                  <button className="ghost" onClick={() => onEditGameplan(gp.id)}>Edit</button>
+                  <button className="danger" onClick={() => handleDelete(gp)}>Delete</button>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ============================================================
+// Gameplan editor — create / edit
+// ============================================================
+function GameplanEditView({ session, onLogout, onHome, team, gameplan, presetGameId, onBack, onSaved, statsPalSchedule = [], isStandalone }) {
+  const isEdit = !!gameplan
+  const emptyBl = () => ({ P1: null, P2: null, P3: null, P4: null, P5: null, P6: null })
+
+  const [name, setName] = useState(gameplan?.name || '')
+  const [gameId, setGameId] = useState(gameplan?.gameId || presetGameId || '')
+  const [baseLineup, setBaseLineup] = useState(gameplan?.baseLineup || emptyBl())
+  const [startingRotation, setStartingRotation] = useState(gameplan?.startingRotation || 1)
+  const [notes, setNotes] = useState(gameplan?.notes || '')
+  const [activeTab, setActiveTab] = useState(1)
+  const [dragId, setDragId] = useState(null)
+
+  const roster = team.roster || []
+  const localGames = useMemo(() => {
+    const t = getTeam(team.id)
+    return t?.games || []
+  }, [])
+
+  // Rotation lineups computed from base
+  const rotationLineups = useMemo(() => {
+    const out = {}
+    for (let r = 1; r <= 6; r++) {
+      out[r] = computeLineup(baseLineup, 1, r)
+    }
+    return out
+  }, [baseLineup])
+
+  const displayLineup = rotationLineups[activeTab] || emptyBl()
+
+  const playerById = useMemo(() => {
+    const m = {}
+    for (const p of roster) m[p.id] = p
+    return m
+  }, [roster])
+
+  const assignedIds = new Set(Object.values(baseLineup).filter(Boolean))
+
+  const EDIT_COORDS = {
+    P4: { x: 14, y: 26 }, P3: { x: 50, y: 26 }, P2: { x: 86, y: 26 },
+    P5: { x: 14, y: 74 }, P6: { x: 50, y: 74 }, P1: { x: 86, y: 74 },
+  }
+
+  function assignSlot(slot, playerId) {
+    if (activeTab !== 1) return // only R1 is editable
+    setBaseLineup(bl => {
+      const nbl = { ...bl }
+      for (const s of SLOTS) if (nbl[s] === playerId && playerId) nbl[s] = null
+      nbl[slot] = playerId || null
+      return nbl
+    })
+  }
+
+  function clearSlot(slot) {
+    if (activeTab !== 1) return
+    setBaseLineup(bl => ({ ...bl, [slot]: null }))
+  }
+
+  // Game options for the selector
+  const gameOptions = useMemo(() => {
+    return localGames.map(g => {
+      if (!isStandalone && g.scheduleId) {
+        const entry = statsPalSchedule.find(s => s.id === g.scheduleId)
+        if (entry) return { value: g.id, label: `vs ${entry.opponent} · ${entry.game_date?.slice(0, 10) || ''}` }
+      }
+      return { value: g.id, label: `vs ${g.opponent} · ${g.date || ''}` }
+    })
+  }, [localGames, statsPalSchedule, isStandalone])
+
+  function handleSave() {
+    if (!name.trim()) { alert('Give this gameplan a name.'); return }
+    const gp = {
+      id: gameplan?.id || (Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-4)),
+      name: name.trim(),
+      gameId: gameId || null,
+      baseLineup,
+      startingRotation,
+      notes: notes.trim(),
+    }
+    saveGameplan(team.id, gp)
+    onSaved()
+  }
+
+  return (
+    <div className="dashboard">
+      <HeaderBar
+        session={session}
+        onLogout={onLogout}
+        onHome={onHome}
+        title={team.name}
+        subtitle={isEdit ? 'Edit Gameplan' : 'New Gameplan'}
+        leftActions={<button className="ghost" onClick={onBack}>← Gameplans</button>}
+      />
+
+      <div className="gp-editor">
+        {/* Name */}
+        <div className="big-form">
+          <div className="big-field">
+            <label>Gameplan Name</label>
+            <input
+              className="big-input"
+              autoFocus
+              placeholder='e.g. "vs Lodi Serve Receive"'
+              value={name}
+              onChange={e => setName(e.target.value)}
+            />
+          </div>
+
+          <div className="big-form-row">
+            <div className="big-field">
+              <label>Attach to Game (optional)</label>
+              <select
+                className="big-input"
+                value={gameId}
+                onChange={e => setGameId(e.target.value)}
+              >
+                <option value="">— No game attached —</option>
+                {gameOptions.map(opt => (
+                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                ))}
+              </select>
+            </div>
+            <div className="big-field">
+              <label>Starting Rotation</label>
+              <div className="seg-toggle rot">
+                {[1,2,3,4,5,6].map(n => (
+                  <button key={n} type="button" className={startingRotation === n ? 'active' : ''} onClick={() => setStartingRotation(n)}>{n}</button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Rotation editor */}
+        <div className="panel">
+          <h3>Rotation Setup</h3>
+          <p className="panel-hint">Set your R1 lineup — R2 through R6 auto-populate from the rotation order.</p>
+
+          <div className="rot-tabs">
+            {[1,2,3,4,5,6].map(r => (
+              <button
+                key={r}
+                type="button"
+                className={`rot-tab ${activeTab === r ? 'active' : ''}`}
+                onClick={() => setActiveTab(r)}
+              >
+                R{r}{r === 1 ? ' ✎' : ''}
+              </button>
+            ))}
+          </div>
+
+          {activeTab === 1 ? (
+            /* Editable R1 lineup — same drag/click pattern as SetupView */
+            roster.length === 0 ? (
+              <div className="empty-state" style={{ marginTop: 12 }}>
+                No players on roster. Add players in Roster first.
+              </div>
+            ) : (
+              <div className="lineup-layout">
+                <div className="big-court-wrap">
+                  <div className="court-row-label">⬆ FRONT ROW (at the net)</div>
+                  <div className="big-court" onDragOver={e => e.preventDefault()}>
+                    <div className="big-court-net" />
+                    {SLOTS.map(slot => {
+                      const pid = baseLineup[slot]
+                      const p = pid ? playerById[pid] : null
+                      return (
+                        <div
+                          key={slot}
+                          className={`big-zone ${p ? 'filled' : ''} ${dragId ? 'targetable' : ''}`}
+                          style={{ left: `${EDIT_COORDS[slot].x}%`, top: `${EDIT_COORDS[slot].y}%` }}
+                          onDragOver={e => e.preventDefault()}
+                          onDrop={e => {
+                            e.preventDefault()
+                            const id = e.dataTransfer.getData('text/plain') || dragId
+                            if (id) assignSlot(slot, id)
+                            setDragId(null)
+                          }}
+                          onClick={() => {
+                            if (dragId) { assignSlot(slot, dragId); setDragId(null) }
+                            else if (p) clearSlot(slot)
+                          }}
+                        >
+                          <div className="zone-label">{slot}{slot === 'P1' ? ' · server' : ''}</div>
+                          {p ? (
+                            <div className={`zone-player ${p.role}`}>
+                              <div className="zone-num">#{p.number}</div>
+                              <div className="zone-name">{shortName(p)}</div>
+                              <div className="zone-role">{p.role}</div>
+                            </div>
+                          ) : (
+                            <div className="zone-empty">+</div>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                  <div className="court-row-label">⬇ BACK ROW</div>
+                </div>
+                <div className="lineup-side">
+                  <h3>Roster ({roster.length})</h3>
+                  <div className="big-chip-list">
+                    {roster.map(p => {
+                      const onCourt = assignedIds.has(p.id)
+                      return (
+                        <div
+                          key={p.id}
+                          className={`big-chip ${p.role} ${onCourt ? 'on-court' : ''} ${dragId === p.id ? 'dragging' : ''}`}
+                          draggable={!onCourt}
+                          onDragStart={e => {
+                            if (onCourt) { e.preventDefault(); return }
+                            e.dataTransfer.setData('text/plain', p.id)
+                            e.dataTransfer.effectAllowed = 'move'
+                            setDragId(p.id)
+                          }}
+                          onDragEnd={() => setDragId(null)}
+                          onClick={() => { if (!onCourt) setDragId(dragId === p.id ? null : p.id) }}
+                        >
+                          <div className="chip-num">{p.number}</div>
+                          <div className="chip-name">{fullName(p) || '—'}</div>
+                          <div className="chip-role">{p.role}</div>
+                          {onCourt && <div className="chip-check">✓</div>}
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              </div>
+            )
+          ) : (
+            /* Read-only computed rotation preview */
+            <div className="gp-rot-preview">
+              <div className="gp-rot-preview-label">Rotation {activeTab} — computed from R1</div>
+              <div className="big-court-wrap" style={{ maxWidth: 420 }}>
+                <div className="court-row-label">⬆ FRONT ROW</div>
+                <div className="big-court" style={{ pointerEvents: 'none', opacity: 0.8 }}>
+                  <div className="big-court-net" />
+                  {SLOTS.map(slot => {
+                    const pid = displayLineup[slot]
+                    const p = pid ? playerById[pid] : null
+                    return (
+                      <div
+                        key={slot}
+                        className={`big-zone ${p ? 'filled' : ''}`}
+                        style={{ left: `${EDIT_COORDS[slot].x}%`, top: `${EDIT_COORDS[slot].y}%` }}
+                      >
+                        <div className="zone-label">{slot}</div>
+                        {p ? (
+                          <div className={`zone-player ${p.role}`}>
+                            <div className="zone-num">#{p.number}</div>
+                            <div className="zone-name">{shortName(p)}</div>
+                            <div className="zone-role">{p.role}</div>
+                          </div>
+                        ) : (
+                          <div className="zone-empty">—</div>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+                <div className="court-row-label">⬇ BACK ROW</div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Notes */}
+        <div className="big-form">
+          <div className="big-field">
+            <label>Notes (optional)</label>
+            <textarea
+              className="big-input"
+              value={notes}
+              onChange={e => setNotes(e.target.value)}
+              placeholder='"Start in Rotation 3", "Liam serves first", "Use S1 formation"...'
+              rows={3}
+              style={{ resize: 'vertical' }}
+            />
+          </div>
+        </div>
+
+        <div className="row" style={{ padding: '0 0 32px' }}>
+          <button className="ghost" onClick={onBack}>Cancel</button>
+          <button className="primary" onClick={handleSave}>
+            {isEdit ? 'Save Changes' : 'Save Gameplan'}
+          </button>
         </div>
       </div>
     </div>

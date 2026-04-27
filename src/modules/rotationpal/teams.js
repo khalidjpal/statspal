@@ -88,6 +88,7 @@ function emptyGameState() {
     frontRowSubs: {},       // back-row starters → front-row replacement { [starterId]: subId }
     liberoCovers: [],       // player IDs the libero is attached to (replaces MB role auto-detect)
     subLimit: 12,           // subs per set
+    formations: null,       // per-rotation { serve, receive } position maps; null = use defaults
   };
 }
 

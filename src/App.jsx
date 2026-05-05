@@ -82,9 +82,10 @@ export default function App() {
   }
 
   function launchRotationPalForTeam(team) {
+    // Selected team is sticky — RotationPal opens directly for the team the
+    // coach is already on. No extra picker, no prompts.
     setSelectedTeam(team);
-    // No teamId — all linked teams are accessible inside RotationPal itself.
-    setActiveEntry({ mode: 'linked' });
+    setActiveEntry({ mode: 'linked', teamId: team.id });
     nav(SCREENS.ROTATIONPAL);
   }
 
@@ -122,8 +123,9 @@ export default function App() {
   if (!currentUser && autoRouted) setAutoRouted(false);
   if (!currentUser && initialDataLoaded) setInitialDataLoaded(false);
 
-  // Post-login auto-route: admin → picker always. Others → remembered team if
-  // still accessible, else picker (2+ teams) or direct launch (1 team).
+  // Post-login auto-route: once a user has picked a team, that choice sticks
+  // across logins / sessions for ALL roles (admin included). Switching is
+  // explicit via the "Switch team" button.
   if (currentUser && !autoRouted && initialDataLoaded && screen === SCREENS.LOGIN) {
     let rememberedTeam = null;
     try {
@@ -131,13 +133,14 @@ export default function App() {
       if (stored) rememberedTeam = candidateTeams.find(t => String(t.id) === stored) || null;
     } catch { /* localStorage unavailable — fall through */ }
 
-    if (isAdmin || candidateTeams.length === 0) {
+    if (candidateTeams.length === 0) {
       setScreen(SCREENS.TEAM_PICKER);
-    } else if (candidateTeams.length === 1) {
-      setSelectedTeam(candidateTeams[0]);
-      setScreen(SCREENS.TEAM_LAUNCH);
     } else if (rememberedTeam) {
       setSelectedTeam(rememberedTeam);
+      setScreen(SCREENS.TEAM_LAUNCH);
+    } else if (candidateTeams.length === 1) {
+      setSelectedTeam(candidateTeams[0]);
+      try { localStorage.setItem(lastTeamKey(currentUser.id), String(candidateTeams[0].id)); } catch { /* noop */ }
       setScreen(SCREENS.TEAM_LAUNCH);
     } else {
       setScreen(SCREENS.TEAM_PICKER);

@@ -26,7 +26,12 @@
       "Bash(pkill -f \"vite\")",
       "Bash(curl:*)",
       "Bash(tasklist)",
-      "Bash(echo \"started bg PID=$!\")"
+      "Bash(echo \"started bg PID=$!\")",
+      "Bash(findstr css *)",
+      "Bash(grep -n \"return \\(\\\\|<\\\\/div>\\\\s*$\\\\|^function TeamHomeView\\\\|^function MiniCalendar\" \"C:/Users/kpal/statspal/src/modules/rotationpal/RotationPalApp.jsx\")",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git push *)"
     ]
   }
 }

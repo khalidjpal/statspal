@@ -111,15 +111,12 @@ export default function PreGame({ team, scheduledGame, onBack, onStartGame, onRe
       </div>
 
       <div style={{ padding: '16px 20px', maxWidth: 600, margin: '0 auto' }}>
-        {/* RotationPal-linked banner */}
+        {/* RotationPal-linked banner — score info is intentionally omitted
+            because RotationPal scores are visual-only and never sync back. */}
         {rpSessionForThisTeam && step === 'setup' && (
           <div className="vp-pregame-hint">
             <IconLink size={16} />
-            <div>
-              RotationPal is tracking this team
-              {' '}({rpSessionForThisTeam.ourScore ?? 0}-{rpSessionForThisTeam.oppScore ?? 0},
-              set {rpSessionForThisTeam.setNum ?? 1})
-            </div>
+            <div>RotationPal has a lineup ready for this team</div>
             <button onClick={applyRotationPalLineup}>Use lineup</button>
           </div>
         )}

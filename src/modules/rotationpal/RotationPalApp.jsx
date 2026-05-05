@@ -4,6 +4,9 @@ import {
   createGame, getGame, updateGame, deleteGame, resetGameState,
   listCustomFormations, saveCustomFormation, deleteCustomFormation,
   listGameplans, saveGameplan, deleteGameplan,
+  getMatchAttachments, setMatchAttachment, matchKey,
+  getCalendarNotes, setCalendarNote,
+  getMatchPlans, saveMatchPlan, deleteMatchPlan,
   mapStatsPalRoster,
 } from './teams'
 import { IconUsers, IconClipboard, IconCalendar, IconPlay } from '../../components/Icons'
@@ -282,6 +285,7 @@ export default function RotationPalApp({
   statsPalTeams = [],
   statsPalPlayers = [],
   statsPalSchedule = [],
+  statsPalCompletedGames = [],
   entryMode = 'linked',
   onHome,
   onLogout,
@@ -338,6 +342,19 @@ export default function RotationPalApp({
     modeBadge: isStandalone ? 'standalone' : 'linked',
   }
 
+  // Hand any inner screen a "live" team object whose roster is derived
+  // straight from the StatsPal players Supabase table on every render —
+  // never the localStorage cache. This is the single read path for roster
+  // data across the entire RotationPal module, so add/edit/remove of a
+  // player anywhere in StatsPal shows up here without lag.
+  function liveTeam(teamId) {
+    const baseTeam = getTeam(teamId)
+    if (!baseTeam) return null
+    if (isStandalone) return baseTeam
+    const players = (statsPalPlayers || []).filter(p => p.team_id === teamId)
+    return { ...baseTeam, roster: mapStatsPalRoster(players) }
+  }
+
   let screen
   if (nav.screen === 'teams') {
     screen = (
@@ -350,12 +367,14 @@ export default function RotationPalApp({
       />
     )
   } else if (nav.screen === 'teamHome') {
-    const team = getTeam(nav.teamId)
+    const team = liveTeam(nav.teamId)
     if (!team) { setNav({ screen: 'teams' }); return null }
     screen = (
       <TeamHomeView
         {...headerProps}
         team={team}
+        statsPalSchedule={statsPalSchedule}
+        statsPalCompletedGames={statsPalCompletedGames}
         onBack={statsPalTeams.length <= 1
           ? () => onHome?.()
           : () => setNav({ screen: 'teams' })}
@@ -366,7 +385,7 @@ export default function RotationPalApp({
       />
     )
   } else if (nav.screen === 'roster') {
-    const team = getTeam(nav.teamId)
+    const team = liveTeam(nav.teamId)
     if (!team) { setNav({ screen: 'teams' }); return null }
     screen = (
       <RosterView
@@ -377,7 +396,7 @@ export default function RotationPalApp({
       />
     )
   } else if (nav.screen === 'formations') {
-    const team = getTeam(nav.teamId)
+    const team = liveTeam(nav.teamId)
     if (!team) { setNav({ screen: 'teams' }); return null }
     screen = (
       <FormationsView
@@ -389,7 +408,7 @@ export default function RotationPalApp({
       />
     )
   } else if (nav.screen === 'schedule') {
-    const team = getTeam(nav.teamId)
+    const team = liveTeam(nav.teamId)
     if (!team) { setNav({ screen: 'teams' }); return null }
     const teamSchedule = statsPalSchedule.filter(s => s.team_id === team.id)
     screen = (
@@ -418,7 +437,7 @@ export default function RotationPalApp({
       />
     )
   } else if (nav.screen === 'gameplans') {
-    const team = getTeam(nav.teamId)
+    const team = liveTeam(nav.teamId)
     if (!team) { setNav({ screen: 'teams' }); return null }
     const teamSchedule = statsPalSchedule.filter(s => s.team_id === team.id)
     screen = (
@@ -447,7 +466,7 @@ export default function RotationPalApp({
       />
     )
   } else if (nav.screen === 'gameplan_edit') {
-    const team = getTeam(nav.teamId)
+    const team = liveTeam(nav.teamId)
     if (!team) { setNav({ screen: 'teams' }); return null }
     const existingGp = nav.editGameplanId
       ? (team.gameplans || []).find(g => g.id === nav.editGameplanId)
@@ -466,7 +485,7 @@ export default function RotationPalApp({
       />
     )
   } else if (nav.screen === 'game') {
-    const team = getTeam(nav.teamId)
+    const team = liveTeam(nav.teamId)
     const game = team ? (team.games || []).find(g => g.id === nav.gameId) : null
     if (!team || !game) { setNav({ screen: 'teams' }); return null }
     // StatsPal teams are always linked; standalone teams never publish sessions.
@@ -617,49 +636,877 @@ function MyTeamsView({
 // ============================================================
 // Team Home
 // ============================================================
-function TeamHomeView({ session, onLogout, onHome, team, onBack, onOpenRoster, onOpenSchedule, onOpenFormations, onOpenGameplans }) {
+// Color constants used for game cells everywhere on the dashboard.
+const RP_COLOR_WIN  = '#3fb950'
+const RP_COLOR_LOSS = '#f85149'
+const RP_COLOR_UPCO = '#58a6ff'
+
+function TeamHomeView({
+  session, onLogout, onHome, team, onBack,
+  onOpenRoster, onOpenSchedule, onOpenFormations, onOpenGameplans,
+  statsPalSchedule = [], statsPalCompletedGames = [],
+}) {
   const rosterCount = (team.roster || []).length
-  const gameCount = (team.games || []).length
-  const upcoming = (team.games || []).filter(g => !g.finishedSets || g.finishedSets.length === 0).length
-  const customCount = (team.customFormations || []).length
-  const gameplanCount = (team.gameplans || []).length
+
+  // Sort jersey-number-first roster used by both sidebar list and lineup pickers.
+  const compactRoster = useMemo(() => {
+    const arr = (team.roster || []).slice()
+    arr.sort((a, b) => {
+      const an = parseInt(a.number, 10), bn = parseInt(b.number, 10)
+      const aFin = Number.isFinite(an), bFin = Number.isFinite(bn)
+      if (aFin && bFin) return an - bn
+      if (aFin) return -1
+      if (bFin) return 1
+      return ((a.lastName || '') + (a.firstName || '')).localeCompare((b.lastName || '') + (b.firstName || ''))
+    })
+    return arr
+  }, [team.roster])
+
+  // Truth model:
+  //   - schedule row exists  → upcoming (no W/L recorded yet)
+  //   - completed_games row  → past (W/L recorded via manual or live tracking)
+  // Date is irrelevant to the upcoming/completed split.
+  const today = new Date().toISOString().slice(0, 10)
+  const fullSchedule = useMemo(() => {
+    const teamSched = (statsPalSchedule || []).filter(g => g.team_id === team.id)
+    const teamPast = (statsPalCompletedGames || []).filter(g => g.team_id === team.id)
+    const items = [
+      ...teamSched.map(g => ({
+        id: `s-${g.id}`,
+        scheduleId: g.id,
+        game_date: g.game_date,
+        opponent: g.opponent,
+        location: g.location,
+        result: null,
+        kind: 'upcoming',
+        isToday: g.game_date === today,
+      })),
+      ...teamPast.map(g => ({
+        id: `c-${g.id}`,
+        game_date: g.game_date,
+        opponent: g.opponent,
+        location: g.location,
+        result: g.result || null,
+        home_sets: g.home_sets,
+        away_sets: g.away_sets,
+        kind: 'completed',
+      })),
+    ]
+    items.sort((a, b) => String(a.game_date).localeCompare(String(b.game_date)))
+    return items
+  }, [statsPalSchedule, statsPalCompletedGames, team.id, today])
+
+  const upcomingGames = useMemo(
+    () => fullSchedule.filter(g => g.kind === 'upcoming'),
+    [fullSchedule]
+  )
+  // Past games come back most-recent first (the user usually references the
+  // last game played, not the first one of the season).
+  const pastGames = useMemo(
+    () => fullSchedule.filter(g => g.kind === 'completed').slice().reverse(),
+    [fullSchedule]
+  )
+
+  // Mini-calendar grouping for the left sidebar. We index games by ISO date
+  // and emit one calendar grid per month that has any games scheduled.
+  const calendarMonths = useMemo(() => {
+    const monthsMap = new Map() // 'YYYY-MM' → { key, games: [] }
+    const byDate = new Map() // 'YYYY-MM-DD' → game
+    for (const g of fullSchedule) {
+      const dateStr = (g.game_date || '').slice(0, 10)
+      if (!dateStr) continue
+      const monthKey = dateStr.slice(0, 7)
+      if (!monthsMap.has(monthKey)) {
+        monthsMap.set(monthKey, { key: monthKey, games: [] })
+      }
+      monthsMap.get(monthKey).games.push(g)
+      // First game on a date wins (rare to have two games same day on the same team).
+      if (!byDate.has(dateStr)) byDate.set(dateStr, g)
+    }
+    const months = [...monthsMap.values()].sort((a, b) => a.key.localeCompare(b.key))
+    return { months, byDate }
+  }, [fullSchedule])
+
+  // Match attachments — keyed by `${opponent}__${game_date}` so they survive
+  // schedule→completed_games (lets us render past games' attached lineup).
+  const [attachments, setAttachments] = useState(() => getMatchAttachments(team.id))
+  useEffect(() => { setAttachments(getMatchAttachments(team.id)) }, [team.id])
+
+  function reloadAttachments() { setAttachments(getMatchAttachments(team.id)) }
+
+  // Picker modal state for attach-gameplan / attach-formation
+  const [picker, setPicker] = useState(null) // { matchKey, kind } | null
+
+  const allFormations = useMemo(() => getAllFormations(team.customFormations || []), [team.customFormations])
+  const gameplans = team.gameplans || []
+
+  function applyAttachment(key, kind, valueId) {
+    const patch = kind === 'gameplan' ? { gameplanId: valueId } : { formationId: valueId }
+    setMatchAttachment(team.id, key, patch)
+    reloadAttachments()
+    setPicker(null)
+  }
+  function clearAttachment(key, kind) {
+    const patch = kind === 'gameplan' ? { gameplanId: null } : { formationId: null }
+    setMatchAttachment(team.id, key, patch)
+    reloadAttachments()
+  }
+  function saveNotes(key, notes) {
+    setMatchAttachment(team.id, key, { notes: notes || null })
+    reloadAttachments()
+  }
+  function setLineupSlot(key, slot, playerId) {
+    const att = getMatchAttachments(team.id)[key] || {}
+    const lineup = { ...(att.lineup || {}) }
+    if (playerId) lineup[slot] = playerId
+    else delete lineup[slot]
+    const empty = Object.keys(lineup).length === 0
+    setMatchAttachment(team.id, key, { lineup: empty ? null : lineup })
+    reloadAttachments()
+  }
+
+  function fmtMonth(yyyymm) {
+    if (!yyyymm) return ''
+    const [y, m] = yyyymm.split('-')
+    const d = new Date(Number(y), Number(m) - 1, 1)
+    return d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+  }
+  function fmtDay(d) {
+    return new Date(d + 'T00:00:00').getDate()
+  }
+  function fmtDow(d) {
+    return new Date(d + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short' }).toUpperCase()
+  }
+
+  function scrollToGame(gameId) {
+    const el = document.getElementById(`rp-gp-${gameId}`)
+    if (!el) return
+    el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    // Brief flash so the user sees where the panel landed.
+    el.classList.add('rp-gp-flash')
+    setTimeout(() => el.classList.remove('rp-gp-flash'), 1200)
+  }
+  function fmtDate(d) {
+    return new Date(d + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+  }
+  function fmtFullName(p) {
+    return [p.firstName, p.lastName].filter(Boolean).join(' ') || '—'
+  }
+  function findGameplan(id) { return gameplans.find(gp => gp.id === id) || null }
+  function rosterById(id) { return compactRoster.find(p => p.id === id) || null }
+  function shortName(p) {
+    if (!p) return '—'
+    return p.lastName ? `${p.firstName?.[0] || ''}. ${p.lastName}`.trim() : (p.firstName || '—')
+  }
+
+  // ── Calendar notes (per-team free events with custom color) ─────
+  const [notes, setNotes] = useState(() => getCalendarNotes(team.id))
+  useEffect(() => { setNotes(getCalendarNotes(team.id)) }, [team.id])
+  function saveNote(date, patch) {
+    setCalendarNote(team.id, date, patch)
+    setNotes(getCalendarNotes(team.id))
+  }
+  const [editingNote, setEditingNote] = useState(null) // { date }
+
+  // ── Right column state ──────────────────────────────────────────
+  const [rightTab, setRightTab] = useState('upcoming')   // 'upcoming' | 'past'
+  // When non-null, the right column is replaced by the gameplan workspace
+  const [activePlanGame, setActivePlanGame] = useState(null)
+
+  function openGameplanFor(g) { setActivePlanGame(g) }
+  function closeGameplan() { setActivePlanGame(null) }
+
   return (
-    <div className="dashboard">
+    <div className="dashboard rp-hub-page">
       <HeaderBar
         session={session}
         onLogout={onLogout}
         onHome={onHome}
         title={team.name}
-        subtitle="Team home"
-        leftActions={<button className="ghost" onClick={onBack}>← My Teams</button>}
+        subtitle="Coaching Hub"
+        leftActions={<button className="ghost" onClick={onBack}>← Dashboard</button>}
       />
 
-      <div className="team-home-grid">
-        <div className="home-tile" onClick={onOpenRoster}>
-          <div className="home-tile-icon"><IconUsers size={28} /></div>
-          <div className="home-tile-title">Roster</div>
-          <div className="home-tile-sub">{rosterCount} {rosterCount === 1 ? 'player' : 'players'}</div>
-          <div className="home-tile-hint">Manage jersey numbers, names, and roles. Permanent across all games.</div>
-        </div>
-        <div className="home-tile" onClick={onOpenFormations}>
-          <div className="home-tile-icon"><IconClipboard size={28} /></div>
-          <div className="home-tile-title">Formations</div>
-          <div className="home-tile-sub">
-            {BUILTIN_FORMATIONS.length} built-in{customCount > 0 ? ` · ${customCount} custom` : ''}
+      <div className="rp-hub rp-hub-3">
+        {/* ── LEFT — Auto-fit roster ────────────────────────── */}
+        <aside className="rp-hub-left">
+          <section
+            className="rp-strip rp-strip-roster rp-strip-roster-only"
+            style={{ '--rp-roster-n': Math.max(compactRoster.length, 1) }}
+          >
+            <header className="rp-strip-head">
+              <button type="button" className="rp-strip-link" onClick={onOpenRoster}>
+                <span className="rp-strip-title">Roster</span>
+                <span className="rp-strip-link-arrow" aria-hidden="true">→</span>
+              </button>
+              <span className="rp-strip-count">{rosterCount}</span>
+            </header>
+            <div className="rp-strip-body rp-roster-fit">
+              {compactRoster.length === 0 ? (
+                <div className="rp-strip-empty">No players on roster yet.</div>
+              ) : compactRoster.map(p => (
+                <div key={p.id} className="rp-roster-fit-row">
+                  <span className="rp-roster-fit-num">{p.number ? `#${p.number}` : '—'}</span>
+                  <span className="rp-roster-fit-stack">
+                    <span className="rp-roster-fit-name">{fmtFullName(p)}</span>
+                    {p.role && <span className="rp-roster-fit-pos">{p.role}</span>}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </section>
+        </aside>
+
+        {/* ── CENTER — Big calendar grids ───────────────────── */}
+        <main className="rp-hub-center rp-bigcal-wrap">
+          {fullSchedule.length === 0 && Object.keys(notes).length === 0 ? (
+            <div className="rp-strip-empty rp-bigcal-empty">
+              No games scheduled. Add some in the Schedule screen, or click any day below to add a custom event.
+            </div>
+          ) : null}
+          {calendarMonths.months.length === 0 ? (
+            // No games anywhere — still render a single calendar for the current month so the coach can drop notes.
+            <BigCalendar
+              monthKey={today.slice(0, 7)}
+              monthLabel={fmtMonth(today.slice(0, 7))}
+              byDate={calendarMonths.byDate}
+              today={today}
+              notes={notes}
+              onGameClick={(g) => openGameplanFor(g)}
+              onCellClick={(date) => setEditingNote({ date })}
+            />
+          ) : calendarMonths.months.map(m => (
+            <BigCalendar
+              key={m.key}
+              monthKey={m.key}
+              monthLabel={fmtMonth(m.key)}
+              byDate={calendarMonths.byDate}
+              today={today}
+              notes={notes}
+              onGameClick={(g) => openGameplanFor(g)}
+              onCellClick={(date) => setEditingNote({ date })}
+            />
+          ))}
+        </main>
+
+        {/* ── RIGHT — Tabs (Upcoming / Past) OR gameplan workspace ── */}
+        <aside className="rp-hub-right rp-hub-right-tabs">
+          {activePlanGame ? (
+            <GameplanWorkspace
+              team={team}
+              game={activePlanGame}
+              roster={compactRoster}
+              onClose={closeGameplan}
+              fmtDate={fmtDate}
+              shortName={shortName}
+            />
+          ) : (
+            <section className="rp-strip rp-tabs-strip">
+              <header className="rp-strip-head rp-tabs-head">
+                <button
+                  type="button"
+                  className={`rp-tab-btn${rightTab === 'upcoming' ? ' active' : ''}`}
+                  onClick={() => setRightTab('upcoming')}
+                >
+                  Upcoming
+                  <span className="rp-tab-count">{upcomingGames.length}</span>
+                </button>
+                <button
+                  type="button"
+                  className={`rp-tab-btn${rightTab === 'past' ? ' active' : ''}`}
+                  onClick={() => setRightTab('past')}
+                >
+                  Past
+                  <span className="rp-tab-count">{pastGames.length}</span>
+                </button>
+              </header>
+              <div className="rp-strip-body rp-tabs-body">
+                {rightTab === 'upcoming' && (
+                  upcomingGames.length === 0 ? (
+                    <div className="rp-strip-empty">No upcoming games.</div>
+                  ) : upcomingGames.map(g => {
+                    const ha = (g.location || '').toLowerCase().startsWith('a') ? 'Away' : 'Home'
+                    const plansCount = getMatchPlans(team.id, matchKey(g.opponent, g.game_date)).length
+                    return (
+                      <div key={g.id} className="rp-tab-game">
+                        <div className="rp-tab-game-id">
+                          <div className="rp-tab-game-opp">vs {g.opponent}</div>
+                          <div className="rp-tab-game-meta">{fmtDate(g.game_date)} · {ha}</div>
+                          {plansCount > 0 && (
+                            <div className="rp-tab-game-plans">
+                              {plansCount} plan{plansCount === 1 ? '' : 's'} saved
+                            </div>
+                          )}
+                        </div>
+                        <button
+                          type="button"
+                          className="rp-tab-game-btn"
+                          onClick={() => openGameplanFor(g)}
+                        >
+                          Gameplan →
+                        </button>
+                      </div>
+                    )
+                  })
+                )}
+                {rightTab === 'past' && (
+                  pastGames.length === 0 ? (
+                    <div className="rp-strip-empty">No completed games.</div>
+                  ) : pastGames.map(g => {
+                    const key = matchKey(g.opponent, g.game_date)
+                    const plans = getMatchPlans(team.id, key)
+                    const att = attachments[key] || {}
+                    const gp = att.gameplanId ? findGameplan(att.gameplanId) : null
+                    const ha = (g.location || '').toLowerCase().startsWith('a') ? 'Away' : 'Home'
+                    return (
+                      <div key={g.id} className="rp-tab-game rp-tab-game-past">
+                        <div className="rp-tab-game-id">
+                          <div className="rp-tab-game-opp">vs {g.opponent}</div>
+                          <div className="rp-tab-game-meta">
+                            {fmtDate(g.game_date)} · {ha} ·{' '}
+                            <span className={`rp-tab-result rp-tab-result-${g.result === 'W' ? 'w' : 'l'}`}>
+                              {g.result || '—'}
+                              {g.home_sets != null && g.away_sets != null ? ` ${g.home_sets}–${g.away_sets}` : ''}
+                            </span>
+                          </div>
+                        </div>
+                        {(plans.length > 0 || gp) && (
+                          <div className="rp-tab-game-readonly">
+                            {gp && (
+                              <span className="rp-attach-badge rp-attach-gp">
+                                <span className="rp-attach-badge-label">Gameplan</span>
+                                <span className="rp-attach-badge-name">{gp.name}</span>
+                              </span>
+                            )}
+                            {plans.map(p => (
+                              <span key={p.id} className="rp-attach-badge rp-attach-fm">
+                                <span className="rp-attach-badge-label">Plan</span>
+                                <span className="rp-attach-badge-name">{p.name}</span>
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })
+                )}
+              </div>
+            </section>
+          )}
+        </aside>
+      </div>
+
+      {editingNote && (
+        <NoteEditorModal
+          date={editingNote.date}
+          existing={notes[editingNote.date] || null}
+          onSave={(text, color) => { saveNote(editingNote.date, { text, color }); setEditingNote(null) }}
+          onDelete={() => { saveNote(editingNote.date, null); setEditingNote(null) }}
+          onClose={() => setEditingNote(null)}
+        />
+      )}
+    </div>
+  )
+}
+
+// Small helper components — kept inline to avoid scattering files.
+
+// ── Full monthly calendar grid (center column) ─────────────────
+// Each day cell is large enough to show opponent name + H/A. Game cells
+// are color-coded W/L/upcoming. Empty cells are clickable to drop a
+// custom event note.
+function BigCalendar({ monthKey, monthLabel, byDate, today, notes, onGameClick, onCellClick }) {
+  const [yStr, mStr] = monthKey.split('-')
+  const year = Number(yStr)
+  const month0 = Number(mStr) - 1
+  const firstDow = new Date(year, month0, 1).getDay() // 0 = Sun
+  const daysInMonth = new Date(year, month0 + 1, 0).getDate()
+
+  const cells = []
+  for (let i = 0; i < firstDow; i++) cells.push({ kind: 'empty', key: `e-${i}` })
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dateStr = `${year}-${String(month0 + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`
+    cells.push({ kind: 'day', key: dateStr, day: d, dateStr })
+  }
+  while (cells.length % 7 !== 0) cells.push({ kind: 'empty', key: `t-${cells.length}` })
+
+  return (
+    <div className="rp-bc">
+      <div className="rp-bc-head">{monthLabel}</div>
+      <div className="rp-bc-dow">
+        {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((d, i) => (
+          <span key={i} className="rp-bc-dow-cell">{d}</span>
+        ))}
+      </div>
+      <div className="rp-bc-grid">
+        {cells.map(c => {
+          if (c.kind === 'empty') return <span key={c.key} className="rp-bc-cell rp-bc-cell-blank" />
+          const game = byDate.get(c.dateStr) || null
+          const note = notes && notes[c.dateStr]
+          const isToday = c.dateStr === today
+
+          if (game) {
+            const isUpcoming = game.kind === 'upcoming'
+            const ha = (game.location || '').toLowerCase().startsWith('a') ? 'Away' : 'Home'
+            let kindClass = 'rp-bc-cell-up'
+            let bg = `color-mix(in oklab, ${RP_COLOR_UPCO} 22%, transparent)`
+            let border = RP_COLOR_UPCO
+            if (!isUpcoming && game.result === 'W') {
+              kindClass = 'rp-bc-cell-w'
+              bg = `color-mix(in oklab, ${RP_COLOR_WIN} 22%, transparent)`
+              border = RP_COLOR_WIN
+            } else if (!isUpcoming && game.result === 'L') {
+              kindClass = 'rp-bc-cell-l'
+              bg = `color-mix(in oklab, ${RP_COLOR_LOSS} 22%, transparent)`
+              border = RP_COLOR_LOSS
+            } else if (!isUpcoming) {
+              // Completed without W/L (shouldn't happen, but render dimmed).
+              bg = 'rgba(255,255,255,0.05)'
+              border = 'rgba(255,255,255,0.18)'
+            }
+            return (
+              <button
+                type="button"
+                key={c.key}
+                className={`rp-bc-cell rp-bc-cell-game ${kindClass}${isToday ? ' rp-bc-cell-today' : ''}`}
+                style={{ background: bg, borderColor: border }}
+                onClick={() => onGameClick(game)}
+                title={`${game.opponent} · ${isUpcoming ? 'Upcoming' : (game.result || 'Completed')}`}
+              >
+                <span className="rp-bc-day">{c.day}</span>
+                <span className="rp-bc-opp">{game.opponent}</span>
+                <span className="rp-bc-ha">{ha}</span>
+              </button>
+            )
+          }
+
+          if (note) {
+            return (
+              <button
+                type="button"
+                key={c.key}
+                className={`rp-bc-cell rp-bc-cell-note${isToday ? ' rp-bc-cell-today' : ''}`}
+                style={{ background: `color-mix(in oklab, ${note.color || '#ffffff'} 18%, transparent)`, borderColor: note.color || 'rgba(255,255,255,0.4)' }}
+                onClick={() => onCellClick(c.dateStr)}
+                title={note.text}
+              >
+                <span className="rp-bc-day">{c.day}</span>
+                <span className="rp-bc-note-text">{note.text}</span>
+              </button>
+            )
+          }
+
+          return (
+            <button
+              type="button"
+              key={c.key}
+              className={`rp-bc-cell rp-bc-cell-day${isToday ? ' rp-bc-cell-today' : ''}`}
+              onClick={() => onCellClick(c.dateStr)}
+            >
+              <span className="rp-bc-day">{c.day}</span>
+            </button>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+// Minimal modal for adding/editing a calendar note (free text + color).
+function NoteEditorModal({ date, existing, onSave, onDelete, onClose }) {
+  const [text, setText] = useState(existing?.text || '')
+  const [color, setColor] = useState(existing?.color || '#bc8cff')
+  const formatted = new Date(date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal rp-note-modal" onClick={e => e.stopPropagation()}>
+        <h2>{existing ? 'Edit Event' : 'Add Event'}</h2>
+        <div className="rp-note-date">{formatted}</div>
+        <label className="rp-note-field">
+          <span className="rp-note-lbl">Note</span>
+          <input
+            className="rp-note-input"
+            value={text}
+            onChange={e => setText(e.target.value)}
+            placeholder="e.g. Captain's practice"
+            autoFocus
+          />
+        </label>
+        <label className="rp-note-field">
+          <span className="rp-note-lbl">Color</span>
+          <div className="rp-note-color-row">
+            <input
+              type="color"
+              className="rp-note-color"
+              value={color}
+              onChange={e => setColor(e.target.value)}
+            />
+            <span className="rp-note-color-preview" style={{ background: color }}>{color.toUpperCase()}</span>
           </div>
-          <div className="home-tile-hint">Offensive, defensive, and serve-receive systems. Build custom formations for your team.</div>
+        </label>
+        <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+          {existing ? (
+            <button className="danger" onClick={onDelete}>Delete</button>
+          ) : <span />}
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button className="ghost" onClick={onClose}>Cancel</button>
+            <button className="primary" onClick={() => text.trim() && onSave(text.trim(), color)}>Save</button>
+          </div>
         </div>
-        <div className="home-tile" onClick={onOpenSchedule}>
-          <div className="home-tile-icon"><IconCalendar size={28} /></div>
-          <div className="home-tile-title">Schedule</div>
-          <div className="home-tile-sub">{gameCount} {gameCount === 1 ? 'game' : 'games'}{upcoming > 0 ? ` · ${upcoming} open` : ''}</div>
-          <div className="home-tile-hint">Upcoming and past games. Open any game to track rotations live.</div>
+      </div>
+    </div>
+  )
+}
+
+// ── Per-game gameplan workspace ────────────────────────────────
+// Multiple named plans per game. Each plan owns a P1..P6 lineup.
+// Drag a player from the bench into any slot; drag back to bench to clear.
+function GameplanWorkspace({ team, game, roster, onClose, fmtDate, shortName }) {
+  const key = matchKey(game.opponent, game.game_date)
+  const [plans, setPlans] = useState(() => getMatchPlans(team.id, key))
+  const [activeId, setActiveId] = useState(() => {
+    const existing = getMatchPlans(team.id, key)
+    return existing[0]?.id || null
+  })
+  const [renaming, setRenaming] = useState(false)
+  const [draftName, setDraftName] = useState('')
+
+  function reload() {
+    const fresh = getMatchPlans(team.id, key)
+    setPlans(fresh)
+    if (!fresh.find(p => p.id === activeId)) setActiveId(fresh[0]?.id || null)
+  }
+
+  function newPlan() {
+    const idx = plans.length
+    const defaultName = `Plan ${String.fromCharCode(65 + idx)}` // Plan A, B, …
+    const created = saveMatchPlan(team.id, key, { name: defaultName, lineup: {} })
+    reload()
+    setActiveId(created.id)
+  }
+  function removePlan(p) {
+    if (!confirm(`Delete plan "${p.name}"?`)) return
+    deleteMatchPlan(team.id, key, p.id)
+    reload()
+  }
+  function renamePlan() {
+    const a = plans.find(p => p.id === activeId)
+    if (!a) return
+    const name = (draftName || '').trim()
+    if (!name) { setRenaming(false); return }
+    saveMatchPlan(team.id, key, { ...a, name })
+    setRenaming(false)
+    setDraftName('')
+    reload()
+  }
+
+  const activePlan = plans.find(p => p.id === activeId) || null
+  const ha = (game.location || '').toLowerCase().startsWith('a') ? 'Away' : 'Home'
+
+  return (
+    <section className="rp-strip rp-plan-ws">
+      <header className="rp-strip-head rp-plan-ws-head">
+        <button type="button" className="rp-plan-back" onClick={onClose} aria-label="Back">←</button>
+        <div className="rp-plan-id">
+          <div className="rp-plan-opp">vs {game.opponent}</div>
+          <div className="rp-plan-meta">{fmtDate(game.game_date)} · {ha}</div>
         </div>
-        <div className="home-tile" onClick={onOpenGameplans}>
-          <div className="home-tile-icon"><IconPlay size={28} /></div>
-          <div className="home-tile-title">Gameplans</div>
-          <div className="home-tile-sub">{gameplanCount} {gameplanCount === 1 ? 'gameplan' : 'gameplans'}</div>
-          <div className="home-tile-hint">Save named lineups for specific opponents. Load instantly before a game.</div>
+      </header>
+
+      <div className="rp-plan-tabs">
+        {plans.map(p => (
+          <button
+            key={p.id}
+            type="button"
+            className={`rp-plan-tab${p.id === activeId ? ' active' : ''}`}
+            onClick={() => { setActiveId(p.id); setRenaming(false) }}
+          >
+            {p.name}
+          </button>
+        ))}
+        <button type="button" className="rp-plan-tab rp-plan-tab-new" onClick={newPlan}>
+          + New Plan
+        </button>
+      </div>
+
+      {!activePlan ? (
+        <div className="rp-plan-empty">
+          <p>No plans yet for this game.</p>
+          <button type="button" className="rp-plan-new-cta" onClick={newPlan}>+ Create First Plan</button>
+        </div>
+      ) : (
+        <div className="rp-plan-body">
+          <div className="rp-plan-bar">
+            {renaming ? (
+              <>
+                <input
+                  className="rp-plan-rename-input"
+                  value={draftName}
+                  autoFocus
+                  onChange={e => setDraftName(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && renamePlan()}
+                />
+                <button type="button" className="rp-plan-mini-btn" onClick={renamePlan}>Save</button>
+                <button type="button" className="rp-plan-mini-btn" onClick={() => setRenaming(false)}>Cancel</button>
+              </>
+            ) : (
+              <>
+                <span className="rp-plan-name">{activePlan.name}</span>
+                <button
+                  type="button"
+                  className="rp-plan-mini-btn"
+                  onClick={() => { setDraftName(activePlan.name); setRenaming(true) }}
+                >Rename</button>
+                <button type="button" className="rp-plan-mini-btn rp-plan-mini-danger" onClick={() => removePlan(activePlan)}>Delete</button>
+              </>
+            )}
+          </div>
+
+          <PlanCourt
+            roster={roster}
+            lineup={activePlan.lineup || {}}
+            shortName={shortName}
+            onChange={(nextLineup) => {
+              saveMatchPlan(team.id, key, { ...activePlan, lineup: nextLineup })
+              reload()
+            }}
+          />
+        </div>
+      )}
+    </section>
+  )
+}
+
+// Court: 6 drop zones (P1..P6). Drag from bench → slot to assign;
+// drag a slot's chip back to the bench to remove. Native HTML5 DnD.
+function PlanCourt({ roster, lineup, onChange, shortName }) {
+  const slots = ['P4', 'P3', 'P2', 'P5', 'P6', 'P1'] // visual order: front row top, back row bottom
+  const slotLabels = { P4: 'P4', P3: 'P3', P2: 'P2', P5: 'P5', P6: 'P6', P1: 'P1' }
+  const slotRoles  = { P4: 'OH', P3: 'MB', P2: 'OPP', P5: 'OH', P6: 'MB', P1: 'S' }
+  const usedIds = new Set(Object.values(lineup).filter(Boolean))
+  const benchPlayers = roster.filter(p => !usedIds.has(p.id))
+
+  function onDropSlot(targetSlot, e) {
+    e.preventDefault()
+    const playerId = e.dataTransfer.getData('text/playerId')
+    if (!playerId) return
+    const next = { ...lineup }
+    // If player is currently in another slot, clear that slot.
+    for (const s of Object.keys(next)) if (next[s] === playerId) delete next[s]
+    next[targetSlot] = playerId
+    onChange(next)
+  }
+  function onDropBench(e) {
+    e.preventDefault()
+    const playerId = e.dataTransfer.getData('text/playerId')
+    if (!playerId) return
+    const next = { ...lineup }
+    for (const s of Object.keys(next)) if (next[s] === playerId) delete next[s]
+    onChange(next)
+  }
+  function onDragStartPlayer(e, p) {
+    e.dataTransfer.setData('text/playerId', p.id)
+    e.dataTransfer.effectAllowed = 'move'
+  }
+
+  return (
+    <div className="rp-court-wrap">
+      <div className="rp-court" onDragOver={e => e.preventDefault()}>
+        <div className="rp-court-net" aria-hidden="true">NET</div>
+        <div className="rp-court-grid">
+          {slots.map(s => {
+            const playerId = lineup[s]
+            const p = roster.find(r => r.id === playerId)
+            return (
+              <div
+                key={s}
+                className={`rp-court-slot${p ? ' rp-court-slot-filled' : ''}`}
+                onDragOver={e => e.preventDefault()}
+                onDrop={(e) => onDropSlot(s, e)}
+              >
+                <span className="rp-court-slot-lbl">{slotLabels[s]}</span>
+                <span className="rp-court-slot-role">{slotRoles[s]}</span>
+                {p ? (
+                  <div
+                    className="rp-court-chip"
+                    draggable
+                    onDragStart={e => onDragStartPlayer(e, p)}
+                  >
+                    {p.number ? `#${p.number}` : ''} <span className="rp-court-chip-name">{shortName(p)}</span>
+                  </div>
+                ) : (
+                  <span className="rp-court-slot-empty">drop player</span>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      </div>
+
+      <div
+        className="rp-bench"
+        onDragOver={e => e.preventDefault()}
+        onDrop={onDropBench}
+      >
+        <div className="rp-bench-label">Bench (drag onto a position)</div>
+        {benchPlayers.length === 0 ? (
+          <div className="rp-bench-empty">Every player is on the court.</div>
+        ) : (
+          <div className="rp-bench-list">
+            {benchPlayers.map(p => (
+              <div
+                key={p.id}
+                className="rp-bench-chip"
+                draggable
+                onDragStart={e => onDragStartPlayer(e, p)}
+              >
+                {p.number ? `#${p.number}` : '—'} <span className="rp-bench-chip-name">{shortName(p)}</span>
+                {p.role && <span className="rp-bench-chip-pos">{p.role}</span>}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function MiniCalendar({ monthKey, monthLabel, byDate, onGameClick }) {
+  const [yStr, mStr] = monthKey.split('-')
+  const year = Number(yStr)
+  const month0 = Number(mStr) - 1
+  const firstDow = new Date(year, month0, 1).getDay() // 0 = Sun
+  const daysInMonth = new Date(year, month0 + 1, 0).getDate()
+
+  const cells = []
+  for (let i = 0; i < firstDow; i++) cells.push({ kind: 'empty', key: `e-${i}` })
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dateStr = `${year}-${String(month0 + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`
+    const game = byDate.get(dateStr) || null
+    cells.push({ kind: 'day', key: dateStr, day: d, game })
+  }
+  // Pad to a multiple of 7 so the grid lines stay rectangular.
+  while (cells.length % 7 !== 0) cells.push({ kind: 'empty', key: `t-${cells.length}` })
+
+  return (
+    <div className="rp-mc">
+      <div className="rp-mc-head">{monthLabel}</div>
+      <div className="rp-mc-dow">
+        {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((d, i) => (
+          <span key={i} className="rp-mc-dow-cell">{d}</span>
+        ))}
+      </div>
+      <div className="rp-mc-grid">
+        {cells.map(c => {
+          if (c.kind === 'empty') return <span key={c.key} className="rp-mc-cell rp-mc-cell-empty" />
+          if (!c.game) return <span key={c.key} className="rp-mc-cell">{c.day}</span>
+          const isUpcoming = c.game.kind === 'upcoming'
+          const cls = `rp-mc-cell rp-mc-cell-game ${isUpcoming ? 'rp-mc-cell-upcoming' : 'rp-mc-cell-completed'}${c.game.isToday ? ' rp-mc-cell-today' : ''}`
+          return (
+            <button
+              type="button"
+              key={c.key}
+              className={cls}
+              onClick={() => onGameClick(c.game.id)}
+              title={`${c.game.opponent} · ${c.game.kind === 'upcoming' ? 'Upcoming' : (c.game.result || 'Completed')}`}
+            >
+              {c.day}
+            </button>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+function NotesField({ value, onCommit }) {
+  const [local, setLocal] = useState(value || '')
+  useEffect(() => { setLocal(value || '') }, [value])
+  return (
+    <div className="rp-gp-notes-wrap">
+      <label className="rp-gp-notes-label">Scouting notes</label>
+      <textarea
+        className="rp-gp-notes"
+        rows={2}
+        placeholder="What's the matchup? Anything to watch for?"
+        value={local}
+        onChange={e => setLocal(e.target.value)}
+        onBlur={() => { if (local !== value) onCommit(local) }}
+      />
+    </div>
+  )
+}
+
+function LineupGrid({ lineup, roster, onSet, shortName }) {
+  const slots = ['P1','P2','P3','P4','P5','P6']
+  return (
+    <div className="rp-gp-lineup">
+      <div className="rp-gp-lineup-label">Lineup</div>
+      <div className="rp-gp-lineup-grid">
+        {slots.map(slot => {
+          const playerId = lineup[slot] || ''
+          const p = roster.find(x => x.id === playerId)
+          return (
+            <label key={slot} className={`rp-gp-slot${playerId ? ' rp-gp-slot-set' : ''}`}>
+              <span className="rp-gp-slot-lbl">{slot}</span>
+              <select
+                className="rp-gp-slot-select"
+                value={playerId}
+                onChange={e => onSet(slot, e.target.value || null)}
+              >
+                <option value="">—</option>
+                {roster.map(r => (
+                  <option key={r.id} value={r.id}>
+                    {(r.number ? `#${r.number} ` : '') + (shortName ? shortName(r) : (r.firstName || ''))}
+                  </option>
+                ))}
+              </select>
+              {p && <span className="rp-gp-slot-name">{shortName(p)}</span>}
+            </label>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+// Minimal dark picker — used for both gameplan and formation attachment.
+function AttachPickerModal({ kind, gameplans, formations, currentValue, onPick, onClose }) {
+  const list = kind === 'gameplan' ? gameplans : formations
+  const title = kind === 'gameplan' ? 'Attach Gameplan' : 'Attach Formation'
+  const empty = kind === 'gameplan'
+    ? 'No saved gameplans yet. Create one from the Gameplans screen.'
+    : 'No formations available.'
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal rp-pick-modal" onClick={e => e.stopPropagation()}>
+        <h2>{title}</h2>
+        {list.length === 0 ? (
+          <div className="rp-pick-empty">{empty}</div>
+        ) : (
+          <div className="rp-pick-list">
+            {list.map(item => {
+              const isActive = item.id === currentValue
+              const meta = kind === 'formation'
+                ? (item.category ? CATEGORY_LABELS?.[item.category] || item.category : '')
+                : (item.startingRotation ? `R${item.startingRotation} start` : '')
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  className={`rp-pick-item${isActive ? ' active' : ''}`}
+                  onClick={() => onPick(item.id)}
+                >
+                  <span className="rp-pick-name">{item.name}</span>
+                  {meta && <span className="rp-pick-meta">{meta}</span>}
+                  {isActive && <span className="rp-pick-check">✓</span>}
+                </button>
+              )
+            })}
+          </div>
+        )}
+        <div className="row">
+          <button className="ghost" onClick={onClose}>Close</button>
         </div>
       </div>
     </div>
@@ -765,16 +1612,12 @@ function ScheduleView({ session, onLogout, onHome, team, onBack, onOpenGame, onC
     onChanged()
   }
 
-  function gameStatus(g) {
-    if (!g) return { label: 'Upcoming', className: 'pending' }
-    const played = (g.finishedSets || []).length > 0 || g.ourScore > 0 || g.oppScore > 0
-    if (!played) return { label: 'Upcoming', className: 'pending' }
-    const fs = g.finishedSets || []
-    const ourSets = fs.filter(s => s.winner === 'us').length
-    const oppSets = fs.filter(s => s.winner === 'them').length
-    if (fs.length === 0) return { label: `In progress ${g.ourScore}-${g.oppScore}`, className: 'live' }
-    const result = ourSets > oppSets ? 'W' : (ourSets < oppSets ? 'L' : '—')
-    return { label: `${result} ${ourSets}-${oppSets}`, className: result === 'W' ? 'win' : (result === 'L' ? 'loss' : 'pending') }
+  // RotationPal scores are visual-only and never persisted, so a local game
+  // record can't tell us what happened on the floor. The DB source of truth
+  // (StatsPal manual / live tracking) lives outside this view, so we just
+  // mark every RotationPal-tracked game as Upcoming here.
+  function gameStatus() {
+    return { label: 'Upcoming', className: 'pending' }
   }
 
   // Open or create a local rotation game linked to a StatPal schedule entry
@@ -1070,12 +1913,15 @@ function GameApp({ session, onLogout, onHome, team, game, onBack, onPublishSessi
   const [startServing, setStartServing] = useState(game.startServing ?? true)
 
   const [currentRotation, setCurrentRotation] = useState(game.currentRotation || 1)
-  const [ourScore, setOurScore] = useState(game.ourScore || 0)
-  const [oppScore, setOppScore] = useState(game.oppScore || 0)
+  // Scores in RotationPal are visual-only — they reset on every load, never
+  // persist to localStorage, and never sync to StatsPal/Supabase. The DB
+  // source of truth for scores is StatsPal manual entry or live tracking.
+  const [ourScore, setOurScore] = useState(0)
+  const [oppScore, setOppScore] = useState(0)
   const [serving, setServing] = useState(game.serving ?? true)
-  const [setNum, setSetNum] = useState(game.setNum || 1)
-  const [finishedSets, setFinishedSets] = useState(game.finishedSets || [])
-  const [subs, setSubs] = useState(game.subs || [])
+  const [setNum, setSetNum] = useState(1)
+  const [finishedSets, setFinishedSets] = useState([])
+  const [subs, setSubs] = useState([])
   const [activeSubs, setActiveSubs] = useState(game.activeSubs || {})
   const [subPairs, setSubPairs] = useState(game.subPairs || {})
   const [backRowSubs, setBackRowSubs] = useState(game.backRowSubs || {})
@@ -1117,9 +1963,12 @@ function GameApp({ session, onLogout, onHome, team, game, onBack, onPublishSessi
   const firstSaveRef = useRef(true)
   useEffect(() => {
     if (firstSaveRef.current) { firstSaveRef.current = false; return }
+    // NOTE: ourScore, oppScore, setNum, finishedSets, subs are deliberately
+    // omitted — scores are visual-only inside RotationPal and must not be
+    // persisted. Real scores live in Supabase via StatsPal only.
     updateGame(team.id, game.id, {
       opponent, date: gameDate, format, baseLineup, startingRotation, startServing,
-      currentRotation, ourScore, oppScore, serving, setNum, finishedSets, subs,
+      currentRotation, serving,
       activeSubs, subPairs, backRowSubs, frontRowSubs, liberoCovers, subLimit,
       roleOverrides, dragPositions, liberoId, mbSwitches, setConfigs,
       offenseFormationId, defenseFormationId, serveReceivePlayIds,
@@ -1127,7 +1976,7 @@ function GameApp({ session, onLogout, onHome, team, game, onBack, onPublishSessi
       subPairings,
     })
   }, [team.id, game.id, opponent, gameDate, format, baseLineup, startingRotation, startServing,
-      currentRotation, ourScore, oppScore, serving, setNum, finishedSets, subs,
+      currentRotation, serving,
       activeSubs, subPairs, backRowSubs, frontRowSubs, liberoCovers, subLimit,
       roleOverrides, dragPositions, liberoId, mbSwitches, setConfigs,
       offenseFormationId, defenseFormationId, serveReceivePlayIds, formations, subPairings])
@@ -1136,7 +1985,9 @@ function GameApp({ session, onLogout, onHome, team, game, onBack, onPublishSessi
   // localStorage only here. Stats syncing is handled separately by StatsPal.)
 
   // Publish the live game state to VolleyballPalContext when the team is
-  // linked — StatsPal reads this to pre-load lineup/score for a live game.
+  // linked — StatsPal reads this to pre-load the lineup. Scores are NOT
+  // shared: RotationPal's score state is visual-only and the DB source of
+  // truth lives in StatsPal (manual entry or live tracking).
   useEffect(() => {
     if (!onPublishSession) return
     onPublishSession({
@@ -1149,11 +2000,7 @@ function GameApp({ session, onLogout, onHome, team, game, onBack, onPublishSessi
       startingRotation,
       startServing,
       currentRotation,
-      ourScore,
-      oppScore,
       serving,
-      setNum,
-      finishedSets,
       activeSubs,
       liberoId,
       view,
@@ -1161,8 +2008,8 @@ function GameApp({ session, onLogout, onHome, team, game, onBack, onPublishSessi
   }, [
     onPublishSession, team.id, game.id, opponent, gameDate, format,
     baseLineup, startingRotation, startServing,
-    currentRotation, ourScore, oppScore, serving,
-    setNum, finishedSets, activeSubs, liberoId, view,
+    currentRotation, serving,
+    activeSubs, liberoId, view,
   ])
 
   // Clear the published session when the live game view unmounts.

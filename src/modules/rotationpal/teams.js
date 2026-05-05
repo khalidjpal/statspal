@@ -197,6 +197,104 @@ export function deleteCustomFormation(teamId, formationId) {
   updateTeam(teamId, { customFormations: list });
 }
 
+// ===== Match attachments =====
+// Per-game prep data the coach attaches to a specific opponent + date:
+// gameplan, formation, free-form notes, and an optional lineup. Keyed by a
+// stable opponent+date composite so the record survives the schedule row
+// being deleted when StatsPal commits a final score (the same pair can be
+// looked up against the resulting completed_games row to render a read-only
+// "what we planned" view of past games).
+
+export function matchKey(opponent, gameDate) {
+  return `${String(opponent || '').trim().toLowerCase()}__${gameDate || ''}`;
+}
+
+export function getMatchAttachments(teamId) {
+  const t = getTeam(teamId);
+  return (t && t.matchAttachments) || {};
+}
+
+export function setMatchAttachment(teamId, key, patch) {
+  const team = getTeam(teamId);
+  if (!team) return null;
+  const current = team.matchAttachments || {};
+  const existing = current[key] || {};
+  const merged = { ...existing, ...patch };
+  for (const k of Object.keys(merged)) if (merged[k] == null) delete merged[k];
+  const next = { ...current };
+  if (Object.keys(merged).length === 0) delete next[key];
+  else next[key] = merged;
+  updateTeam(teamId, { matchAttachments: next });
+  return merged;
+}
+
+// ===== Calendar notes =====
+// Free-form per-team, per-date events the coach can drop on the calendar
+// (e.g. "Film review", "Captain's practice"). Each note carries a color.
+
+export function getCalendarNotes(teamId) {
+  const t = getTeam(teamId);
+  return (t && t.calendarNotes) || {};
+}
+
+export function setCalendarNote(teamId, dateStr, patch) {
+  const team = getTeam(teamId);
+  if (!team) return null;
+  const current = team.calendarNotes || {};
+  const next = { ...current };
+  if (patch == null) {
+    delete next[dateStr];
+  } else {
+    const merged = { ...(current[dateStr] || {}), ...patch };
+    if (!merged.text) delete next[dateStr];
+    else next[dateStr] = merged;
+  }
+  updateTeam(teamId, { calendarNotes: next });
+  return next[dateStr] || null;
+}
+
+// ===== Match plans =====
+// Multiple named gameplans per match. Each plan owns a P1..P6 lineup map.
+// Stored under team.matchAttachments[matchKey].plans = [{ id, name, lineup }].
+
+function _attForKey(team, key) {
+  const all = team.matchAttachments || {};
+  return all[key] || {};
+}
+
+export function getMatchPlans(teamId, key) {
+  const t = getTeam(teamId);
+  if (!t) return [];
+  return (_attForKey(t, key).plans || []);
+}
+
+export function saveMatchPlan(teamId, key, plan) {
+  const team = getTeam(teamId);
+  if (!team) return null;
+  const att = _attForKey(team, key);
+  const list = [...(att.plans || [])];
+  const stamp = Date.now();
+  let stamped;
+  if (plan.id) {
+    const idx = list.findIndex(p => p.id === plan.id);
+    stamped = { ...list[idx], ...plan, updatedAt: stamp };
+    if (idx >= 0) list[idx] = stamped; else list.push(stamped);
+  } else {
+    stamped = { ...plan, id: uid(), createdAt: stamp, updatedAt: stamp };
+    list.push(stamped);
+  }
+  setMatchAttachment(teamId, key, { plans: list });
+  return stamped;
+}
+
+export function deleteMatchPlan(teamId, key, planId) {
+  const team = getTeam(teamId);
+  if (!team) return;
+  const att = _attForKey(team, key);
+  const list = (att.plans || []).filter(p => p.id !== planId);
+  setMatchAttachment(teamId, key, { plans: list.length === 0 ? null : list });
+}
+
 // ===== Mapping StatsPal players → RotationPal roster =====
 
 // StatsPal position codes → RotationPal role codes

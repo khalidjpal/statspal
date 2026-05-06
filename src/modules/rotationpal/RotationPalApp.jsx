@@ -9,6 +9,10 @@ import {
   getMatchPlans, saveMatchPlan, deleteMatchPlan,
   mapStatsPalRoster,
 } from './teams'
+import { readSecondaryMap, setSecondary as setPlayerSecondary } from '../../utils/playerSecondary'
+import { useData } from '../../contexts/DataContext'
+import PlayerManagementModal from '../../components/modals/PlayerManagementModal'
+import RosterPositionWidget from '../../components/dashboard/RosterPositionWidget'
 import { IconUsers, IconClipboard, IconCalendar, IconPlay } from '../../components/Icons'
 import {
   BUILTIN_FORMATIONS, CATEGORY_LABELS, CATEGORY_ORDER,
@@ -382,6 +386,27 @@ export default function RotationPalApp({
         onOpenSchedule={() => setNav({ screen: 'schedule', teamId: team.id })}
         onOpenFormations={() => setNav({ screen: 'formations', teamId: team.id })}
         onOpenGameplans={() => setNav({ screen: 'gameplans', teamId: team.id })}
+        onPlayGame={(entry) => {
+          // Find an existing RotationPal local game for this scheduled game,
+          // or create one keyed by scheduleId, then jump straight to GameApp.
+          const t = getTeam(team.id)
+          const localGames = t?.games || []
+          let g = entry.scheduleId
+            ? localGames.find(lg => lg.scheduleId === entry.scheduleId)
+            : null
+          if (!g) {
+            const dateStr = entry.game_date ? entry.game_date.slice(0, 10) : new Date().toISOString().slice(0, 10)
+            g = createGame(team.id, {
+              opponent: entry.opponent || 'Opponent',
+              date: dateStr,
+              format: 3,
+              scheduleId: entry.scheduleId,
+            })
+            if (!g) return
+            refresh()
+          }
+          setNav({ screen: 'game', teamId: team.id, gameId: g.id })
+        }}
       />
     )
   } else if (nav.screen === 'roster') {
@@ -392,6 +417,7 @@ export default function RotationPalApp({
         {...headerProps}
         key={team.id + ':' + tick}
         team={team}
+        isStandalone={isStandalone}
         onBack={() => { refresh(); setNav({ screen: 'teamHome', teamId: team.id }) }}
       />
     )
@@ -644,6 +670,7 @@ const RP_COLOR_UPCO = '#58a6ff'
 function TeamHomeView({
   session, onLogout, onHome, team, onBack,
   onOpenRoster, onOpenSchedule, onOpenFormations, onOpenGameplans,
+  onPlayGame,
   statsPalSchedule = [], statsPalCompletedGames = [],
 }) {
   const rosterCount = (team.roster || []).length
@@ -857,36 +884,19 @@ function TeamHomeView({
           </section>
         </aside>
 
-        {/* ── CENTER — Big calendar grids ───────────────────── */}
-        <main className="rp-hub-center rp-bigcal-wrap">
-          {fullSchedule.length === 0 && Object.keys(notes).length === 0 ? (
-            <div className="rp-strip-empty rp-bigcal-empty">
-              No games scheduled. Add some in the Schedule screen, or click any day below to add a custom event.
-            </div>
-          ) : null}
-          {calendarMonths.months.length === 0 ? (
-            // No games anywhere — still render a single calendar for the current month so the coach can drop notes.
-            <BigCalendar
-              monthKey={today.slice(0, 7)}
-              monthLabel={fmtMonth(today.slice(0, 7))}
-              byDate={calendarMonths.byDate}
-              today={today}
-              notes={notes}
-              onGameClick={(g) => openGameplanFor(g)}
-              onCellClick={(date) => setEditingNote({ date })}
-            />
-          ) : calendarMonths.months.map(m => (
-            <BigCalendar
-              key={m.key}
-              monthKey={m.key}
-              monthLabel={fmtMonth(m.key)}
-              byDate={calendarMonths.byDate}
-              today={today}
-              notes={notes}
-              onGameClick={(g) => openGameplanFor(g)}
-              onCellClick={(date) => setEditingNote({ date })}
-            />
-          ))}
+        {/* ── CENTER — Games to Gameplan list ─────────────────── */}
+        <main className="rp-hub-center rp-games-wrap">
+          <GamesToGameplanList
+            team={team}
+            today={today}
+            upcomingGames={upcomingGames}
+            pastGames={pastGames}
+            attachments={attachments}
+            findGameplan={findGameplan}
+            fmtDate={fmtDate}
+            onGameplan={openGameplanFor}
+            onPlayGame={onPlayGame}
+          />
         </main>
 
         {/* ── RIGHT — Tabs (Upcoming / Past) OR gameplan workspace ── */}
@@ -1010,6 +1020,149 @@ function TeamHomeView({
 }
 
 // Small helper components — kept inline to avoid scattering files.
+
+// ── Games to Gameplan list (center column) ─────────────────────
+// Replaces the old monthly calendar. Upcoming games are listed soonest
+// first, each with a status pill that tells the coach at a glance whether
+// the rotation gameplan is ready, missing, or urgently missing. Clicking
+// a row opens the gameplan workspace on the right column. Past games
+// collapse into a foldable section at the bottom.
+function GamesToGameplanList({
+  team, today, upcomingGames, pastGames, attachments,
+  findGameplan, fmtDate, onGameplan, onPlayGame,
+}) {
+  const [showPast, setShowPast] = useState(false)
+
+  function gameplanStatus(g) {
+    const key = matchKey(g.opponent, g.game_date)
+    const att = attachments[key] || {}
+    const plans = getMatchPlans(team.id, key)
+    const hasLineup = !!(att.lineup && Object.keys(att.lineup).length > 0)
+    const hasAttachedGameplan = !!att.gameplanId
+    const hasNamedPlan = plans.length > 0
+    const ready = hasLineup || hasAttachedGameplan || hasNamedPlan
+
+    const daysOut = Math.ceil(
+      (new Date(g.game_date + 'T00:00:00') - new Date(today + 'T00:00:00')) / 86400000
+    )
+
+    if (ready) return { kind: 'ready', label: 'Gameplan Ready', ready: true }
+    if (daysOut <= 3) return { kind: 'urgent', label: 'No Lineup', ready: false }
+    return { kind: 'needs', label: 'Needs Gameplan', ready: false }
+  }
+
+  function homeAway(loc) {
+    return (loc || '').toLowerCase().startsWith('a') ? 'Away' : 'Home'
+  }
+
+  return (
+    <section className="rp-games-list">
+      <header className="rp-games-list-head">
+        <span className="rp-games-list-title">Games to Gameplan</span>
+        <span className="rp-games-list-meta">{upcomingGames.length} upcoming</span>
+      </header>
+
+      <div className="rp-games-list-body">
+        {upcomingGames.length === 0 ? (
+          <div className="rp-games-list-empty">
+            <div className="rp-games-list-empty-title">No upcoming games</div>
+            <div className="rp-games-list-empty-sub">Schedule games in StatsPal to see them here.</div>
+          </div>
+        ) : (
+          upcomingGames.map(g => {
+            const status = gameplanStatus(g)
+            return (
+              <div key={g.id} className={`rp-game-card rp-game-card-${status.kind}`}>
+                <div className="rp-game-card-left">
+                  <div className="rp-game-card-opp">vs {g.opponent}</div>
+                  <div className="rp-game-card-meta">
+                    {fmtDate(g.game_date)} · {homeAway(g.location)}
+                    {g.isToday && <span className="rp-game-today">TODAY</span>}
+                  </div>
+                  <span className={`rp-game-status rp-game-status-${status.kind}`}>
+                    {status.label}
+                  </span>
+                </div>
+                <div className="rp-game-card-actions">
+                  <button
+                    type="button"
+                    className="rp-game-btn rp-game-btn-plan"
+                    onClick={() => onGameplan && onGameplan(g)}
+                  >
+                    📋 Gameplan
+                  </button>
+                  <button
+                    type="button"
+                    className="rp-game-btn rp-game-btn-play"
+                    disabled={!status.ready || !onPlayGame}
+                    onClick={() => onPlayGame && onPlayGame(g)}
+                    title={status.ready ? 'Launch live game' : 'Set gameplan first'}
+                  >
+                    ▶ Play Game
+                  </button>
+                </div>
+              </div>
+            )
+          })
+        )}
+
+        {pastGames.length > 0 && (
+          <div className="rp-games-past">
+            <button
+              type="button"
+              className="rp-games-past-toggle"
+              onClick={() => setShowPast(v => !v)}
+              aria-expanded={showPast}
+            >
+              <span>{showPast ? '▾' : '▸'}</span>
+              Past Games
+              <span className="rp-games-past-count">{pastGames.length}</span>
+            </button>
+            {showPast && (
+              <div className="rp-games-past-list">
+                {pastGames.map(g => {
+                  const key = matchKey(g.opponent, g.game_date)
+                  const att = attachments[key] || {}
+                  const gp = att.gameplanId ? findGameplan(att.gameplanId) : null
+                  return (
+                    <div key={g.id} className="rp-game-card rp-game-card-past">
+                      <div className="rp-game-card-left">
+                        <div className="rp-game-card-opp">vs {g.opponent}</div>
+                        <div className="rp-game-card-meta">
+                          {fmtDate(g.game_date)} · {homeAway(g.location)}
+                          {g.result && (
+                            <span className={`rp-game-result rp-game-result-${g.result === 'W' ? 'w' : 'l'}`}>
+                              {g.result}
+                              {g.home_sets != null && g.away_sets != null
+                                ? ` ${g.home_sets}–${g.away_sets}`
+                                : ''}
+                            </span>
+                          )}
+                        </div>
+                        {gp && (
+                          <div className="rp-game-card-attach">Gameplan: {gp.name}</div>
+                        )}
+                      </div>
+                      {onGameplan && (
+                        <div className="rp-game-card-actions">
+                          <button
+                            type="button"
+                            className="rp-game-btn rp-game-btn-plan rp-game-btn-mini"
+                            onClick={() => onGameplan(g)}
+                          >View</button>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </section>
+  )
+}
 
 // ── Full monthly calendar grid (center column) ─────────────────
 // Each day cell is large enough to show opponent name + H/A. Game cells
@@ -1516,10 +1669,98 @@ function AttachPickerModal({ kind, gameplans, formations, currentValue, onPick, 
 // ============================================================
 // Roster
 // ============================================================
-function RosterView({ session, onLogout, onHome, team, onBack }) {
-  const [roster, setLocalRoster] = useState(team.roster || [])
+// Secondary-position roles (no "Other" — secondary maps to one of the 6 standard roles)
+const ROLE2_CHOICES = [
+  { code: '',   label: '— None' },
+  { code: 'S',  label: 'S — Setter' },
+  { code: 'OH', label: 'OH — Outside Hitter' },
+  { code: 'MB', label: 'MB — Middle Blocker' },
+  { code: 'RS', label: 'RS — Right Side' },
+  { code: 'L',  label: 'L — Libero' },
+  { code: 'DS', label: 'DS — Defensive Specialist' },
+]
 
-  // Persist on any change
+function RosterView({ session, onLogout, onHome, team, onBack, isStandalone = false }) {
+  if (isStandalone) {
+    return (
+      <StandaloneRosterView
+        session={session}
+        onLogout={onLogout}
+        onHome={onHome}
+        team={team}
+        onBack={onBack}
+      />
+    )
+  }
+  return (
+    <LinkedRosterView
+      session={session}
+      onLogout={onLogout}
+      onHome={onHome}
+      team={team}
+      onBack={onBack}
+    />
+  )
+}
+
+// Linked mode: StatsPal is the source of truth. Render the same widget the
+// dashboard uses (groupings, view toggle, no badges) and open
+// PlayerManagementModal for adds/edits so all changes flow back through
+// Supabase + secondary localStorage in one place.
+function LinkedRosterView({ session, onLogout, onHome, team, onBack }) {
+  const { players, refresh } = useData()
+  const [refreshKey, setRefreshKey] = useState(0)
+  const [managerState, setManagerState] = useState(null) // null | { initialEdit: 'new' | playerObject }
+
+  function handleManagerClose() {
+    setManagerState(null)
+    setRefreshKey(k => k + 1)
+    refresh()
+  }
+
+  return (
+    <div className="dashboard rp-roster-page">
+      <HeaderBar
+        session={session}
+        onLogout={onLogout}
+        onHome={onHome}
+        title={team.name}
+        subtitle="Roster"
+        leftActions={<button className="ghost" onClick={onBack}>← {team.name}</button>}
+      />
+
+      <div className="rp-roster-page-body">
+        <div className="rp-roster-page-hint">
+          All player changes save instantly and sync everywhere — main dashboard, RotationPal, and StatsPal.
+        </div>
+
+        <RosterPositionWidget
+          team={team}
+          players={players}
+          showEdit
+          refreshKey={refreshKey}
+          onAddPlayer={() => setManagerState({ initialEdit: 'new' })}
+          onEditPlayer={(player) => setManagerState({ initialEdit: player })}
+        />
+      </div>
+
+      {managerState && (
+        <PlayerManagementModal
+          team={team}
+          initialEdit={managerState.initialEdit}
+          onClose={handleManagerClose}
+        />
+      )}
+    </div>
+  )
+}
+
+// Standalone mode: roster lives only in localStorage, not in Supabase. Keeps
+// the legacy inline editor since PlayerManagementModal targets Supabase.
+function StandaloneRosterView({ session, onLogout, onHome, team, onBack }) {
+  const [roster, setLocalRoster] = useState(team.roster || [])
+  const [secondaryMap, setSecondaryMap] = useState(() => readSecondaryMap(team.id))
+
   useEffect(() => {
     saveRoster(team.id, roster)
   }, [team.id, roster])
@@ -1532,6 +1773,10 @@ function RosterView({ session, onLogout, onHome, team, onBack }) {
   }
   function removePlayer(id) {
     setLocalRoster(r => r.filter(p => p.id !== id))
+  }
+  function updateSecondary(playerId, code) {
+    const next = setPlayerSecondary(team.id, playerId, code)
+    setSecondaryMap({ ...next })
   }
 
   return (
@@ -1547,9 +1792,14 @@ function RosterView({ session, onLogout, onHome, team, onBack }) {
 
       <div className="panel">
         <h3>Players</h3>
-        <div className="roster-list">
-          <div className="roster-item" style={{ fontSize: 10, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 1 }}>
-            <div>#</div><div>First Name</div><div>Last Name</div><div>Role</div><div></div>
+        <div className="roster-list rp-roster-list-2x">
+          <div className="roster-item rp-roster-row-2x" style={{ fontSize: 10, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 1 }}>
+            <div>#</div>
+            <div>First Name</div>
+            <div>Last Name</div>
+            <div>Primary Position</div>
+            <div title="Secondary Position (optional)">Secondary (optional)</div>
+            <div></div>
           </div>
           {roster.length === 0 && (
             <div style={{ padding: '24px 12px', color: 'var(--muted)', fontSize: 13 }}>
@@ -1557,19 +1807,26 @@ function RosterView({ session, onLogout, onHome, team, onBack }) {
             </div>
           )}
           {roster.map(p => (
-            <div className="roster-item" key={p.id}>
+            <div className="roster-item rp-roster-row-2x" key={p.id}>
               <input value={p.number} onChange={e => updatePlayer(p.id, 'number', e.target.value)} placeholder="#" />
               <input value={p.firstName || ''} onChange={e => updatePlayer(p.id, 'firstName', e.target.value)} placeholder="First Name" />
               <input value={p.lastName || ''} onChange={e => updatePlayer(p.id, 'lastName', e.target.value)} placeholder="Last Name" />
               <select value={p.role} onChange={e => updatePlayer(p.id, 'role', e.target.value)}>
                 {ROLES.map(r => <option key={r.code} value={r.code}>{r.code} — {r.label}</option>)}
               </select>
+              <select
+                value={secondaryMap[p.id] || ''}
+                onChange={e => updateSecondary(p.id, e.target.value)}
+                title="Secondary Position (optional) — does not affect primary"
+              >
+                {ROLE2_CHOICES.map(r => <option key={r.code || 'none'} value={r.code}>{r.label}</option>)}
+              </select>
               <button onClick={() => removePlayer(p.id)}>×</button>
             </div>
           ))}
         </div>
         <button onClick={addPlayer} className="ghost" style={{ marginTop: 10 }}>+ Add Player</button>
-        <div className="hint">Changes are saved automatically.</div>
+        <div className="hint">Changes are saved automatically. Secondary position is optional.</div>
       </div>
     </div>
   )

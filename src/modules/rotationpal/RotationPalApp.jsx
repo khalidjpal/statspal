@@ -12,6 +12,7 @@ import {
 import { readSecondaryMap, setSecondary as setPlayerSecondary } from '../../utils/playerSecondary'
 import { useData } from '../../contexts/DataContext'
 import PlayerManagementModal from '../../components/modals/PlayerManagementModal'
+import GameplanBuilderModal from '../../components/modals/GameplanBuilderModal'
 import RosterPositionWidget from '../../components/dashboard/RosterPositionWidget'
 import { IconUsers, IconClipboard, IconCalendar, IconPlay } from '../../components/Icons'
 import {
@@ -377,6 +378,7 @@ export default function RotationPalApp({
       <TeamHomeView
         {...headerProps}
         team={team}
+        statsPalPlayers={statsPalPlayers}
         statsPalSchedule={statsPalSchedule}
         statsPalCompletedGames={statsPalCompletedGames}
         onBack={statsPalTeams.length <= 1
@@ -671,7 +673,7 @@ function TeamHomeView({
   session, onLogout, onHome, team, onBack,
   onOpenRoster, onOpenSchedule, onOpenFormations, onOpenGameplans,
   onPlayGame,
-  statsPalSchedule = [], statsPalCompletedGames = [],
+  statsPalPlayers = [], statsPalSchedule = [], statsPalCompletedGames = [],
 }) {
   const rosterCount = (team.roster || []).length
 
@@ -839,9 +841,26 @@ function TeamHomeView({
   const [rightTab, setRightTab] = useState('upcoming')   // 'upcoming' | 'past'
   // When non-null, the right column is replaced by the gameplan workspace
   const [activePlanGame, setActivePlanGame] = useState(null)
+  // When non-null, the unified gameplan builder modal is open. We resolve the
+  // underlying schedule row here (not the wrapped `s-<id>` object the list
+  // hands us) because the modal stores plans against schedule_game_id.
+  const [gameplanModalGame, setGameplanModalGame] = useState(null)
 
-  function openGameplanFor(g) { setActivePlanGame(g) }
-  function closeGameplan() { setActivePlanGame(null) }
+  function openGameplanFor(g) {
+    // Convert a hub-list game (which uses `id: s-<uuid>` and a `scheduleId`
+    // field) into the schedule shape the modal expects: { id, opponent,
+    // game_date, location }. Past/completed games come through with no
+    // scheduleId — for those, fall back to the synthetic id so the modal can
+    // still render a read-only-ish view.
+    const game = {
+      id: g.scheduleId || g.id,
+      opponent: g.opponent,
+      game_date: g.game_date,
+      location: g.location || 'Home',
+    }
+    setGameplanModalGame(game)
+  }
+  function closeGameplan() { setActivePlanGame(null); setGameplanModalGame(null) }
 
   return (
     <div className="dashboard rp-hub-page">
@@ -1013,6 +1032,15 @@ function TeamHomeView({
           onSave={(text, color) => { saveNote(editingNote.date, { text, color }); setEditingNote(null) }}
           onDelete={() => { saveNote(editingNote.date, null); setEditingNote(null) }}
           onClose={() => setEditingNote(null)}
+        />
+      )}
+
+      {gameplanModalGame && (
+        <GameplanBuilderModal
+          team={team}
+          game={gameplanModalGame}
+          players={statsPalPlayers}
+          onClose={() => setGameplanModalGame(null)}
         />
       )}
     </div>

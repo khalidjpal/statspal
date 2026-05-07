@@ -5,6 +5,7 @@ import { sortedUpcoming, sortedCompleted } from '../utils/sort';
 import { getActiveSession } from '../utils/liveSession';
 import AddGameModal from './modals/AddGameModal';
 import ManualResultModal from './modals/ManualResultModal';
+import GameplanBuilderModal from './modals/GameplanBuilderModal';
 import { resetGame } from '../utils/resetGame';
 import { useToast } from '../contexts/ToastContext';
 
@@ -35,12 +36,13 @@ function daysUntilLabel(dateStr, today) {
 }
 
 export default function ScheduleTab({ team, schedule, completedGames, players, playerGameStats, leagueTeams, isAdmin, onSelectGame, onStartLive, onResumeGame, refresh }) {
-  const { leagueResults } = useData();
+  const { leagueResults, players: allPlayers } = useData();
   const [showAdd, setShowAdd]     = useState(false);
   const [manualGame, setManualGame] = useState(null);
   const [resetTarget, setResetTarget] = useState(null);
   const [resetting, setResetting] = useState(false);
   const [activeSession, setActiveSession] = useState(null);
+  const [planGame, setPlanGame] = useState(null);
   const { addToast } = useToast();
 
   async function confirmReset() {
@@ -314,9 +316,14 @@ export default function ScheduleTab({ team, schedule, completedGames, players, p
                   {nextGame.location && ` · ${nextGame.location}`}
                 </div>
                 {isAdmin && (
-                  <button className="sch-start-btn" onClick={() => onStartLive && onStartLive(nextGame)}>
-                    Start Live Scoring
-                  </button>
+                  <div className="sch-nc-actions">
+                    <button className="sch-gameplan-btn" onClick={() => setPlanGame(nextGame)}>
+                      📋 Gameplan
+                    </button>
+                    <button className="sch-start-btn" onClick={() => onStartLive && onStartLive(nextGame)}>
+                      Start Live Scoring
+                    </button>
+                  </div>
                 )}
               </div>
 
@@ -398,9 +405,14 @@ export default function ScheduleTab({ team, schedule, completedGames, players, p
               </div>
               <div className="sch-tl-right">
                 {isAdmin && (
-                  <button className="sch-up-live-btn" onClick={() => onStartLive && onStartLive(g)}>
-                    {isT ? 'Start Live' : 'Live'}
-                  </button>
+                  <>
+                    <button className="sch-gameplan-btn sch-gameplan-btn-sm" onClick={() => setPlanGame(g)}>
+                      📋 Gameplan
+                    </button>
+                    <button className="sch-up-live-btn" onClick={() => onStartLive && onStartLive(g)}>
+                      {isT ? 'Start Live' : 'Live'}
+                    </button>
+                  </>
                 )}
               </div>
             </div>
@@ -467,6 +479,15 @@ export default function ScheduleTab({ team, schedule, completedGames, players, p
           existingStats={(playerGameStats || []).filter(s => s.game_id === manualGame.id)}
           onClose={() => setManualGame(null)}
           onSaved={() => { setManualGame(null); refresh(); }}
+        />
+      )}
+
+      {planGame && (
+        <GameplanBuilderModal
+          team={team}
+          game={planGame}
+          players={allPlayers || players || []}
+          onClose={() => setPlanGame(null)}
         />
       )}
     </div>

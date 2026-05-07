@@ -34,7 +34,9 @@
       "Bash(git push *)",
       "Bash(npx eslint *)",
       "Bash(git config *)",
-      "Bash(npx *)"
+      "Bash(npx *)",
+      "Bash(npm install *)",
+      "Bash(grep *)"
     ]
   }
 }

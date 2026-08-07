@@ -6,8 +6,15 @@
 -- positioned freely within each formation; rotation order rules are
 -- enforced as soft warnings, not hard constraints.
 --
--- Apply once in the Supabase SQL editor. Re-running is safe (every
--- statement is idempotent).
+-- v3 — live-set fields:
+--   subs            jsonb  — generic pair list  [{ a, b }, ...]
+--   confirmed_subs  jsonb  — rotation → list of confirmed pair indices
+--   libero_pairs    jsonb  — { [liberoPid]: [mbPid1, mbPid2] }
+--   libero_auto     boolean — global auto-swap toggle (default true)
+--   sub_log         jsonb  — chronological regular-sub history for undo + counter
+--
+-- Apply once in the Supabase SQL editor (or re-run safely — every statement
+-- is idempotent).
 
 create table if not exists game_plans (
   id uuid primary key default gen_random_uuid(),
@@ -20,12 +27,16 @@ create table if not exists game_plans (
   positions jsonb not null default '{}'::jsonb,
 
   -- v2 — current UI:
-  -- ordered list of player UUIDs (max 6); index maps to R1 starting slot
   assigned_players jsonb not null default '[]'::jsonb,
-  -- formations[<1..6>][<'serve'|'receive'>][<player_uuid>] = { x, y }
   formations jsonb not null default '{}'::jsonb,
-  -- colors[<player_uuid>] = palette key ('cyan'|'green'|'purple'|'orange'|'pink'|'blue'|'gold')
   colors jsonb not null default '{}'::jsonb,
+
+  -- v3 — live-set + sub system:
+  subs jsonb not null default '[]'::jsonb,
+  confirmed_subs jsonb not null default '{}'::jsonb,
+  libero_pairs jsonb not null default '{}'::jsonb,
+  libero_auto boolean not null default true,
+  sub_log jsonb not null default '[]'::jsonb,
 
   rotation_index integer not null default 1,
   position integer not null default 0,
@@ -33,11 +44,35 @@ create table if not exists game_plans (
   updated_at timestamptz default now()
 );
 
--- Idempotent upgrades for installs that ran v1 migrations.
-alter table game_plans add column if not exists positions        jsonb not null default '{}'::jsonb;
-alter table game_plans add column if not exists assigned_players jsonb not null default '[]'::jsonb;
-alter table game_plans add column if not exists formations       jsonb not null default '{}'::jsonb;
-alter table game_plans add column if not exists colors           jsonb not null default '{}'::jsonb;
+-- Idempotent upgrades for installs that ran earlier migrations.
+alter table game_plans add column if not exists positions        jsonb   not null default '{}'::jsonb;
+alter table game_plans add column if not exists assigned_players jsonb   not null default '[]'::jsonb;
+alter table game_plans add column if not exists formations       jsonb   not null default '{}'::jsonb;
+alter table game_plans add column if not exists colors           jsonb   not null default '{}'::jsonb;
+alter table game_plans add column if not exists subs             jsonb   not null default '[]'::jsonb;
+alter table game_plans add column if not exists confirmed_subs   jsonb   not null default '{}'::jsonb;
+alter table game_plans add column if not exists libero_pairs     jsonb   not null default '{}'::jsonb;
+alter table game_plans add column if not exists libero_auto      boolean not null default true;
+alter table game_plans add column if not exists sub_log          jsonb   not null default '[]'::jsonb;
 
 create index if not exists idx_game_plans_schedule_game on game_plans(schedule_game_id);
-create index if not exists idx_game_plans_team on game_plans(team_id);
+create index if not exists idx_game_plans_team          on game_plans(team_id);
+
+-- RLS — allow the app's authenticated role to read/write its own team's plans.
+-- Adjust the policies below if your project uses a different role model.
+alter table game_plans enable row level security;
+
+drop policy if exists "game_plans_all_authenticated" on game_plans;
+create policy "game_plans_all_authenticated"
+  on game_plans
+  for all
+  to authenticated
+  using (true)
+  with check (true);
+
+-- Verification query — run this after the migration and confirm all
+-- expected columns appear.
+--   select column_name, data_type
+--   from information_schema.columns
+--   where table_name = 'game_plans'
+--   order by ordinal_position;

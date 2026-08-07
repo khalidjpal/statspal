@@ -36,7 +36,21 @@
       "Bash(git config *)",
       "Bash(npx *)",
       "Bash(npm install *)",
-      "Bash(grep *)"
+      "Bash(grep *)",
+      "Bash(node --input-type=module -e ' *)",
+      "PowerShell(npm run *)",
+      "PowerShell(& \"C:\\\\Program Files\\\\nodejs\\\\npm.cmd\" run dev)",
+      "PowerShell(try { \\(Invoke-WebRequest -Uri http://localhost:5173/ -UseBasicParsing -TimeoutSec 5\\).StatusCode } catch { $_.Exception.Message })",
+      "PowerShell(& \"C:\\\\Program Files\\\\nodejs\\\\npm.cmd\" run build 2>&1 | Select-Object -Last 20)",
+      "Bash(kill %1)",
+      "Bash(jobs -l)",
+      "PowerShell(Get-Content *)",
+      "PowerShell($a = Get-Item 'C:\\\\Users\\\\kpal\\\\statspal\\\\src\\\\modules\\\\rotationpal\\\\rotationpal.css'; $b = Get-Item 'C:\\\\Users\\\\kpal\\\\rotationpal\\\\src\\\\index.css'; Write-Output \\(\"statspal css: \" + $a.LastWriteTime\\); Write-Output \\(\"upstream css: \" + $b.LastWriteTime\\))",
+      "PowerShell(\\(Get-Content 'C:\\\\Users\\\\kpal\\\\statspal\\\\src\\\\styles.css' | Measure-Object -Line\\).Lines)",
+      "PowerShell($c = Get-Content 'C:\\\\Users\\\\kpal\\\\statspal\\\\src\\\\styles.css'; Write-Output \\('total lines: ' + $c.Count\\); Write-Output '--- last 5 lines ---'; $c[-5..-1] | ForEach-Object { Write-Output $_ })",
+      "PowerShell(& \"C:\\\\Program Files\\\\nodejs\\\\npm.cmd\" run lint 2>&1 | Select-Object -Last 40)",
+      "PowerShell($c = Get-NetTCPConnection -LocalPort 5174 -State Listen -ErrorAction SilentlyContinue; if \\($c\\) { $c | Select-Object -ExpandProperty OwningProcess -Unique | ForEach-Object { Stop-Process -Id $_ -Force -ErrorAction SilentlyContinue }; \"killed 5174 listener\\(s\\)\" } else { \"nothing on 5174\" })",
+      "Bash(node *)"
     ]
   }
 }

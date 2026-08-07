@@ -284,24 +284,35 @@ function snapToLegalAndSeparate(playerId, droppedPos, plan, rotation, mode, play
 // ─── Sub pairing helpers ──
 //
 // `subs` is an array of { a: pid, b: pid }. Order doesn't matter — the libero
-// (if any) is the "sub" that comes IN when their partner rotates to back row.
+// (or non-front-row member) is the "sub" that comes IN when their partner
+// rotates to back row. A player can be in MULTIPLE pairs (1:N) — a libero
+// typically pairs with both middle blockers so they auto-cover whichever MB
+// is in the back row at any rotation.
 // `confirmed_subs` is a map of rotation → list of pair indices that are
 // confirmed-as-subbed-in for that rotation (badge on the rotation tab).
 
-function findPairForPlayer(plan, pid) {
+function findPairsForPlayer(plan, pid) {
   const subs = plan?.subs || [];
-  return subs.find(p => p.a === pid || p.b === pid) || null;
+  return subs.filter(p => p.a === pid || p.b === pid);
 }
 function pairOpponent(pair, pid) {
   return pair.a === pid ? pair.b : pair.a;
 }
-// "Starter" of a pair = the non-libero member. If both are non-libero, returns
-// pair.a as the conventional starter.
+// "Starter" of a pair = the front-row member. Liberos always come off the
+// court in front-row rotations, and DSs typically replace a hitter when that
+// hitter rotates to back row — so both are treated as the "sub" side. If
+// both members are conventional starters (or both subs) we fall back to
+// pair.a for determinism.
+function isSubRole(player) {
+  const r = (player?.position || '').toUpperCase().trim();
+  return r === 'L' || r === 'DS';
+}
 function pairStarter(pair, playerById) {
   const pa = playerById[pair.a];
   const pb = playerById[pair.b];
-  if (isLibero(pa) && !isLibero(pb)) return pair.b;
-  if (isLibero(pb) && !isLibero(pa)) return pair.a;
+  const aSub = isSubRole(pa), bSub = isSubRole(pb);
+  if (aSub && !bSub) return pair.b;
+  if (bSub && !aSub) return pair.a;
   return pair.a;
 }
 function pairSub(pair, playerById) {
@@ -314,7 +325,13 @@ function pairSub(pair, playerById) {
 // where action is 'sub-in' (libero comes on) or 'sub-out' (starter comes back).
 function detectPendingSubs(plan, fromRot, toRot, playerById) {
   if (!plan || fromRot === toRot) return [];
-  const subs = plan.subs || [];
+  // Libero ↔ MB pairs are handled exclusively by the auto-swap path in
+  // effectiveLineupAt (and the dedicated libero panel manages them). They
+  // must NOT show up here — otherwise rotation transitions would fire the
+  // generic SubPopup on top of the silent auto-swap.
+  const subs = (plan.subs || []).filter(
+    p => !isLibero(playerById[p.a]) && !isLibero(playerById[p.b]),
+  );
   const assigned = plan.assigned_players || [];
   const pending = [];
   subs.forEach((pair, pairIdx) => {
@@ -337,23 +354,207 @@ function detectPendingSubs(plan, fromRot, toRot, playerById) {
   return pending;
 }
 
+// ─── Effective lineup (regular subs + libero auto-swap) ──
+//
+// Returns the array of 6 player IDs that are CURRENTLY on the court at the
+// given rotation. Computed deterministically from the plan state so any
+// component that needs the live lineup gets the same answer.
+//
+//   1. Start from plan.assigned_players (the R1 starters of this set).
+//   2. Replay plan.sub_log in order — last write per array-index wins. This
+//      handles regular substitutions (out / re-entry / etc.) and persists
+//      them across rotations until reversed.
+//   3. Apply libero auto-swap: for each libero pair, if the paired MB is in
+//      the BACK ROW at this rotation, the libero takes the MB's array-index.
+//      A single libero can only be on the court once, so we stop after the
+//      first matching MB. This step is recomputed every rotation and never
+//      writes to sub_log.
+//
+// FIVB invariant: a libero is never placed in the front row. The function
+// enforces this by skipping front-row slots in the auto-swap step.
+function effectiveLineupAt(plan, rotation) {
+  if (!plan) return [null, null, null, null, null, null];
+  const arr = (plan.assigned_players || [null,null,null,null,null,null]).slice();
+
+  // (2) Replay regular subs.
+  for (const e of plan.sub_log || []) {
+    if (!e || typeof e.atIdx !== 'number') continue;
+    if (e.atIdx < 0 || e.atIdx > 5) continue;
+    arr[e.atIdx] = e.toPid;
+  }
+
+  // (3) Libero auto-swap. Only fires when libero_auto is on.
+  if (plan.libero_auto !== false) {
+    const lps = plan.libero_pairs || {};
+    const usedLiberos = new Set();
+    for (const liberoPid of Object.keys(lps)) {
+      if (usedLiberos.has(liberoPid)) continue;
+      const mbs = (lps[liberoPid] || []).filter(Boolean);
+      for (const mbPid of mbs) {
+        const mbIdx = (plan.assigned_players || []).indexOf(mbPid);
+        if (mbIdx < 0) continue;
+        const slot = slotInRotation(`P${mbIdx + 1}`, rotation);
+        if (FRONT_SLOTS.has(slot)) continue; // MB still in front — libero stays off
+        // MB in back row → libero on court at MB's idx.
+        arr[mbIdx] = liberoPid;
+        usedLiberos.add(liberoPid);
+        break;
+      }
+    }
+  }
+
+  return arr;
+}
+
+// FIVB sub counter: a TEAM gets 6 regular substitutions per set. Each unique
+// starting array-index that has been mutated by a regular sub counts once,
+// regardless of how many times its starter/substitute swap back and forth
+// (FIVB allows multiple swaps within the same pair-slot).
+function regularSubCount(plan) {
+  const used = new Set();
+  for (const e of plan?.sub_log || []) used.add(e.atIdx);
+  return used.size;
+}
+
+// Given an array-index and a candidate substitute pid, return true if a
+// regular sub at this idx with this substitute would be legal under FIVB:
+//   • idx is currently occupied (starter exists)
+//   • either this idx has never been subbed (consumes a new pair-slot, if
+//     we still have one of the 6 left), or the candidate has already been
+//     part of this idx's pair history (re-entry).
+function canRegularSub(plan, atIdx, candidatePid) {
+  if (!plan || atIdx < 0 || atIdx > 5) return false;
+  if (!candidatePid) return false;
+  const starter = (plan.assigned_players || [])[atIdx];
+  if (!starter) return false;
+  if (candidatePid === starter) {
+    // Re-entering the starter — only valid if the idx has been subbed.
+    return (plan.sub_log || []).some(e => e.atIdx === atIdx);
+  }
+  // Have we seen this candidate at this idx before? (Re-entry of the same
+  // substitute is allowed even if pair-slot is "used".)
+  const seenHere = (plan.sub_log || []).some(
+    e => e.atIdx === atIdx && (e.fromPid === candidatePid || e.toPid === candidatePid),
+  );
+  if (seenHere) return true;
+  // Brand-new pair-slot: blocked if all 6 are already used.
+  if (regularSubCount(plan) >= 6) return false;
+  // A substitute is locked to a single pair-slot. Block if they're already
+  // part of a different idx's history.
+  const elsewhere = (plan.sub_log || []).some(
+    e => e.atIdx !== atIdx && (e.fromPid === candidatePid || e.toPid === candidatePid),
+  );
+  if (elsewhere) return false;
+  return true;
+}
+
+// ─── Auto-detect pairs ──
+//
+// Given the players currently placed on the court (plan.assigned_players),
+// infer reasonable sub pairs from their roster positions:
+//   • Libero ↔ every Middle Blocker that's also placed.
+//     The libero auto-subs in for whichever MB is in the back row at the
+//     current rotation, so pairing the libero with BOTH MBs gives full
+//     back-row coverage out of the box.
+//   • DS ↔ a front-row hitter (OH or RS) in the same R1 column. If no
+//     in-column hitter exists, falls back to the first unpaired hitter.
+//
+// Returns an array of { a, b } pairs ready to drop into plan.subs.
+// Players already in a pair (after the libero pass) are skipped by the DS
+// pass so we never duplicate.
+function autoDetectPairs(plan, playerById) {
+  if (!plan) return [];
+  const assigned = plan.assigned_players || [];
+  const placedIds = assigned.filter(Boolean);
+  if (placedIds.length === 0) return [];
+
+  const normRole = (p) => (p?.position || '').toUpperCase().trim();
+  const isDS  = (p) => normRole(p) === 'DS';
+  const isFrontHitter = (p) => ['OH', 'OPP', 'RS', 'O', 'WS'].includes(normRole(p));
+
+  // R1 starting column for an assigned-array index. The 3 columns are:
+  //   left = idx 3 (P4) ↔ idx 4 (P5)
+  //   mid  = idx 2 (P3) ↔ idx 5 (P6)
+  //   right= idx 1 (P2) ↔ idx 0 (P1)
+  const COL_BY_IDX = ['R', 'R', 'M', 'L', 'L', 'M'];
+  const columnOfPid = (pid) => {
+    const idx = assigned.indexOf(pid);
+    return idx < 0 ? null : COL_BY_IDX[idx];
+  };
+
+  const placed = placedIds.map(pid => playerById[pid]).filter(Boolean);
+  const dss     = placed.filter(isDS);
+  const hitters = placed.filter(isFrontHitter);
+
+  // Libero pairs are managed in a dedicated panel (plan.libero_pairs), not
+  // in this generic list — so we skip them here.
+  const pairs = [];
+  const partnersOf = new Map(); // pid → Set(partnerPid)
+  const link = (aPid, bPid) => {
+    if (!aPid || !bPid || aPid === bPid) return;
+    if (!partnersOf.has(aPid)) partnersOf.set(aPid, new Set());
+    if (!partnersOf.has(bPid)) partnersOf.set(bPid, new Set());
+    if (partnersOf.get(aPid).has(bPid)) return;
+    partnersOf.get(aPid).add(bPid);
+    partnersOf.get(bPid).add(aPid);
+    pairs.push({ a: aPid, b: bPid });
+  };
+
+  // DS pass: each DS pairs with a front-row hitter — same R1 column when
+  // possible, otherwise the first unpaired hitter.
+  for (const ds of dss) {
+    if (partnersOf.has(ds.id) && partnersOf.get(ds.id).size > 0) continue;
+    const col = columnOfPid(ds.id);
+    const inCol = col ? hitters.find(h => columnOfPid(h.id) === col && !partnersOf.has(h.id)) : null;
+    const partner = inCol || hitters.find(h => !partnersOf.has(h.id));
+    if (partner) link(ds.id, partner.id);
+  }
+
+  return pairs;
+}
+
+// Auto-detect libero ↔ MB pairings for the dedicated libero panel.
+// Returns { [liberoId]: [mbId1, mbId2] } with up to 2 MBs per libero (FIVB
+// allows a libero to replace any back-row player but coaches pin them to
+// specific MBs so the auto-swap is predictable). Only on-court players are
+// considered.
+function autoDetectLiberoPairs(plan, playerById) {
+  if (!plan) return {};
+  const placedIds = (plan.assigned_players || []).filter(Boolean);
+  const placed = placedIds.map(pid => playerById[pid]).filter(Boolean);
+  const normRole = (p) => (p?.position || '').toUpperCase().trim();
+  const isLib = (p) => normRole(p) === 'L';
+  const isMid = (p) => ['MB', 'MH', 'M'].includes(normRole(p));
+  const liberos = placed.filter(isLib);
+  const mbs = placed.filter(isMid);
+  if (liberos.length === 0 || mbs.length === 0) return {};
+  const out = {};
+  // First libero gets all MBs (up to 2). Additional liberos stay unpaired
+  // until the coach assigns them manually — two-libero squads vary too much
+  // for a sensible auto-pairing.
+  out[liberos[0].id] = mbs.slice(0, 2).map(p => p.id);
+  return out;
+}
+
 // ─── Persistence ────────────────────────────────────────────────────────────
-const LS_KEY = 'volleyballpal-gameplans-v1';
-function loadLocal(scheduleGameId) {
-  try {
-    const raw = localStorage.getItem(LS_KEY);
-    if (!raw) return [];
-    return (JSON.parse(raw)[scheduleGameId] || []).slice();
-  } catch { return []; }
+//
+// Supabase is the single source of truth for gameplans — there is no local
+// fallback. If the request errors (typically a schema/migration issue) the
+// caller is expected to surface it as a hard error so the coach knows the
+// data isn't being saved, instead of silently dropping writes into
+// localStorage.
+
+// Tells whether an error from PostgREST is the kind that only the SQL
+// migration can fix (missing table or missing column). Used by the load
+// path to show a targeted "run migration" call to action.
+function isSchemaError(err) {
+  if (!err) return false;
+  const code = err.code || '';
+  if (code === 'PGRST205' || code === '42P01' || code === '42703') return true;
+  const msg = err.message || '';
+  return /relation .* does not exist|column .* does not exist|schema cache/i.test(msg);
 }
-function saveLocal(scheduleGameId, plans) {
-  try {
-    const raw = localStorage.getItem(LS_KEY);
-    const all = raw ? JSON.parse(raw) : {};
-    all[scheduleGameId] = plans;
-    localStorage.setItem(LS_KEY, JSON.stringify(all));
-  } catch { /* unavailable */ }
-}
+
 async function fetchPlans(scheduleGameId) {
   const { data, error } = await supabase
     .from('game_plans')
@@ -361,17 +562,9 @@ async function fetchPlans(scheduleGameId) {
     .eq('schedule_game_id', scheduleGameId)
     .order('position', { ascending: true })
     .order('created_at', { ascending: true });
-  if (error) return { data: loadLocal(scheduleGameId), error, fallback: true };
-  return { data: data || [], error: null, fallback: false };
+  return { data: data || [], error };
 }
-async function upsertPlan(plan, useFallback) {
-  if (useFallback) {
-    const list = loadLocal(plan.schedule_game_id);
-    const idx = list.findIndex(p => p.id === plan.id);
-    if (idx >= 0) list[idx] = plan; else list.push(plan);
-    saveLocal(plan.schedule_game_id, list);
-    return { data: plan, error: null };
-  }
+async function upsertPlan(plan) {
   const { data, error } = await supabase
     .from('game_plans')
     .upsert(plan, { onConflict: 'id' })
@@ -379,14 +572,72 @@ async function upsertPlan(plan, useFallback) {
     .single();
   return { data, error };
 }
-async function deletePlanRemote(planId, scheduleGameId, useFallback) {
-  if (useFallback) {
-    const list = loadLocal(scheduleGameId).filter(p => p.id !== planId);
-    saveLocal(scheduleGameId, list);
-    return { error: null };
-  }
+async function deletePlanRemote(planId) {
   const { error } = await supabase.from('game_plans').delete().eq('id', planId);
   return { error };
+}
+
+// — Playground-session persistence —
+// A playground session is ONE row in playground_sessions with the full plan
+// shape stored inline in the `plans` jsonb. We adapt to the modal's
+// "array of plan rows" shape by wrapping the single blob.
+async function fetchPlaygroundSession(sessionId) {
+  const { data, error } = await supabase
+    .from('playground_sessions')
+    .select('*')
+    .eq('id', sessionId)
+    .single();
+  if (error) return { data: [], error };
+  const blob = (data && data.plans && typeof data.plans === 'object') ? data.plans : {};
+  const wrapped = normalizePlan({
+    id: data.id,
+    team_id: data.team_id,
+    schedule_game_id: null,
+    name: data.name || 'Untitled Session',
+    notes: blob.notes || '',
+    ...blob,
+    position: 0,
+  });
+  return { data: [wrapped], error: null, sessionRow: data };
+}
+// — Formation presets persistence —
+async function fetchPresets(teamId) {
+  const { data, error } = await supabase
+    .from('formation_presets')
+    .select('*')
+    .eq('team_id', teamId)
+    .order('updated_at', { ascending: false });
+  return { data: data || [], error };
+}
+async function upsertPreset(preset) {
+  const { data, error } = await supabase
+    .from('formation_presets')
+    .upsert(preset, { onConflict: 'id' })
+    .select()
+    .single();
+  return { data, error };
+}
+async function deletePreset(id) {
+  const { error } = await supabase.from('formation_presets').delete().eq('id', id);
+  return { error };
+}
+
+async function upsertPlaygroundSession(plan, sessionId) {
+  // Persist everything that isn't a column on playground_sessions inside `plans`.
+  const { id: _planId, team_id: _tid, schedule_game_id: _sid, name, position: _pos, created_at: _ca, updated_at: _ua, ...blob } = plan;
+  void _planId; void _tid; void _sid; void _pos; void _ca; void _ua;
+  const payload = {
+    name: name || 'Untitled Session',
+    plans: blob,
+    updated_at: new Date().toISOString(),
+  };
+  const { data, error } = await supabase
+    .from('playground_sessions')
+    .update(payload)
+    .eq('id', sessionId)
+    .select()
+    .single();
+  return { data, error };
 }
 function cryptoRandomId() {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID();
@@ -408,6 +659,19 @@ function makeNewPlan(teamId, scheduleGameId, name, position) {
     colors: {},
     subs: [],
     confirmed_subs: { 1: [], 2: [], 3: [], 4: [], 5: [], 6: [] },
+    // — Live-set fields (1 gameplan = 1 set) —
+    // libero_pairs: { [liberoPid]: [mbPid1, mbPid2] } — each libero may cover up
+    // to two MBs. Used by effectiveLineupAt to auto-swap.
+    libero_pairs: {},
+    // When true, paired liberos automatically take over their MB's slot in
+    // every rotation where that MB is in the back row. The coach can flip it
+    // off if they want to make every libero swap manual.
+    libero_auto: true,
+    // sub_log is the chronological history of regular (non-libero) swaps in
+    // this set. Each entry: { id, atRot, atIdx, fromPid, toPid, ts }. Last
+    // write per atIdx wins; libero auto-swaps are NOT logged here (they're
+    // computed each rotation).
+    sub_log: [],
     rotation_index: 1,
     position,
     created_at: new Date().toISOString(),
@@ -440,19 +704,188 @@ function normalizePlan(p) {
       if (!Array.isArray(plan.confirmed_subs[r])) plan.confirmed_subs[r] = [];
     }
   }
+  if (!plan.libero_pairs || typeof plan.libero_pairs !== 'object') plan.libero_pairs = {};
+  if (typeof plan.libero_auto !== 'boolean') plan.libero_auto = true;
+  if (!Array.isArray(plan.sub_log)) plan.sub_log = [];
   return plan;
 }
 
+// ─── Scheme (formation-preset) ↔ synthetic-plan mapping ─────────────────────
+// A scheme is one formation_presets row keyed by six player-agnostic role
+// markers (S, OH1, OH2, MB1, MB2, OPP). The builder edits a player-centric
+// "plan", so scheme mode maps the preset onto the roster's role-representative
+// players on open, and back to markers on Save — the same bucket logic
+// applyPreset uses, so schemes stay reusable across any roster.
+const SCHEME_MARKERS = ['S', 'OH1', 'OH2', 'MB1', 'MB2', 'OPP'];
+const SCHEME_ROLE_FROM_POS = {
+  S:   ['S', 'SET', 'SETTER'],
+  OH:  ['OH', 'WS', 'OUTSIDE', 'OUTSIDE HITTER'],
+  MB:  ['MB', 'MH', 'M', 'MIDDLE', 'MIDDLE BLOCKER'],
+  OPP: ['OPP', 'RS', 'OPPOSITE', 'RIGHT SIDE'],
+};
+function bucketRosterForScheme(roster) {
+  const buckets = { S: [], OH: [], MB: [], OPP: [] };
+  for (const p of roster || []) {
+    const r = (p?.position || '').toUpperCase().trim();
+    if (!r) continue;
+    for (const role of Object.keys(SCHEME_ROLE_FROM_POS)) {
+      if (SCHEME_ROLE_FROM_POS[role].includes(r)) { buckets[role].push(p); break; }
+    }
+  }
+  for (const k of Object.keys(buckets)) {
+    buckets[k].sort((a, b) => {
+      const an = parseInt(a.jersey_number, 10), bn = parseInt(b.jersey_number, 10);
+      if (Number.isNaN(an) && Number.isNaN(bn)) return 0;
+      if (Number.isNaN(an)) return 1;
+      if (Number.isNaN(bn)) return -1;
+      return an - bn;
+    });
+  }
+  return buckets;
+}
+function schemeMarkerToPid(roster) {
+  const b = bucketRosterForScheme(roster);
+  const m = {};
+  if (b.S[0])   m.S   = b.S[0].id;
+  if (b.OH[0])  m.OH1 = b.OH[0].id;
+  if (b.OH[1])  m.OH2 = b.OH[1].id;
+  if (b.MB[0])  m.MB1 = b.MB[0].id;
+  if (b.MB[1])  m.MB2 = b.MB[1].id;
+  if (b.OPP[0]) m.OPP = b.OPP[0].id;
+  return m;
+}
+// preset.rotations (role markers) → a synthetic plan the builder can edit.
+function presetToSchemePlan(preset, roster, teamId) {
+  const rotations = preset?.rotations || {};
+  const markerToPid = schemeMarkerToPid(roster);
+  const r1serve = (rotations[1] && rotations[1].serve) || {};
+
+  // Place each marker's player into the R1 slot its serve position falls in
+  // (same zone mapping applyPreset uses); fall back to first empty slot.
+  const assigned = [null, null, null, null, null, null];
+  for (const marker of SCHEME_MARKERS) {
+    const pid = markerToPid[marker];
+    if (!pid) continue;
+    let slotIdx = -1;
+    const pos = r1serve[marker];
+    if (pos) slotIdx = slotToArrayIdx(zoneFor(pos.x, pos.y), 1);
+    if (slotIdx < 0 || assigned[slotIdx]) slotIdx = assigned.findIndex(x => !x);
+    if (slotIdx >= 0) assigned[slotIdx] = pid;
+  }
+
+  const formations = {
+    1: { serve: {}, receive: {} }, 2: { serve: {}, receive: {} },
+    3: { serve: {}, receive: {} }, 4: { serve: {}, receive: {} },
+    5: { serve: {}, receive: {} }, 6: { serve: {}, receive: {} },
+  };
+  for (let r = 1; r <= 6; r++) {
+    const rot = rotations[r] || {};
+    for (const mode of ['serve', 'receive']) {
+      const src = rot[mode] || {};
+      for (const marker of Object.keys(src)) {
+        const pid = markerToPid[marker];
+        if (!pid) continue;
+        formations[r][mode][pid] = { ...src[marker] };
+      }
+    }
+  }
+
+  return {
+    id: cryptoRandomId(),
+    team_id: teamId,
+    schedule_game_id: null,
+    name: preset?.name || 'New Scheme',
+    lineup: {}, positions: {},
+    assigned_players: assigned,
+    formations,
+    colors: {},
+    subs: [], sub_log: [],
+    confirmed_subs: { 1: [], 2: [], 3: [], 4: [], 5: [], 6: [] },
+    libero_pairs: {},      // schemes are the 6 role positions — no libero swap
+    libero_auto: false,
+    notes: '',
+    position: 0,
+  };
+}
+// Edited plan → preset.rotations (role markers). Captures the EFFECTIVE
+// position of each on-court role player per rotation/mode (stored, else the
+// rotation default) so the saved scheme is complete for all six markers.
+function schemePlanToRotations(plan, roster) {
+  const markerToPid = schemeMarkerToPid(roster);
+  const pidToMarker = {};
+  for (const marker of Object.keys(markerToPid)) pidToMarker[markerToPid[marker]] = marker;
+  const assigned = plan.assigned_players || [];
+  const rotations = {};
+  for (let r = 1; r <= 6; r++) {
+    const serve = {}, receive = {};
+    assigned.forEach((pid, idx) => {
+      if (!pid) return;
+      const marker = pidToMarker[pid];
+      if (!marker) return;
+      const def = defaultPositionFor(idx, r);
+      serve[marker]   = { ...(plan.formations?.[r]?.serve?.[pid]   || def) };
+      receive[marker] = { ...(plan.formations?.[r]?.receive?.[pid] || def) };
+    });
+    rotations[r] = { serve, receive };
+  }
+  return rotations;
+}
+
 // ─── Main component ─────────────────────────────────────────────────────────
-export default function GameplanBuilderModal({ team, game, players, onClose }) {
+//
+// playgroundSession (optional): when set, the modal is in playground mode —
+// no game, no opponent/date header, single editable plan stored as one row
+// in playground_sessions. Shape: { id, name }.
+//
+// schemePreset (optional): when set, the modal is in scheme mode — edits a
+// formation_presets row (or a template/new draft) using the real player
+// bubbles + rotation validation, and Save writes back to formation_presets.
+export default function GameplanBuilderModal({ team, game: gameProp, players, onClose, playgroundSession = null, schemePreset = null, onSchemeSaved = null }) {
+  const isPlayground = !!playgroundSession;
+  const isScheme = !!schemePreset;
+  // Synthesise a "game" stub in playground/scheme mode so the rest of the
+  // component can read game.id / game.opponent without branching every line.
+  const game = isPlayground
+    ? { id: playgroundSession.id, opponent: playgroundSession.name || 'Playground', game_date: null, location: 'Home' }
+    : isScheme
+    ? { id: 'scheme:' + (schemePreset.id || 'new'), opponent: schemePreset.name || 'Scheme', game_date: null, location: 'Home' }
+    : gameProp;
   const { addToast } = useToast();
   const [plans, setPlans] = useState([]);
   const [activePlanId, setActivePlanId] = useState(null);
   const [loading, setLoading] = useState(true);
   const [renamingId, setRenamingId] = useState(null);
   const [renameDraft, setRenameDraft] = useState('');
-  const [usingFallback, setUsingFallback] = useState(false);
-  const fallbackWarnedRef = useRef(false);
+  // Hard error from Supabase load. When set, the modal renders a single
+  // error screen with the SQL-editor link instead of the planner. Save
+  // failures during normal use surface as toasts (no silent fallback).
+  const [loadError, setLoadError] = useState(null);
+  const saveErrorWarnedRef = useRef(false);
+
+  // ── Toolbar / layout state ──
+  // Roster aside collapses out of view; the centre court fills the freed
+  // space. Persisted to localStorage so the coach's preference survives
+  // re-opens.
+  const [rosterCollapsed, setRosterCollapsed] = useState(() => {
+    try { return localStorage.getItem('gpb-roster-collapsed') === '1'; }
+    catch { return false; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem('gpb-roster-collapsed', rosterCollapsed ? '1' : '0'); }
+    catch { /* ignore */ }
+  }, [rosterCollapsed]);
+
+  // ── Preset state ──
+  // presets: list pulled from formation_presets. presetError surfaces the
+  // missing-table state into a small inline message. applyPickerOpen
+  // controls the Apply Preset dropdown; presetMgrOpen opens the manager;
+  // presetEditing holds the preset row being edited (or a fresh stub).
+  const [presets, setPresets] = useState([]);
+  const [presetError, setPresetError] = useState(null);
+  const [presetTick, setPresetTick] = useState(0);
+  const [applyPickerOpen, setApplyPickerOpen] = useState(false);
+  const [presetMgrOpen, setPresetMgrOpen] = useState(false);
+  const [presetEditing, setPresetEditing] = useState(null);
 
   const [activeRotation, setActiveRotation] = useState(1);
   const [activeMode, setActiveMode] = useState('serve');
@@ -461,12 +894,11 @@ export default function GameplanBuilderModal({ team, game, players, onClose }) {
   const [selectedRosterId, setSelectedRosterId] = useState(null);
 
   // Sub-pair UI:
-  //  - `pairingMode` true → the roster is in "select two players to link"
-  //    mode (toggled by the dedicated Pair Subs button above the roster).
-  //  - `pairingSourceId` is the first player picked while in pairing mode;
-  //    the next click in the roster locks in the pair.
-  const [pairingMode, setPairingMode] = useState(false);
-  const [pairingSourceId, setPairingSourceId] = useState(null);
+  //  - One-tap "Pair Subs" button → opens the PairSubsPopup with pairs that
+  //    were auto-detected from roster positions. Coach taps any name to swap
+  //    a player in a pair, hits Confirm to write back to plan.subs.
+  //  - `pairPopup` is null when closed, an array of { a, b } drafts otherwise.
+  const [pairPopup, setPairPopup] = useState(null);
 
   // Sub popup: { fromRot, toRot, pendingList: [...] }
   const [subPopup, setSubPopup] = useState(null);
@@ -527,59 +959,106 @@ export default function GameplanBuilderModal({ team, game, players, onClose }) {
   // ── Load plans ──
   useEffect(() => {
     if (!game?.id) return;
+    // Scheme mode has no remote row to load — build the editable plan straight
+    // from the preset/template in memory.
+    if (isScheme) {
+      const plan = presetToSchemePlan(schemePreset, roster, team.id);
+      setPlans([plan]);
+      setActivePlanId(plan.id);
+      setLoading(false);
+      return;
+    }
     let cancelled = false;
     setLoading(true);
-    fetchPlans(game.id).then(({ data, error, fallback }) => {
+    setLoadError(null);
+
+    const loader = isPlayground
+      ? fetchPlaygroundSession(playgroundSession.id)
+      : fetchPlans(game.id);
+
+    Promise.resolve(loader).then(({ data, error }) => {
       if (cancelled) return;
-      if (error && !fallbackWarnedRef.current) {
-        fallbackWarnedRef.current = true;
-        const code = error.code || '';
-        if (/(PGRST205|42P01)/.test(code) || /relation .* does not exist/i.test(error.message || '') || /column .* does not exist/i.test(error.message || '')) {
-          addToast('Gameplan table needs migration — saving locally. Run scripts/game_plans_migration.sql.', 'error');
-        } else {
-          addToast('Gameplan storage offline — saving locally', 'error');
-        }
+      if (error) {
+        setLoadError({
+          schema: isSchemaError(error),
+          message: error.message || String(error),
+        });
+        setLoading(false);
+        return;
       }
-      setUsingFallback(!!fallback);
       const normalized = data.map(normalizePlan);
       if (normalized.length === 0) {
+        if (isPlayground) {
+          // The dashboard pre-creates the session row before opening the
+          // modal — if we still got zero rows back something deleted it
+          // mid-flight. Surface that instead of silently re-seeding.
+          setLoadError({ schema: false, message: 'Playground session no longer exists.' });
+          setLoading(false);
+          return;
+        }
         const seed = makeNewPlan(team.id, game.id, 'Plan A', 0);
-        setPlans([seed]);
-        setActivePlanId(seed.id);
-        upsertPlan(seed, !!fallback);
+        upsertPlan(seed).then(({ error: seedErr }) => {
+          if (cancelled) return;
+          if (seedErr) {
+            setLoadError({ schema: isSchemaError(seedErr), message: seedErr.message || String(seedErr) });
+            setLoading(false);
+            return;
+          }
+          setPlans([seed]);
+          setActivePlanId(seed.id);
+          setLoading(false);
+        });
       } else {
         setPlans(normalized);
         setActivePlanId(normalized[0].id);
+        setLoading(false);
       }
-      setLoading(false);
     });
     return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [game?.id]);
+  }, [game?.id, isPlayground]);
 
   const activePlan = plans.find(p => p.id === activePlanId) || null;
 
   // ── Debounced autosave ──
   const saveTimerRef = useRef(null);
   const queuedSaveRef = useRef(null);
+  const handleSaveError = useCallback((err) => {
+    if (!err) return;
+    if (isSchemaError(err)) {
+      setLoadError({ schema: true, message: err.message || String(err) });
+      return;
+    }
+    // Transient (network, RLS, etc.) — toast once per session so we don't
+    // spam the coach every 250 ms.
+    if (!saveErrorWarnedRef.current) {
+      saveErrorWarnedRef.current = true;
+      addToast(`Save failed: ${err.message || 'Supabase error'}`, 'error');
+    }
+  }, [addToast]);
   const scheduleSave = useCallback((plan) => {
+    if (isScheme) return; // schemes persist only via explicit Save
     queuedSaveRef.current = plan;
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(async () => {
       const p = queuedSaveRef.current;
       queuedSaveRef.current = null;
       if (!p) return;
-      const { error } = await upsertPlan(p, usingFallback);
-      if (error && !usingFallback) { setUsingFallback(true); await upsertPlan(p, true); }
+      const result = isPlayground
+        ? await upsertPlaygroundSession(p, playgroundSession.id)
+        : await upsertPlan(p);
+      if (result.error) handleSaveError(result.error);
     }, 250);
-  }, [usingFallback]);
+  }, [handleSaveError, isPlayground, playgroundSession, isScheme]);
   useEffect(() => {
     return () => {
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
       const p = queuedSaveRef.current;
-      if (p) upsertPlan(p, usingFallback);
+      if (!p) return;
+      if (isPlayground) upsertPlaygroundSession(p, playgroundSession.id).catch(() => {});
+      else if (!isScheme) upsertPlan(p).catch(() => {});
     };
-  }, [usingFallback]);
+  }, [isPlayground, playgroundSession, isScheme]);
 
   const patchActivePlan = useCallback((patch) => {
     if (!activePlan) return;
@@ -587,6 +1066,60 @@ export default function GameplanBuilderModal({ team, game, players, onClose }) {
     setPlans(curr => curr.map(p => p.id === next.id ? next : p));
     scheduleSave(next);
   }, [activePlan, scheduleSave]);
+
+  // Explicit playground save — flush any queued autosave and write now so the
+  // coach gets an unambiguous "it's saved" confirmation.
+  const [playgroundSaving, setPlaygroundSaving] = useState(false);
+  const savePlaygroundNow = useCallback(async () => {
+    if (!isPlayground || !activePlan || !playgroundSession) return;
+    if (saveTimerRef.current) { clearTimeout(saveTimerRef.current); saveTimerRef.current = null; }
+    queuedSaveRef.current = null;
+    setPlaygroundSaving(true);
+    const { error } = await upsertPlaygroundSession(activePlan, playgroundSession.id);
+    setPlaygroundSaving(false);
+    if (error) handleSaveError(error);
+    else addToast('Playground saved', 'success');
+  }, [isPlayground, activePlan, playgroundSession, handleSaveError, addToast]);
+
+  // Scheme save gate: a scheme can't be saved while ANY rotation's serve
+  // alignment breaks the overlap rules (validation is at the moment of serve).
+  // Returns the list of offending rotation numbers.
+  const [schemeSaving, setSchemeSaving] = useState(false);
+  const schemeServeIssues = useMemo(() => {
+    if (!isScheme || !activePlan) return [];
+    const out = [];
+    for (let r = 1; r <= 6; r++) {
+      const lineup = effectiveLineupAt(activePlan, r);
+      const positions = {};
+      lineup.forEach((pid, idx) => {
+        if (!pid) return;
+        positions[pid] = activePlan.formations?.[r]?.serve?.[pid] || defaultPositionFor(idx, r);
+      });
+      if (validateFormation(positions, lineup, r, playerById).length) out.push(r);
+    }
+    return out;
+  }, [isScheme, activePlan, playerById]);
+  const saveSchemeNow = useCallback(async () => {
+    if (!isScheme || !activePlan) return;
+    if (schemeServeIssues.length) {
+      addToast(`Fix illegal overlap in R${schemeServeIssues.join(', R')} before saving`, 'error');
+      return;
+    }
+    const rotations = schemePlanToRotations(activePlan, roster);
+    const payload = {
+      ...(schemePreset?.id ? { id: schemePreset.id } : {}),
+      team_id: team.id,
+      name: (activePlan.name || 'New Scheme').trim() || 'New Scheme',
+      rotations,
+      updated_at: new Date().toISOString(),
+    };
+    setSchemeSaving(true);
+    const { error } = await upsertPreset(payload);
+    setSchemeSaving(false);
+    if (error) { handleSaveError(error); return; }
+    addToast(schemePreset?.id ? 'Scheme updated' : 'Scheme saved', 'success');
+    onSchemeSaved?.();
+  }, [isScheme, activePlan, schemeServeIssues, roster, schemePreset, team, addToast, handleSaveError, onSchemeSaved]);
 
   // ── Transient warning banner ──
   // (`playerId` is accepted for call-site compatibility but no longer
@@ -597,26 +1130,41 @@ export default function GameplanBuilderModal({ team, game, players, onClose }) {
     setTimeout(() => setWarning(curr => curr === message ? null : curr), 2000);
   }, []);
 
+  // ── Effective lineup: who is physically on the court right now. ──
+  // Mixes the R1 starters with any logged regular subs and the rotation-
+  // driven libero auto-swap. CourtSurface, the validator, and onCourtIds
+  // all flow from this so the court state is one source of truth.
+  const effectiveLineup = useMemo(
+    () => effectiveLineupAt(activePlan, activeRotation),
+    [activePlan, activeRotation],
+  );
+
   // ── Derived: positions of bubbles in the current view ──
   // Defensive clamp guarantees every rendered bubble is visible inside the
   // court — even if a historical stored position is out of bounds.
+  // A libero who auto-subs into an MB's slot inherits the MB's drawn
+  // position so the bubble lands exactly where the MB was.
   const currentPositions = useMemo(() => {
     if (!activePlan) return {};
     const stored = activePlan.formations?.[activeRotation]?.[activeMode] || {};
+    const baseAssigned = activePlan.assigned_players || [];
     const out = {};
-    (activePlan.assigned_players || []).forEach((pid, idx) => {
+    effectiveLineup.forEach((pid, idx) => {
       if (!pid) return;
-      const raw = stored[pid] || defaultPositionFor(idx, activeRotation);
+      const original = baseAssigned[idx];
+      const raw = stored[pid]
+        || (original && stored[original])
+        || defaultPositionFor(idx, activeRotation);
       out[pid] = clampToSafe(raw);
     });
     return out;
-  }, [activePlan, activeRotation, activeMode]);
+  }, [activePlan, effectiveLineup, activeRotation, activeMode]);
 
   // ── Validation against the *committed* positions only (not mid-drag) ──
   const violations = useMemo(() => {
     if (!activePlan) return [];
-    return validateFormation(currentPositions, activePlan.assigned_players || [], activeRotation, playerById);
-  }, [activePlan, currentPositions, activeRotation, playerById]);
+    return validateFormation(currentPositions, effectiveLineup, activeRotation, playerById);
+  }, [activePlan, currentPositions, effectiveLineup, activeRotation, playerById]);
   const violationByPid = useMemo(() => {
     const m = {};
     for (const v of violations) if (!m[v.playerId]) m[v.playerId] = v.reason;
@@ -635,7 +1183,7 @@ export default function GameplanBuilderModal({ team, game, players, onClose }) {
     const np = makeNewPlan(team.id, game.id, name, plans.length);
     setPlans([...plans, np]);
     setActivePlanId(np.id);
-    upsertPlan(np, usingFallback);
+    upsertPlan(np).then(({ error }) => { if (error) handleSaveError(error); });
   }
   async function removePlan(id) {
     if (plans.length === 1) {
@@ -646,7 +1194,8 @@ export default function GameplanBuilderModal({ team, game, players, onClose }) {
     const next = plans.filter(p => p.id !== id);
     setPlans(next);
     if (activePlanId === id) setActivePlanId(next[0]?.id || null);
-    await deletePlanRemote(id, game.id, usingFallback);
+    const { error } = await deletePlanRemote(id);
+    if (error) handleSaveError(error);
   }
   function startRename(plan) { setRenamingId(plan.id); setRenameDraft(plan.name); }
   function commitRename() {
@@ -666,10 +1215,14 @@ export default function GameplanBuilderModal({ team, game, players, onClose }) {
   // ── Slot replace / remove ──
   const replacePlayerAtIdx = useCallback((idx, newPlayer, customCurrentPos = null) => {
     if (!activePlan || !newPlayer || idx < 0 || idx >= 6) return false;
-    const targetSlot = slotInRotation(`P${idx + 1}`, activeRotation);
-    if (isLibero(newPlayer) && FRONT_SLOTS.has(targetSlot)) {
+    // FIVB hard block: a libero is NEVER a starter. They enter the court
+    // only via the auto-swap defined in the Libero Pairing panel, which
+    // guarantees they only occupy back-row slots. Placing them in
+    // assigned_players would let them rotate into the front row in some
+    // rotations — strictly illegal.
+    if (isLibero(newPlayer)) {
       flashWarning(
-        `${lastNameOf(newPlayer.name) || 'Libero'} (Libero) cannot play front row`,
+        `${lastNameOf(newPlayer.name) || 'Libero'} (Libero) cannot start — use the Libero Pairing panel instead`,
         newPlayer.id,
       );
       return false;
@@ -1050,26 +1603,42 @@ export default function GameplanBuilderModal({ team, game, players, onClose }) {
   }, []);
 
   // ── Sub-pair operations ──
-  function togglePairingMode() {
-    setSelectedRosterId(null);
-    setPairingMode(prev => !prev);
-    setPairingSourceId(null);
-  }
-  function pickPairingPlayer(playerId) {
+  // One-tap "Pair Subs": open the popup pre-loaded with auto-detected pairs
+  // (if the plan has no manual pairs yet) or with the coach's existing pairs
+  // (if they've already wired some up — so opening the popup never wipes
+  // their work).
+  function openPairSubsPopup() {
     if (!activePlan) return;
-    if (!pairingSourceId) { setPairingSourceId(playerId); return; }
-    if (pairingSourceId === playerId) { setPairingSourceId(null); return; }
-    const subs = (activePlan.subs || []).slice();
-    // Remove any existing pair involving either player.
-    const filtered = subs.filter(
-      p => p.a !== pairingSourceId && p.b !== pairingSourceId
-        && p.a !== playerId && p.b !== playerId,
-    );
-    filtered.push({ a: pairingSourceId, b: playerId });
-    patchActivePlan({ subs: filtered });
-    setPairingSourceId(null);
-    // Stay in pairing mode so the coach can link more pairs in a row;
-    // they tap "Done" (the same button) to leave.
+    setSelectedRosterId(null);
+    const existing = activePlan.subs || [];
+    const seed = existing.length > 0 ? existing : autoDetectPairs(activePlan, playerById);
+    // Strip any pairs that reference players who are no longer in the roster.
+    const valid = seed.filter(p => playerById[p.a] && playerById[p.b]);
+    setPairPopup(valid.map(p => ({ a: p.a, b: p.b })));
+  }
+  function regenerateAutoPairs() {
+    if (!activePlan) return;
+    setPairPopup(autoDetectPairs(activePlan, playerById).map(p => ({ a: p.a, b: p.b })));
+  }
+  function confirmPairPopup() {
+    if (!activePlan || !pairPopup) return;
+    // Drop empties (slots not filled in by the coach) and dedupe order-
+    // independent pairs.
+    const seen = new Set();
+    const subs = [];
+    for (const p of pairPopup) {
+      if (!p.a || !p.b || p.a === p.b) continue;
+      const key = [p.a, p.b].sort().join('::');
+      if (seen.has(key)) continue;
+      seen.add(key);
+      subs.push({ a: p.a, b: p.b });
+    }
+    // Reset confirmed_subs because pair indices may have shifted.
+    patchActivePlan({
+      subs,
+      confirmed_subs: { 1: [], 2: [], 3: [], 4: [], 5: [], 6: [] },
+    });
+    setPairPopup(null);
   }
   function unpairAt(idx) {
     if (!activePlan) return;
@@ -1079,13 +1648,226 @@ export default function GameplanBuilderModal({ team, game, players, onClose }) {
     patchActivePlan({ subs });
   }
 
+  // ── Libero pairing operations ──
+  function setLiberoPair(liberoId, slot, mbId) {
+    if (!activePlan) return;
+    const lps = { ...(activePlan.libero_pairs || {}) };
+    const pair = (lps[liberoId] || [null, null]).slice();
+    while (pair.length < 2) pair.push(null);
+    pair[slot] = mbId || null;
+    // Cleanly drop an entry if both slots are empty so the panel stays tidy.
+    if (!pair[0] && !pair[1]) delete lps[liberoId];
+    else lps[liberoId] = pair;
+    patchActivePlan({ libero_pairs: lps });
+  }
+  function toggleLiberoAuto() {
+    if (!activePlan) return;
+    patchActivePlan({ libero_auto: !(activePlan.libero_auto !== false) });
+  }
+  // ── Preset operations ──
+  useEffect(() => {
+    if (!team?.id) return;
+    let cancelled = false;
+    fetchPresets(team.id).then(({ data, error }) => {
+      if (cancelled) return;
+      if (error) {
+        setPresetError({
+          schema: isSchemaError(error),
+          message: error.message || String(error),
+        });
+        setPresets([]);
+        return;
+      }
+      setPresetError(null);
+      setPresets(data);
+    });
+    return () => { cancelled = true; };
+  }, [team?.id, presetTick]);
+
+  function refreshPresets() { setPresetTick(t => t + 1); }
+
+  async function savePreset(preset) {
+    const payload = {
+      ...preset,
+      team_id: team.id,
+      updated_at: new Date().toISOString(),
+    };
+    const { data, error } = await upsertPreset(payload);
+    if (error) {
+      addToast(`Save failed: ${error.message || 'Supabase error'}`, 'error');
+      return null;
+    }
+    refreshPresets();
+    return data;
+  }
+  async function removePreset(id) {
+    if (!confirm('Delete this preset?')) return;
+    const { error } = await deletePreset(id);
+    if (error) {
+      addToast(`Delete failed: ${error.message || 'Supabase error'}`, 'error');
+      return;
+    }
+    refreshPresets();
+  }
+
+  // Apply a preset to the active plan: copy the preset's role-keyed
+  // positions into plan.formations, after substituting role markers with
+  // actual roster players matched by their position tag.
+  //
+  // Matching rule: a player's position string (case-insensitive) maps to
+  // one or more roles via ROLE_FROM_POS. Multiple players for the same
+  // role (e.g. two OH) get assigned in jersey-number order to OH1 / OH2.
+  function applyPreset(preset) {
+    if (!activePlan || !preset) return;
+    const rotations = preset.rotations || {};
+
+    // Group roster players by their canonical role.
+    const ROLE_FROM_POS = {
+      S:  ['S', 'SET', 'SETTER'],
+      OH: ['OH', 'WS', 'OUTSIDE', 'OUTSIDE HITTER'],
+      MB: ['MB', 'MH', 'M', 'MIDDLE', 'MIDDLE BLOCKER'],
+      OPP:['OPP', 'RS', 'OPPOSITE', 'RIGHT SIDE'],
+      L:  ['L', 'LIBERO', 'DS', 'DEFENSIVE SPECIALIST'],
+    };
+    const norm = (p) => (p?.position || '').toUpperCase().trim();
+    const buckets = { S: [], OH: [], MB: [], OPP: [], L: [] };
+    for (const p of roster) {
+      const r = norm(p);
+      if (!r) continue;
+      let matched = null;
+      for (const role of Object.keys(ROLE_FROM_POS)) {
+        if (ROLE_FROM_POS[role].includes(r)) { matched = role; break; }
+      }
+      if (matched) buckets[matched].push(p);
+    }
+    // Sort each bucket by jersey number (ascending) so OH1 < OH2 deterministically.
+    for (const k of Object.keys(buckets)) {
+      buckets[k].sort((a, b) => {
+        const an = parseInt(a.jersey_number, 10), bn = parseInt(b.jersey_number, 10);
+        if (Number.isNaN(an) && Number.isNaN(bn)) return 0;
+        if (Number.isNaN(an)) return 1;
+        if (Number.isNaN(bn)) return -1;
+        return an - bn;
+      });
+    }
+
+    // marker → player id
+    const ROLE_MARKERS = ['S', 'OH1', 'OH2', 'MB1', 'MB2', 'OPP'];
+    const markerToPid = {};
+    if (buckets.S[0])   markerToPid.S   = buckets.S[0].id;
+    if (buckets.OH[0])  markerToPid.OH1 = buckets.OH[0].id;
+    if (buckets.OH[1])  markerToPid.OH2 = buckets.OH[1].id;
+    if (buckets.MB[0])  markerToPid.MB1 = buckets.MB[0].id;
+    if (buckets.MB[1])  markerToPid.MB2 = buckets.MB[1].id;
+    if (buckets.OPP[0]) markerToPid.OPP = buckets.OPP[0].id;
+
+    // assigned_players in R1-slot order (P1..P6 = idx 0..5). The preset
+    // doesn't dictate which marker sits where in R1 — we read the
+    // marker's R1 serve position and assign it to the closest slot by
+    // x/y zone. If no R1 serve position exists, fall back to a sensible
+    // default ordering by role.
+    const r1 = rotations[1] || {};
+    const r1serve = r1.serve || {};
+    const assigned = [null, null, null, null, null, null];
+
+    for (const marker of ROLE_MARKERS) {
+      const pid = markerToPid[marker];
+      if (!pid) continue;
+      const pos = r1serve[marker];
+      let slotIdx = -1;
+      if (pos) {
+        const slot = zoneFor(pos.x, pos.y);
+        slotIdx = slotToArrayIdx(slot, 1);
+      }
+      if (slotIdx < 0 || assigned[slotIdx]) {
+        // Find first empty slot.
+        slotIdx = assigned.findIndex(x => !x);
+      }
+      if (slotIdx >= 0) assigned[slotIdx] = pid;
+    }
+
+    // Build formations from the preset, swapping marker keys for player ids.
+    const formations = {
+      1: { serve: {}, receive: {} }, 2: { serve: {}, receive: {} },
+      3: { serve: {}, receive: {} }, 4: { serve: {}, receive: {} },
+      5: { serve: {}, receive: {} }, 6: { serve: {}, receive: {} },
+    };
+    for (let r = 1; r <= 6; r++) {
+      const rot = rotations[r] || {};
+      for (const mode of ['serve', 'receive']) {
+        const src = rot[mode] || {};
+        for (const marker of Object.keys(src)) {
+          const pid = markerToPid[marker];
+          if (!pid) continue;
+          formations[r][mode][pid] = { ...src[marker] };
+        }
+      }
+    }
+
+    // Libero placement: if a libero exists in the roster, set up the
+    // libero pair with the FIRST middle-blocker so auto-swap kicks in.
+    const lib = buckets.L[0];
+    const libero_pairs = {};
+    if (lib && buckets.MB[0]) {
+      const mbs = buckets.MB.slice(0, 2).map(p => p.id);
+      libero_pairs[lib.id] = [mbs[0], mbs[1] || null];
+    }
+
+    patchActivePlan({
+      assigned_players: assigned,
+      formations,
+      libero_pairs,
+      // Subs + log reset because the players (and therefore pair indices) just changed.
+      subs: [],
+      sub_log: [],
+      confirmed_subs: { 1: [], 2: [], 3: [], 4: [], 5: [], 6: [] },
+    });
+    setApplyPickerOpen(false);
+    addToast(`Applied "${preset.name}"`, 'success');
+  }
+
+  function autoDetectLibero() {
+    if (!activePlan) return;
+    const detected = autoDetectLiberoPairs(activePlan, playerById);
+    patchActivePlan({ libero_pairs: detected });
+  }
+
+  // ── Physical regular sub: swap an on-court starter for a bench partner. ──
+  // The new pid is written into the sub_log at the starter's assigned-array
+  // index. effectiveLineupAt re-derives the on-court state, the CourtBubble
+  // re-mounts at that slot, and the gpb-bubble-sub-in animation fires.
+  function applyRegularSub(atIdx, toPid) {
+    if (!activePlan) return false;
+    const base = activePlan.assigned_players || [];
+    const original = base[atIdx];
+    if (!original) return false;
+    // FIVB-strict legality check (pair-slot uniqueness, sub limit, etc.)
+    if (!canRegularSub(activePlan, atIdx, toPid)) return false;
+    // Current effective player at this idx (might already be a substitute).
+    const fromPid = effectiveLineup[atIdx] || original;
+    if (fromPid === toPid) return false;
+    const entry = {
+      id: cryptoRandomId(),
+      kind: 'regular',
+      atIdx,
+      atRot: activeRotation,
+      fromPid,
+      toPid,
+      ts: Date.now(),
+    };
+    patchActivePlan({ sub_log: [...(activePlan.sub_log || []), entry] });
+    return true;
+  }
+  function undoLastSub() {
+    if (!activePlan) return;
+    const log = activePlan.sub_log || [];
+    if (log.length === 0) return;
+    patchActivePlan({ sub_log: log.slice(0, -1) });
+  }
+
   // ── Roster click ──
   function onRosterClick(player) {
     if (!activePlan) return;
-    if (pairingMode) {
-      pickPairingPlayer(player.id);
-      return;
-    }
     if ((activePlan.assigned_players || []).includes(player.id)) {
       setSelectedRosterId(null);
       return;
@@ -1231,9 +2013,11 @@ export default function GameplanBuilderModal({ team, game, players, onClose }) {
   }
 
   // ── Precomputed sets ──
+  // Visually on the court = effective lineup (so the dimmed/un-dimmed roster
+  // state flips the moment a sub fires or a libero auto-swap kicks in).
   const onCourtIds = useMemo(
-    () => new Set((activePlan?.assigned_players || []).filter(Boolean)),
-    [activePlan],
+    () => new Set(effectiveLineup.filter(Boolean)),
+    [effectiveLineup],
   );
   const courtIsFull = onCourtIds.size === 6;
   const allValid = violations.length === 0;
@@ -1245,19 +2029,44 @@ export default function GameplanBuilderModal({ team, game, players, onClose }) {
     return { reason: v.reason, position: pos };
   }, [violations, currentPositions]);
 
-  // ── Esc ──
+  // ── Keyboard shortcuts ──
+  //   Esc      → close popups / armed states / modal
+  //   1..6     → switch rotation (R1..R6)
+  //   S / R    → switch serve / receive mode
+  // We ignore keys when the user is typing in an input/textarea so the
+  // session-name / notes fields work normally.
   useEffect(() => {
+    function isTypingTarget(t) {
+      if (!t) return false;
+      const tag = (t.tagName || '').toLowerCase();
+      return tag === 'input' || tag === 'textarea' || tag === 'select' || t.isContentEditable;
+    }
     function onKey(e) {
-      if (e.key !== 'Escape') return;
-      if (subPopup) { setSubPopup(null); return; }
-      if (pairingMode) {
-        if (pairingSourceId) { setPairingSourceId(null); return; }
-        setPairingMode(false);
+      if (e.key === 'Escape') {
+        if (applyPickerOpen) { setApplyPickerOpen(false); return; }
+        if (presetMgrOpen) { setPresetMgrOpen(false); return; }
+        if (presetEditing) { setPresetEditing(null); return; }
+        if (subPopup) { setSubPopup(null); return; }
+        if (pairPopup) { setPairPopup(null); return; }
+        if (selectedRosterId) { setSelectedRosterId(null); return; }
+        if (benchDrag) return;
+        onClose?.();
         return;
       }
-      if (selectedRosterId) { setSelectedRosterId(null); return; }
-      if (benchDrag) return;
-      onClose?.();
+      // Don't fire shortcut keys while typing.
+      if (isTypingTarget(e.target)) return;
+      // Don't fire while a modal popup is open.
+      if (subPopup || pairPopup || applyPickerOpen || presetMgrOpen || presetEditing) return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+
+      if (e.key >= '1' && e.key <= '6') {
+        e.preventDefault();
+        handleRotationClick(parseInt(e.key, 10));
+        return;
+      }
+      const k = e.key.toLowerCase();
+      if (k === 's') { e.preventDefault(); setActiveMode('serve'); return; }
+      if (k === 'r') { e.preventDefault(); setActiveMode('receive'); return; }
     }
     window.addEventListener('keydown', onKey);
     document.body.style.overflow = 'hidden';
@@ -1265,7 +2074,7 @@ export default function GameplanBuilderModal({ team, game, players, onClose }) {
       window.removeEventListener('keydown', onKey);
       document.body.style.overflow = '';
     };
-  }, [onClose, benchDrag, selectedRosterId, pairingMode, pairingSourceId, subPopup]);
+  }, [onClose, benchDrag, selectedRosterId, pairPopup, subPopup, applyPickerOpen, presetMgrOpen, presetEditing, handleRotationClick]);
 
   return (
     <div className="gpb-overlay" onClick={onClose}>
@@ -1274,113 +2083,245 @@ export default function GameplanBuilderModal({ team, game, players, onClose }) {
         {/* HEADER */}
         <header className="gpb-header">
           <div className="gpb-head-main">
-            <div className="gpb-head-eyebrow">GAMEPLAN</div>
-            <div className="gpb-head-title">vs {game.opponent}</div>
-            <div className="gpb-head-meta">
-              <span>{fmtDate(game.game_date)}</span>
-              <span className="gpb-head-dot">·</span>
-              <span className={`gpb-loc gpb-loc-${(game.location || 'Home').toLowerCase()}`}>
-                {game.location || 'Home'}
-              </span>
-              {usingFallback && (
-                <>
-                  <span className="gpb-head-dot">·</span>
-                  <span className="gpb-head-warn" title="Local-only. Run scripts/game_plans_migration.sql for cloud sync.">LOCAL</span>
-                </>
-              )}
+            <div className={`gpb-head-eyebrow${isPlayground ? ' is-playground' : ''}${isScheme ? ' is-scheme' : ''}`}>
+              {isPlayground ? '⌒ PLAYGROUND' : isScheme ? '◈ SCHEME' : 'GAMEPLAN'}
             </div>
+            {isPlayground || isScheme ? (
+              <PlaygroundHeaderEditor
+                name={(activePlan && activePlan.name)
+                  || (isScheme ? (schemePreset.name || 'New Scheme') : playgroundSession.name)
+                  || 'Untitled Session'}
+                onCommit={(name) => patchActivePlan({ name })}
+              />
+            ) : (
+              <>
+                <div className="gpb-head-title">vs {game.opponent}</div>
+                <div className="gpb-head-meta">
+                  <span>{fmtDate(game.game_date)}</span>
+                  <span className="gpb-head-dot">·</span>
+                  <span className={`gpb-loc gpb-loc-${(game.location || 'Home').toLowerCase()}`}>
+                    {game.location || 'Home'}
+                  </span>
+                </div>
+              </>
+            )}
           </div>
           <button type="button" className="gpb-close" onClick={onClose} aria-label="Close">×</button>
         </header>
 
-        {/* PLAN TABS */}
-        <div className="gpb-tabs">
-          {plans.map(plan => {
-            const isActive = plan.id === activePlanId;
-            const isRenaming = renamingId === plan.id;
-            return (
-              <div
-                key={plan.id}
-                className={`gpb-tab${isActive ? ' active' : ''}`}
-                onClick={() => !isRenaming && setActivePlanId(plan.id)}
-                onDoubleClick={() => startRename(plan)}
-              >
-                {isRenaming ? (
-                  <input
-                    autoFocus className="gpb-tab-rename"
-                    value={renameDraft}
-                    onChange={e => setRenameDraft(e.target.value)}
-                    onBlur={commitRename}
-                    onKeyDown={e => {
-                      if (e.key === 'Enter') commitRename();
-                      else if (e.key === 'Escape') { setRenamingId(null); setRenameDraft(''); }
-                    }}
-                    onClick={e => e.stopPropagation()}
-                  />
-                ) : (
-                  <>
-                    <span className="gpb-tab-name">{plan.name}</span>
-                    {isActive && plans.length > 1 && (
-                      <button type="button" className="gpb-tab-x"
-                        onClick={e => { e.stopPropagation(); removePlan(plan.id); }}
-                        aria-label={`Delete ${plan.name}`}
-                      >×</button>
-                    )}
-                  </>
+        {/* Playground / Scheme toolbar. */}
+        {(isPlayground || isScheme) && activePlan && (
+          <div className="gpb-playground-toolbar">
+            {isScheme ? (
+              <>
+                <button
+                  type="button"
+                  className="gpb-pg-tool gpb-pg-save"
+                  onClick={saveSchemeNow}
+                  disabled={schemeSaving || schemeServeIssues.length > 0}
+                  title={schemeServeIssues.length > 0
+                    ? `Illegal overlap in R${schemeServeIssues.join(', R')} — fix before saving`
+                    : 'Save this scheme as a reusable preset'}
+                >
+                  {schemeSaving ? 'Saving…' : (schemePreset?.id ? '↓ Save Scheme' : '↓ Save As Scheme')}
+                </button>
+                {schemeServeIssues.length > 0 && (
+                  <span className="gpb-pg-savehint" role="status">
+                    Illegal overlap in R{schemeServeIssues.join(', R')}
+                  </span>
                 )}
-              </div>
-            );
-          })}
-          <button type="button" className="gpb-tab gpb-tab-add" onClick={addPlan}>+ New Plan</button>
-        </div>
+              </>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  className="gpb-pg-tool gpb-pg-save"
+                  onClick={savePlaygroundNow}
+                  disabled={playgroundSaving}
+                  title="Save this arrangement to your playground sessions"
+                >
+                  {playgroundSaving ? 'Saving…' : '↓ Save'}
+                </button>
+                <button
+                  type="button"
+                  className="gpb-pg-tool"
+                  onClick={() => {
+                    if (!confirm('Clear all bubbles, libero pairings, and subs from this session?')) return;
+                    patchActivePlan({
+                      assigned_players: [null,null,null,null,null,null],
+                      formations: {
+                        1: { serve: {}, receive: {} }, 2: { serve: {}, receive: {} },
+                        3: { serve: {}, receive: {} }, 4: { serve: {}, receive: {} },
+                        5: { serve: {}, receive: {} }, 6: { serve: {}, receive: {} },
+                      },
+                      colors: {},
+                      subs: [],
+                      confirmed_subs: { 1: [], 2: [], 3: [], 4: [], 5: [], 6: [] },
+                      libero_pairs: {},
+                      sub_log: [],
+                    });
+                  }}
+                  title="Clear the court and start over"
+                >
+                  ↺ Reset Court
+                </button>
+                <input
+                  type="text"
+                  className="gpb-pg-notes"
+                  placeholder="Notes about this look — e.g. why it works, who serves first…"
+                  value={activePlan.notes || ''}
+                  onChange={e => patchActivePlan({ notes: e.target.value })}
+                  maxLength={280}
+                />
+              </>
+            )}
+          </div>
+        )}
 
-        {/* ROTATION + MODE TABS */}
-        <div className="gpb-formation-tabs">
-          <div className="gpb-rot-row">
-            <span className="gpb-rot-label">ROTATION</span>
+        {/* PLAN TABS — hidden in playground/scheme mode (one plan). */}
+        {!isPlayground && !isScheme && (
+          <div className="gpb-tabs">
+            {plans.map(plan => {
+              const isActive = plan.id === activePlanId;
+              const isRenaming = renamingId === plan.id;
+              return (
+                <div
+                  key={plan.id}
+                  className={`gpb-tab${isActive ? ' active' : ''}`}
+                  onClick={() => !isRenaming && setActivePlanId(plan.id)}
+                  onDoubleClick={() => startRename(plan)}
+                >
+                  {isRenaming ? (
+                    <input
+                      autoFocus className="gpb-tab-rename"
+                      value={renameDraft}
+                      onChange={e => setRenameDraft(e.target.value)}
+                      onBlur={commitRename}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter') commitRename();
+                        else if (e.key === 'Escape') { setRenamingId(null); setRenameDraft(''); }
+                      }}
+                      onClick={e => e.stopPropagation()}
+                    />
+                  ) : (
+                    <>
+                      <span className="gpb-tab-name">{plan.name}</span>
+                      {isActive && plans.length > 1 && (
+                        <button type="button" className="gpb-tab-x"
+                          onClick={e => { e.stopPropagation(); removePlan(plan.id); }}
+                          aria-label={`Delete ${plan.name}`}
+                        >×</button>
+                      )}
+                    </>
+                  )}
+                </div>
+              );
+            })}
+            <button type="button" className="gpb-tab gpb-tab-add" onClick={addPlan}>+ New Plan</button>
+          </div>
+        )}
+
+        {/* CONSOLIDATED TOOLBAR — sticky, single row at the top of the
+            planner. Houses rotation pills, serve/receive toggle, preset
+            actions, reset and the LEGAL pill. */}
+        <div className="gpb-toolbar">
+          <div className="gpb-toolbar-group gpb-toolbar-rots">
             {[1,2,3,4,5,6].map(r => {
               const subCount = (activePlan?.confirmed_subs?.[r] || []).length;
+              const f = activePlan?.formations?.[r];
+              const isConfigured = !!f && (
+                Object.keys(f.serve || {}).length > 0 ||
+                Object.keys(f.receive || {}).length > 0
+              );
               return (
                 <button
                   key={r}
                   type="button"
-                  className={`gpb-rot-btn${r === activeRotation ? ' active' : ''}`}
+                  className={[
+                    'gpb-rot-btn',
+                    r === activeRotation ? 'active' : '',
+                    isConfigured ? 'configured' : '',
+                  ].filter(Boolean).join(' ')}
                   onClick={() => handleRotationClick(r)}
+                  title={`Rotation ${r}${isConfigured ? ' · set up' : ' · empty'} (press ${r})`}
                 >
-                  R{r}
+                  <span className="gpb-rot-btn-label">R{r}</span>
                   {subCount > 0 && (
                     <span className="gpb-rot-sub-badge" title={`${subCount} confirmed sub${subCount > 1 ? 's' : ''}`}>
                       ⇄{subCount}
                     </span>
                   )}
+                  {isConfigured && <span className="gpb-rot-btn-dot" aria-hidden="true" />}
                 </button>
               );
             })}
           </div>
-          <div className="gpb-mode-row">
+
+          <div className="gpb-toolbar-sep" aria-hidden="true" />
+
+          <div className="gpb-toolbar-group gpb-toolbar-mode">
             <button
               type="button"
               className={`gpb-mode-btn${activeMode === 'serve' ? ' active' : ''}`}
               onClick={() => setActiveMode('serve')}
+              title="Serve (press S)"
             >Serve</button>
             <button
               type="button"
               className={`gpb-mode-btn${activeMode === 'receive' ? ' active' : ''}`}
               onClick={() => setActiveMode('receive')}
+              title="Serve Receive (press R)"
             >Serve Receive</button>
-            <span className="gpb-mode-spacer" />
-            <button
-              type="button"
-              className="gpb-reset-btn"
-              onClick={resetCurrentFormation}
-              title={`Reset every bubble in R${activeRotation} ${activeMode === 'serve' ? 'Serve' : 'Serve Receive'} to its default zone position`}
-            >
-              ↺ Reset positions
-            </button>
-            <span className={`gpb-status-pill ${allValid ? 'ok' : 'bad'}`}>
-              {allValid ? '✓ LEGAL' : '✗ ILLEGAL'}
-            </span>
           </div>
+
+          {/* Preset apply/manage — gameplan mode only; in scheme mode you ARE
+              editing the preset. */}
+          {!isScheme && (
+            <>
+              <div className="gpb-toolbar-sep" aria-hidden="true" />
+              <div className="gpb-toolbar-group gpb-toolbar-presets">
+                <button
+                  type="button"
+                  className="gpb-toolbar-btn"
+                  onClick={() => setApplyPickerOpen(true)}
+                  disabled={!!presetError?.schema}
+                  title={presetError?.schema ? 'Run formation_presets migration to enable' : 'Apply a saved preset to this gameplan'}
+                >
+                  ↓ Apply Preset
+                </button>
+                <button
+                  type="button"
+                  className="gpb-toolbar-btn"
+                  onClick={() => setPresetMgrOpen(true)}
+                  title="Manage saved presets"
+                >
+                  ◊ Presets
+                </button>
+              </div>
+            </>
+          )}
+
+          <div className="gpb-toolbar-spacer" />
+
+          <button
+            type="button"
+            className="gpb-toolbar-btn ghost"
+            onClick={resetCurrentFormation}
+            title={`Reset bubbles in R${activeRotation} ${activeMode === 'serve' ? 'Serve' : 'Serve Receive'}`}
+          >
+            ↺ Reset
+          </button>
+          <span className={`gpb-status-pill ${allValid ? 'ok' : 'bad'}`}>
+            {allValid ? '✓ LEGAL' : '✗ ILLEGAL'}
+          </span>
+          <button
+            type="button"
+            className="gpb-toolbar-btn ghost"
+            onClick={() => setRosterCollapsed(c => !c)}
+            title={rosterCollapsed ? 'Show roster' : 'Hide roster'}
+          >
+            {rosterCollapsed ? '▶ Roster' : '◀ Hide'}
+          </button>
         </div>
 
         {/* WARNING BANNER */}
@@ -1401,9 +2342,38 @@ export default function GameplanBuilderModal({ team, game, players, onClose }) {
           onDragCancel={handleDragCancel}
           autoScroll={false}
         >
-          <div className="gpb-body">
+          <div className={`gpb-body${rosterCollapsed ? ' roster-collapsed' : ''}`}>
             {loading ? (
               <div className="gpb-loading">Loading plans…</div>
+            ) : loadError ? (
+              <GameplanLoadError error={loadError} onRetry={() => {
+                setLoadError(null);
+                setLoading(true);
+                fetchPlans(game.id).then(({ data, error }) => {
+                  if (error) {
+                    setLoadError({ schema: isSchemaError(error), message: error.message || String(error) });
+                    setLoading(false);
+                    return;
+                  }
+                  const normalized = data.map(normalizePlan);
+                  if (normalized.length === 0) {
+                    const seed = makeNewPlan(team.id, game.id, 'Plan A', 0);
+                    upsertPlan(seed).then(({ error: seedErr }) => {
+                      if (seedErr) {
+                        setLoadError({ schema: isSchemaError(seedErr), message: seedErr.message || String(seedErr) });
+                      } else {
+                        setPlans([seed]);
+                        setActivePlanId(seed.id);
+                      }
+                      setLoading(false);
+                    });
+                  } else {
+                    setPlans(normalized);
+                    setActivePlanId(normalized[0].id);
+                    setLoading(false);
+                  }
+                });
+              }} />
             ) : !activePlan ? (
               <div className="gpb-loading">No plan selected</div>
             ) : (
@@ -1424,7 +2394,7 @@ export default function GameplanBuilderModal({ team, game, players, onClose }) {
                     courtIsFull={courtIsFull}
                     onRemovePlayer={removePlayerFromPlan}
                     onBubbleDragStart={onBubbleDragStart}
-                    assignedPlayers={activePlan.assigned_players || []}
+                    assignedPlayers={effectiveLineup}
                     courtWidth={courtSize.width}
                     courtHeight={courtSize.height}
                     tooltipRef={tooltipRef}
@@ -1432,21 +2402,57 @@ export default function GameplanBuilderModal({ team, game, players, onClose }) {
                   />
                 </div>
 
+                {!rosterCollapsed && (
                 <aside className="gpb-roster">
                   <div className="gpb-roster-head">
                     <span>ROSTER</span>
                     <span className="gpb-roster-count">{onCourtIds.size}/6 in plan</span>
                   </div>
 
-                  {/* Dedicated Pair Subs button + chips for existing pairs.
-                      Pairing is its own mode now — no per-row buttons. */}
+                  {/* Sub / libero chrome — gameplan & playground only. A scheme
+                      is just the six role positions, so no subs/libero here. */}
+                  {!isScheme && (<>
+                  {/* FIVB sub counter + undo. Only regular subs count; libero
+                      auto-swaps are unlimited and free. */}
+                  <div className="gpb-sub-counter-bar">
+                    <span className={`gpb-sub-counter${regularSubCount(activePlan) >= 6 ? ' is-full' : ''}`}>
+                      Subs: <strong>{regularSubCount(activePlan)}</strong>/6
+                    </span>
+                    <button
+                      type="button"
+                      className="gpb-sub-undo"
+                      onClick={undoLastSub}
+                      disabled={(activePlan.sub_log || []).length === 0}
+                      title="Undo last substitution"
+                    >
+                      ↶ Undo
+                    </button>
+                  </div>
+
+                  {/* Dedicated Libero pairing panel — only shows when a
+                      libero is on the roster. */}
+                  <LiberoPairingPanel
+                    roster={roster}
+                    liberoPairs={activePlan.libero_pairs || {}}
+                    liberoAuto={activePlan.libero_auto !== false}
+                    playerById={playerById}
+                    onSetPair={setLiberoPair}
+                    onToggleAuto={toggleLiberoAuto}
+                    onAutoDetect={autoDetectLibero}
+                  />
+
+                  {/* One-tap Pair Subs button — opens a popup with auto-detected
+                      pairs and lets the coach swap any player. Existing pair
+                      chips below give a quick at-a-glance view and a one-click
+                      remove without re-opening the popup. */}
                   <div className="gpb-pair-bar">
                     <button
                       type="button"
-                      className={`gpb-pair-toggle${pairingMode ? ' active' : ''}`}
-                      onClick={togglePairingMode}
+                      className="gpb-pair-toggle"
+                      onClick={openPairSubsPopup}
+                      title="Auto-detect substitution pairs from positions"
                     >
-                      ↔ {pairingMode ? 'Done' : 'Pair Subs'}
+                      ↔ Pair Subs
                     </button>
                     {(activePlan.subs || []).length > 0 && (
                       <div className="gpb-pair-chips">
@@ -1455,7 +2461,7 @@ export default function GameplanBuilderModal({ team, game, players, onClose }) {
                           const b = playerById[pair.b];
                           if (!a || !b) return null;
                           return (
-                            <span key={`${pair.a}::${pair.b}`} className="gpb-pair-chip">
+                            <span key={`${pair.a}::${pair.b}::${i}`} className="gpb-pair-chip">
                               <span className="gpb-pair-chip-name">
                                 {lastNameOf(a.name) || a.name} ↔ {lastNameOf(b.name) || b.name}
                               </span>
@@ -1472,14 +2478,13 @@ export default function GameplanBuilderModal({ team, game, players, onClose }) {
                       </div>
                     )}
                   </div>
+                  </>)}
 
                   <div className="gpb-roster-hint">
-                    {pairingMode
-                      ? (pairingSourceId
-                          ? 'Click another name to link the pair · Esc to cancel'
-                          : 'Click two roster names to pair them · Done when finished')
-                      : selectedRosterId
+                    {selectedRosterId
                       ? 'Click an empty or filled bubble on the court'
+                      : isScheme
+                      ? 'Click a name to arm placement · drag a row onto the court to change who fills a role'
                       : 'Click a name to arm placement · drag a row onto the court'}
                   </div>
                   <div className="gpb-roster-list">
@@ -1489,27 +2494,44 @@ export default function GameplanBuilderModal({ team, game, players, onClose }) {
                     {roster.map(p => {
                       const onCourt = onCourtIds.has(p.id);
                       const idx = (activePlan.assigned_players || []).indexOf(p.id);
-                      const isSelected = !pairingMode && selectedRosterId === p.id;
-                      const isPairingSource = pairingMode && pairingSourceId === p.id;
-                      const pair = findPairForPlayer(activePlan, p.id);
+                      const isSelected = selectedRosterId === p.id;
+                      const pairs = findPairsForPlayer(activePlan, p.id);
+                      // Find a generic pair partner who is currently on court
+                      // so this bench player has a one-tap "SUB IN" target.
+                      // Liberos are excluded — they auto-swap through libero_pairs
+                      // and don't use the regular sub counter.
+                      let subInIdx = -1;
+                      const playerIsLibero = isLibero(p);
+                      if (!onCourt && !playerIsLibero) {
+                        for (const pair of pairs) {
+                          const partnerPid = pairOpponent(pair, p.id);
+                          if (!partnerPid) continue;
+                          if (isLibero(playerById[partnerPid])) continue;
+                          const partnerIdx = effectiveLineup.indexOf(partnerPid);
+                          if (partnerIdx >= 0) { subInIdx = partnerIdx; break; }
+                        }
+                      }
+                      const canSubIn = subInIdx >= 0 && canRegularSub(activePlan, subInIdx, p.id);
                       return (
                         <BenchRow
                           key={p.id}
                           player={p}
                           isOnCourt={onCourt}
                           isSelected={isSelected}
-                          isPairingSource={isPairingSource}
-                          pair={pair}
+                          pairs={pairs}
                           playerById={playerById}
                           arrayIdx={idx}
                           plan={activePlan}
-                          pairingMode={pairingMode}
+                          canSubIn={canSubIn}
+                          subInIdx={subInIdx}
+                          onSubIn={() => applyRegularSub(subInIdx, p.id)}
                           onClick={() => onRosterClick(p)}
                         />
                       );
                     })}
                   </div>
                 </aside>
+                )}
               </>
             )}
           </div>
@@ -1543,6 +2565,54 @@ export default function GameplanBuilderModal({ team, game, players, onClose }) {
             onCancel={cancelCurrentSub}
           />
         )}
+
+        {/* Apply Preset picker */}
+        {applyPickerOpen && (
+          <PresetApplyPicker
+            presets={presets}
+            error={presetError}
+            onPick={applyPreset}
+            onCancel={() => setApplyPickerOpen(false)}
+            onCreate={() => { setApplyPickerOpen(false); setPresetEditing({}); }}
+          />
+        )}
+
+        {/* Preset Manager */}
+        {presetMgrOpen && (
+          <PresetManager
+            presets={presets}
+            error={presetError}
+            onClose={() => setPresetMgrOpen(false)}
+            onCreate={() => { setPresetMgrOpen(false); setPresetEditing({}); }}
+            onEdit={(p) => { setPresetMgrOpen(false); setPresetEditing(p); }}
+            onDelete={(id) => removePreset(id)}
+          />
+        )}
+
+        {/* Preset Editor — full-screen court with 6 role markers */}
+        {presetEditing && (
+          <PresetEditor
+            initial={presetEditing}
+            onCancel={() => setPresetEditing(null)}
+            onSave={async (draft) => {
+              const saved = await savePreset(draft);
+              if (saved) setPresetEditing(null);
+            }}
+          />
+        )}
+
+        {/* One-tap Pair Subs popup */}
+        {pairPopup && (
+          <PairSubsPopup
+            draft={pairPopup}
+            setDraft={setPairPopup}
+            roster={roster}
+            playerById={playerById}
+            onAutoDetect={regenerateAutoPairs}
+            onCancel={() => setPairPopup(null)}
+            onConfirm={confirmPairPopup}
+          />
+        )}
       </div>
     </div>
   );
@@ -1554,7 +2624,7 @@ function CourtSurface({
   courtRef, activePlan, activeRotation, activeMode,
   currentPositions, playerById, violationByPid,
   tipTarget, onCourtClick, selectedRosterId, benchDragActive, courtIsFull,
-  onRemovePlayer, onBubbleDragStart,
+  onRemovePlayer, onBubbleDragStart, assignedPlayers,
   courtWidth, courtHeight, tooltipRef, tooltipTextRef,
 }) {
   const { setNodeRef, isOver } = useDroppable({
@@ -1569,7 +2639,9 @@ function CourtSurface({
       ? `Click any spot to place ${lastNameOf(armedPlayer.name) || armedPlayer.name} · Esc to cancel`
       : 'Click a roster name then click a court spot · drag bubbles to fine-tune';
 
-  const assigned = activePlan?.assigned_players || [];
+  // Effective on-court lineup (passed from parent — already includes regular
+  // subs from the log and the current rotation's libero auto-swap).
+  const assigned = assignedPlayers || activePlan?.assigned_players || [];
 
   return (
     <div className="gpb-court-toolbar-wrap">
@@ -1593,6 +2665,17 @@ function CourtSurface({
         <div className="gpb-court-3m" />
         <div className="gpb-court-row-label gpb-court-row-front">FRONT ROW · NET</div>
         <div className="gpb-court-row-label gpb-court-row-back">BACK ROW</div>
+
+        {/* Subtle SVG connecting lines between paired players' bubble
+            centers. Pointer-events disabled so the lines never intercept a
+            drag or click. */}
+        <PairLines
+          subs={activePlan?.subs}
+          positions={currentPositions}
+          playerById={playerById}
+          courtWidth={courtWidth}
+          courtHeight={courtHeight}
+        />
 
         {/* Slot guides — only when at least one slot is empty. Once 6 are
             placed, the court is "clean": just the 6 bubbles, nothing else. */}
@@ -1662,6 +2745,55 @@ function CourtSurface({
         </div>
       </div>
     </div>
+  );
+}
+
+// ─── PairLines ───────────────────────────────────────────────────────────
+// Renders a thin dashed line between each paired players' bubble center,
+// in px so it follows live drag movement (positions prop is the same one
+// CourtBubble uses).
+//
+// pointer-events: none on the <svg> so the lines never intercept clicks
+// or drag handles on the bubbles below them.
+function PairLines({ subs, positions, playerById, courtWidth, courtHeight }) {
+  if (!subs?.length || !courtWidth || !courtHeight) return null;
+  const lines = [];
+  for (const pair of subs) {
+    const a = positions[pair.a];
+    const b = positions[pair.b];
+    if (!a || !b) continue;
+    const ax = (a.x / 100) * courtWidth;
+    const ay = (a.y / 100) * courtHeight;
+    const bx = (b.x / 100) * courtWidth;
+    const by = (b.y / 100) * courtHeight;
+    // Use the starter's array index (R1 column) to pick a palette match so
+    // each pair gets a colour consistent with the bubble pair tint.
+    const starter = pairStarter(pair, playerById);
+    const idx = -1; // index isn't needed here — we just want a consistent shade
+    void idx;
+    lines.push(
+      <line
+        key={`${pair.a}::${pair.b}`}
+        x1={ax} y1={ay} x2={bx} y2={by}
+        stroke="rgba(255,255,255,0.32)"
+        strokeWidth="1.5"
+        strokeDasharray="4 6"
+        strokeLinecap="round"
+        data-starter={starter}
+      />,
+    );
+  }
+  if (lines.length === 0) return null;
+  return (
+    <svg
+      className="gpb-pair-lines"
+      width={courtWidth}
+      height={courtHeight}
+      style={{ position: 'absolute', left: 0, top: 0, pointerEvents: 'none' }}
+      aria-hidden="true"
+    >
+      {lines}
+    </svg>
   );
 }
 
@@ -1738,20 +2870,21 @@ function BubblePreview({ player, colorVars, slotLabel }) {
 }
 
 function BenchRow({
-  player, isOnCourt, isSelected, isPairingSource, pair, playerById,
-  arrayIdx, plan, pairingMode, onClick,
+  player, isOnCourt, isSelected, pairs, playerById,
+  arrayIdx, plan, canSubIn, subInIdx, onSubIn, onClick,
 }) {
   const { setNodeRef, listeners, attributes, isDragging } = useDraggable({
     id: `bench-${player.id}`,
     data: { kind: 'bench', playerId: player.id, player },
-    // While in pairing mode, disable drag so the entire row is just a tap
-    // target for picking the second member of the pair.
-    disabled: isOnCourt || pairingMode,
+    disabled: isOnCourt,
   });
   const libero = isLibero(player);
   const colorVars = colorVarsFor(player, arrayIdx, plan);
-  const partnerPid = pair ? pairOpponent(pair, player.id) : null;
-  const partner = partnerPid ? playerById[partnerPid] : null;
+  // 1:N pair model — collect every partner of this player so we can render a
+  // compact summary in the row meta line.
+  const partners = (pairs || [])
+    .map(p => playerById[pairOpponent(p, player.id)])
+    .filter(Boolean);
 
   function onKeyDown(e) {
     if (e.key === 'Enter' || e.key === ' ') {
@@ -1763,14 +2896,12 @@ function BenchRow({
     <div
       ref={setNodeRef}
       role="button"
-      tabIndex={isOnCourt && !pairingMode ? -1 : 0}
+      tabIndex={isOnCourt ? -1 : 0}
       aria-pressed={isSelected}
       className={[
         'gpb-bench-row',
         isOnCourt ? 'on-court' : '',
         isSelected ? 'selected' : '',
-        isPairingSource ? 'pairing-source' : '',
-        pairingMode ? 'pairing-mode' : '',
         libero ? 'libero' : '',
         isDragging ? 'is-dragging-row' : '',
       ].filter(Boolean).join(' ')}
@@ -1780,18 +2911,38 @@ function BenchRow({
       {...listeners}
       {...attributes}
     >
+      <span className="gpb-bench-dot" aria-hidden="true" />
       <div className="gpb-bench-num">{player.jersey_number || '?'}</div>
       <div className="gpb-bench-mid">
         <div className="gpb-bench-name">{player.name}</div>
         <div className="gpb-bench-meta">
           {[player.position, player.grade].filter(Boolean).join(' · ') || 'Player'}
-          {partner && (
-            <span className="gpb-bench-pair">↔ {lastNameOf(partner.name) || partner.name}</span>
+          {partners.length === 1 && (
+            <span className="gpb-bench-pair">↔ {lastNameOf(partners[0].name) || partners[0].name}</span>
+          )}
+          {partners.length > 1 && (
+            <span className="gpb-bench-pair" title={partners.map(p => p.name).join(', ')}>
+              ↔ {partners.length} subs
+            </span>
           )}
         </div>
       </div>
       {libero && <div className="gpb-bench-libero" title="Libero">L</div>}
-      {isOnCourt && <div className="gpb-bench-check" title="In gameplan">✓</div>}
+      {isOnCourt && <div className="gpb-bench-check" title="On court">✓</div>}
+      {!isOnCourt && canSubIn && (
+        <button
+          type="button"
+          className="gpb-bench-sub-in"
+          onClick={(e) => {
+            e.stopPropagation();
+            onSubIn?.();
+          }}
+          onPointerDown={(e) => e.stopPropagation()}
+          title={`Sub in for player at slot ${subInIdx + 1}`}
+        >
+          SUB IN
+        </button>
+      )}
     </div>
   );
 }
@@ -1841,3 +2992,650 @@ function SubPopup({ item, playerById, fromRot, toRot, queueIndex, queueTotal, on
     </div>
   );
 }
+
+// ─── PairSubsPopup ─────────────────────────────────────────────────────────
+//
+// One-tap pair editor. The popup opens pre-loaded with either:
+//   • the coach's existing pairs (so opening never wipes work), or
+//   • auto-detected pairs from roster positions (if no pairs exist yet).
+//
+// Each pair card shows the FRONT-ROW starter on the left and the BACK-ROW
+// sub on the right. Tapping either name opens a player picker — the coach
+// can swap any side without exiting the popup. "↺ Auto" regenerates the
+// list from positions; "+ Add Pair" appends a blank pair to fill in manually.
+function PairSubsPopup({ draft, setDraft, roster, playerById, onAutoDetect, onCancel, onConfirm }) {
+  const [picker, setPicker] = useState(null); // { pairIdx, side: 'a'|'b' }
+
+  function frontBack(pair) {
+    const starter = pairStarter(pair, playerById);
+    if (pair.a === starter) return { frontSide: 'a', backSide: 'b' };
+    return { frontSide: 'b', backSide: 'a' };
+  }
+  function setPlayer(pairIdx, side, pid) {
+    setDraft(prev => prev.map((p, i) => i === pairIdx ? { ...p, [side]: pid } : p));
+    setPicker(null);
+  }
+  function removePair(pairIdx) {
+    setDraft(prev => prev.filter((_, i) => i !== pairIdx));
+  }
+  function addPair() {
+    setDraft(prev => [...prev, { a: null, b: null }]);
+  }
+
+  return (
+    <div className="gpb-sub-overlay" onClick={onCancel}>
+      <div className="gpb-pair-popup" onClick={e => e.stopPropagation()}>
+        <div className="gpb-sub-head">
+          <div className="gpb-sub-eyebrow">SUBSTITUTION PAIRS</div>
+          <div className="gpb-sub-title">
+            Tap any name to swap · <span className="gpb-pair-popup-sub">auto-detected from positions</span>
+          </div>
+        </div>
+
+        <div className="gpb-pair-popup-body">
+          {draft.length === 0 && (
+            <div className="gpb-pair-popup-empty">
+              No pairs yet. Place players on the court, then tap <strong>↺ Auto-detect</strong>
+              {' '}— or use <strong>+ Add Pair</strong> to build one manually.
+            </div>
+          )}
+          {draft.map((pair, i) => {
+            const { frontSide, backSide } = frontBack(pair);
+            const frontPid = pair[frontSide];
+            const backPid  = pair[backSide];
+            const front = frontPid ? playerById[frontPid] : null;
+            const back  = backPid  ? playerById[backPid]  : null;
+            return (
+              <div key={i} className="gpb-pair-card">
+                <div className="gpb-pair-card-side gpb-pair-card-front">
+                  <div className="gpb-pair-card-label">FRONT ROW</div>
+                  <button
+                    type="button"
+                    className={`gpb-pair-card-player${!front ? ' is-empty' : ''}`}
+                    onClick={() => setPicker({ pairIdx: i, side: frontSide })}
+                  >
+                    {front ? (
+                      <>
+                        <span className="gpb-pair-card-num">#{front.jersey_number || '?'}</span>
+                        <span className="gpb-pair-card-name">{front.name}</span>
+                        <span className="gpb-pair-card-pos">{front.position || 'Player'}</span>
+                      </>
+                    ) : (
+                      <span className="gpb-pair-card-pick">Pick a player</span>
+                    )}
+                  </button>
+                </div>
+                <div className="gpb-pair-card-arrow">↔</div>
+                <div className="gpb-pair-card-side gpb-pair-card-back">
+                  <div className="gpb-pair-card-label">BACK ROW</div>
+                  <button
+                    type="button"
+                    className={`gpb-pair-card-player${!back ? ' is-empty' : ''}`}
+                    onClick={() => setPicker({ pairIdx: i, side: backSide })}
+                  >
+                    {back ? (
+                      <>
+                        <span className="gpb-pair-card-num">#{back.jersey_number || '?'}</span>
+                        <span className="gpb-pair-card-name">{back.name}</span>
+                        <span className="gpb-pair-card-pos">{back.position || 'Player'}</span>
+                      </>
+                    ) : (
+                      <span className="gpb-pair-card-pick">Pick a player</span>
+                    )}
+                  </button>
+                </div>
+                <button
+                  type="button"
+                  className="gpb-pair-card-remove"
+                  onClick={() => removePair(i)}
+                  aria-label="Remove pair"
+                  title="Remove pair"
+                >×</button>
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="gpb-pair-popup-tools">
+          <button type="button" className="gpb-pair-popup-btn ghost" onClick={onAutoDetect}>
+            ↺ Auto-detect
+          </button>
+          <button type="button" className="gpb-pair-popup-btn ghost" onClick={addPair}>
+            + Add Pair
+          </button>
+        </div>
+
+        <div className="gpb-sub-actions">
+          <button type="button" className="gpb-sub-btn gpb-sub-cancel" onClick={onCancel}>Cancel</button>
+          <button type="button" className="gpb-sub-btn gpb-sub-confirm" onClick={onConfirm}>Confirm Pairs</button>
+        </div>
+
+        {picker && (
+          <PairPlayerPicker
+            roster={roster}
+            currentPid={draft[picker.pairIdx]?.[picker.side]}
+            onPick={(pid) => setPlayer(picker.pairIdx, picker.side, pid)}
+            onClose={() => setPicker(null)}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
+function PairPlayerPicker({ roster, currentPid, onPick, onClose }) {
+  return (
+    <div className="gpb-pair-picker-overlay" onClick={onClose}>
+      <div className="gpb-pair-picker" onClick={e => e.stopPropagation()}>
+        <div className="gpb-pair-picker-head">Pick a player</div>
+        <div className="gpb-pair-picker-list">
+          {roster.map(p => (
+            <button
+              key={p.id}
+              type="button"
+              className={`gpb-pair-picker-item${p.id === currentPid ? ' selected' : ''}`}
+              onClick={() => onPick(p.id)}
+            >
+              <span className="gpb-pair-picker-num">#{p.jersey_number || '?'}</span>
+              <span className="gpb-pair-picker-name">{p.name}</span>
+              <span className="gpb-pair-picker-pos">{p.position || ''}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── PlaygroundHeaderEditor ─────────────────────────────────────────────────
+// Inline-editable session name in playground mode. Click to edit, Enter or
+// blur to commit, Escape to revert.
+function PlaygroundHeaderEditor({ name, onCommit }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(name);
+  function startEdit() {
+    setDraft(name);
+    setEditing(true);
+  }
+  function commit() {
+    const trimmed = draft.trim();
+    if (trimmed && trimmed !== name) onCommit(trimmed);
+    setEditing(false);
+  }
+  if (editing) {
+    return (
+      <input
+        autoFocus
+        className="gpb-head-title-input"
+        value={draft}
+        onChange={e => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={e => {
+          if (e.key === 'Enter') commit();
+          else if (e.key === 'Escape') { setEditing(false); }
+        }}
+        maxLength={80}
+      />
+    );
+  }
+  return (
+    <button
+      type="button"
+      className="gpb-head-title gpb-head-title-btn"
+      onClick={startEdit}
+      title="Click to rename this session"
+    >
+      {name}
+      <span className="gpb-head-title-edit">✎</span>
+    </button>
+  );
+}
+
+// ─── GameplanLoadError ─────────────────────────────────────────────────────
+//
+// Replaces the prior "saving locally" silent fallback. Tells the coach what
+// failed and — for the common case of a missing column/table — gives them a
+// one-click path to the Supabase SQL editor where the migration lives.
+function GameplanLoadError({ error, onRetry }) {
+  const SQL_EDITOR_URL = 'https://supabase.com/dashboard/project/eelsooiqhzwyzdoccefe/sql/new';
+  return (
+    <div className="gpb-load-error">
+      <div className="gpb-load-error-card">
+        <div className="gpb-load-error-eyebrow">CAN'T SAVE TO SUPABASE</div>
+        <h2 className="gpb-load-error-title">
+          {error.schema
+            ? 'Gameplan table needs migration'
+            : 'Could not reach the gameplan database'}
+        </h2>
+        <p className="gpb-load-error-body">
+          {error.schema ? (
+            <>
+              The <code>game_plans</code> table is missing one or more columns
+              the app writes. Run <code>scripts/game_plans_migration.sql</code>
+              {' '}once in the Supabase SQL editor — the script is idempotent so
+              re-running is safe.
+            </>
+          ) : (
+            <>Supabase returned an error before any data could be saved. We are
+            <strong> not </strong>silently falling back to local storage —
+            retry below once the connection is restored.</>
+          )}
+        </p>
+        {error.message && (
+          <pre className="gpb-load-error-msg">{error.message}</pre>
+        )}
+        <div className="gpb-load-error-actions">
+          {error.schema && (
+            <a
+              className="gpb-load-error-btn primary"
+              href={SQL_EDITOR_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Open Supabase SQL editor →
+            </a>
+          )}
+          <button type="button" className="gpb-load-error-btn" onClick={onRetry}>
+            Retry connection
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── LiberoPairingPanel ─────────────────────────────────────────────────────
+//
+// Dedicated UI for the libero ↔ middle-blocker coverage. Shown only when at
+// least one libero is on the roster.
+//
+// Each libero gets two slots: "MB Pair 1" and "MB Pair 2". An empty slot is
+// a tap target that opens a picker filtered to middle blockers. Filled slots
+// show #jersey · last-name with an "×" to clear.
+//
+// The header carries:
+//   • "↺ Auto" — fill the slots from on-court MBs (autoDetectLiberoPairs)
+//   • A toggle switch "Auto-swap" — when ON, effectiveLineupAt puts the
+//     libero on the court in any rotation where a paired MB is in the back
+//     row. When OFF, the libero stays off until the coach turns it back on.
+function LiberoPairingPanel({ roster, liberoPairs, liberoAuto, playerById, onSetPair, onToggleAuto, onAutoDetect }) {
+  const [picker, setPicker] = useState(null); // { liberoId, slot }
+  const liberos = roster.filter(isLibero);
+  const mbsOnly = roster.filter(p => ['MB', 'MH', 'M'].includes((p.position || '').toUpperCase().trim()));
+  if (liberos.length === 0) return null;
+  return (
+    <div className="gpb-libero-panel">
+      <div className="gpb-libero-head">
+        <div className="gpb-libero-eyebrow">LIBERO PAIRING</div>
+        <div className="gpb-libero-tools">
+          <button
+            type="button"
+            className="gpb-libero-tool"
+            onClick={onAutoDetect}
+            title="Auto-pair libero with the on-court middle blockers"
+          >
+            ↺ Auto
+          </button>
+          <label className="gpb-libero-toggle" title={liberoAuto ? 'Auto-swap on — libero enters/exits as MB rotates' : 'Auto-swap off — libero stays off the court'}>
+            <input type="checkbox" checked={liberoAuto} onChange={onToggleAuto} />
+            <span className="gpb-libero-toggle-track"><span className="gpb-libero-toggle-thumb" /></span>
+            <span className="gpb-libero-toggle-label">Auto-swap</span>
+          </label>
+        </div>
+      </div>
+
+      {liberos.map(lib => {
+        const slots = (liberoPairs[lib.id] || [null, null]).slice(0, 2);
+        while (slots.length < 2) slots.push(null);
+        return (
+          <div key={lib.id} className="gpb-libero-row">
+            <div className="gpb-libero-name">
+              <span className="gpb-libero-num">#{lib.jersey_number || '?'}</span>
+              <span className="gpb-libero-fullname">{lib.name}</span>
+            </div>
+            <div className="gpb-libero-slots">
+              {[0, 1].map(slot => {
+                const mbPid = slots[slot];
+                const mb = mbPid ? playerById[mbPid] : null;
+                return (
+                  <div key={slot} className={`gpb-libero-slot${mb ? ' filled' : ''}`}>
+                    <div className="gpb-libero-slot-label">MB Pair {slot + 1}</div>
+                    <button
+                      type="button"
+                      className="gpb-libero-slot-btn"
+                      onClick={() => setPicker({ liberoId: lib.id, slot })}
+                    >
+                      {mb ? (
+                        <>
+                          <span className="gpb-libero-slot-num">#{mb.jersey_number || '?'}</span>
+                          <span className="gpb-libero-slot-name">{lastNameOf(mb.name) || mb.name}</span>
+                        </>
+                      ) : (
+                        <span className="gpb-libero-slot-pick">+ Pick MB</span>
+                      )}
+                    </button>
+                    {mb && (
+                      <button
+                        type="button"
+                        className="gpb-libero-slot-x"
+                        onClick={() => onSetPair(lib.id, slot, null)}
+                        title="Clear"
+                        aria-label="Clear MB pair"
+                      >×</button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
+
+      {picker && (
+        <PairPlayerPicker
+          roster={mbsOnly.length > 0 ? mbsOnly : roster}
+          currentPid={(liberoPairs[picker.liberoId] || [])[picker.slot]}
+          onPick={(pid) => {
+            onSetPair(picker.liberoId, picker.slot, pid);
+            setPicker(null);
+          }}
+          onClose={() => setPicker(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+// ─── Preset components ──────────────────────────────────────────────────────
+
+// Apply picker — pick a saved preset to slot into the active gameplan.
+function PresetApplyPicker({ presets, error, onPick, onCancel, onCreate }) {
+  const SQL_URL = 'https://supabase.com/dashboard/project/eelsooiqhzwyzdoccefe/sql/new';
+  return (
+    <div className="gpb-sub-overlay" onClick={onCancel}>
+      <div className="gpb-preset-popup" onClick={e => e.stopPropagation()}>
+        <div className="gpb-sub-head">
+          <div className="gpb-sub-eyebrow">APPLY PRESET</div>
+          <div className="gpb-sub-title">Pick a formation template</div>
+        </div>
+        <div className="gpb-preset-body">
+          {error?.schema ? (
+            <div className="gpb-preset-error">
+              The <code>formation_presets</code> table doesn't exist yet. Run{' '}
+              <code>scripts/formation_presets_migration.sql</code> in the{' '}
+              <a href={SQL_URL} target="_blank" rel="noopener noreferrer">Supabase SQL editor</a>.
+            </div>
+          ) : presets.length === 0 ? (
+            <div className="gpb-preset-empty">
+              No presets yet. <button type="button" className="gpb-preset-link" onClick={onCreate}>Build your first one</button>
+            </div>
+          ) : (
+            <div className="gpb-preset-list">
+              {presets.map(p => (
+                <button key={p.id} type="button" className="gpb-preset-item" onClick={() => onPick(p)}>
+                  <span className="gpb-preset-item-name">{p.name}</span>
+                  <span className="gpb-preset-item-arrow">Apply →</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+        <div className="gpb-sub-actions">
+          <button type="button" className="gpb-sub-btn gpb-sub-cancel" onClick={onCancel}>Cancel</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Manager — list/create/edit/delete presets.
+function PresetManager({ presets, error, onClose, onCreate, onEdit, onDelete, templates = [], onUseTemplate }) {
+  const SQL_URL = 'https://supabase.com/dashboard/project/eelsooiqhzwyzdoccefe/sql/new';
+  return (
+    <div className="gpb-sub-overlay" onClick={onClose}>
+      <div className="gpb-preset-popup" onClick={e => e.stopPropagation()}>
+        <div className="gpb-sub-head">
+          <div className="gpb-sub-eyebrow">FORMATION PRESETS</div>
+          <div className="gpb-sub-title">Reusable formation templates</div>
+        </div>
+        <div className="gpb-preset-body">
+          {templates.length > 0 && (
+            <div className="gpb-preset-section">
+              <div className="gpb-preset-group-label">
+                Templates
+                <span className="gpb-preset-group-hint">Start from a system</span>
+              </div>
+              <div className="gpb-preset-templates">
+                {templates.map(t => (
+                  <button
+                    key={t.key}
+                    type="button"
+                    className="gpb-preset-template"
+                    onClick={() => onUseTemplate && onUseTemplate(t)}
+                    title={`Open the ${t.name} system in the editor, then Save As your own scheme`}
+                  >
+                    <span className="gpb-preset-template-badge">{t.name}</span>
+                    <span className="gpb-preset-template-text">
+                      <span className="gpb-preset-template-sub">{t.subtitle}</span>
+                      <span className="gpb-preset-template-desc">{t.description}</span>
+                    </span>
+                  </button>
+                ))}
+              </div>
+              <div className="gpb-preset-group-label gpb-preset-group-label-saved">Your schemes</div>
+            </div>
+          )}
+          {error?.schema ? (
+            <div className="gpb-preset-error">
+              The <code>formation_presets</code> table doesn't exist yet. Run{' '}
+              <code>scripts/formation_presets_migration.sql</code> in the{' '}
+              <a href={SQL_URL} target="_blank" rel="noopener noreferrer">Supabase SQL editor</a>.
+            </div>
+          ) : presets.length === 0 ? (
+            <div className="gpb-preset-empty">
+              No presets yet. Click <strong>+ New Preset</strong> below to draw up your first template.
+            </div>
+          ) : (
+            <div className="gpb-preset-list">
+              {presets.map(p => (
+                <div key={p.id} className="gpb-preset-row">
+                  <button type="button" className="gpb-preset-row-main" onClick={() => onEdit(p)}>
+                    <span className="gpb-preset-item-name">{p.name}</span>
+                    <span className="gpb-preset-item-meta">
+                      {p.updated_at ? `Updated ${new Date(p.updated_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}` : 'Just created'}
+                    </span>
+                  </button>
+                  <button type="button" className="gpb-preset-row-action danger" title="Delete preset" onClick={() => onDelete(p.id)}>×</button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+        <div className="gpb-sub-actions">
+          <button type="button" className="gpb-sub-btn gpb-sub-cancel" onClick={onClose}>Close</button>
+          <button type="button" className="gpb-sub-btn gpb-sub-confirm" onClick={onCreate} disabled={!!error?.schema}>+ New Preset</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Editor — 6 role markers on the court, drag to define each rotation × mode.
+const PRESET_ROLES = ['S', 'OH1', 'OH2', 'MB1', 'MB2', 'OPP'];
+const PRESET_ROLE_LABELS = {
+  S: 'Setter', OH1: 'Outside 1', OH2: 'Outside 2',
+  MB1: 'Middle 1', MB2: 'Middle 2', OPP: 'Opposite',
+};
+// Role marker colors — solid distinct hues so the coach can tell them apart.
+const PRESET_ROLE_COLORS = {
+  S:   '#fbbf24',
+  OH1: '#38bdf8',
+  OH2: '#0ea5e9',
+  MB1: '#34d399',
+  MB2: '#10b981',
+  OPP: '#c084fc',
+};
+
+function PresetEditor({ initial, onCancel, onSave }) {
+  const isNew = !initial?.id;
+  const [name, setName] = useState(initial?.name || 'New Preset');
+  const [rot, setRot] = useState(1);
+  const [mode, setMode] = useState('serve');
+  // rotations: { 1: { serve: { S: {x,y}, ... }, receive: {...} }, ... }
+  const [rotations, setRotations] = useState(() => {
+    const seed = initial?.rotations || {};
+    const out = {};
+    for (let r = 1; r <= 6; r++) {
+      const stored = seed[r] || {};
+      const serve = { ...stored.serve };
+      const receive = { ...stored.receive };
+      PRESET_ROLES.forEach((m, idx) => {
+        if (!serve[m]) serve[m] = defaultPositionFor(idx, r);
+        if (!receive[m]) receive[m] = defaultPositionFor(idx, r);
+      });
+      out[r] = { serve, receive };
+    }
+    return out;
+  });
+
+  const courtRef = useRef(null);
+  const dragRef = useRef(null); // { marker, offsetX, offsetY, courtRect, halfW, halfH }
+
+  function setMarkerPosition(marker, x, y) {
+    setRotations(prev => ({
+      ...prev,
+      [rot]: {
+        ...prev[rot],
+        [mode]: { ...prev[rot][mode], [marker]: { x, y } },
+      },
+    }));
+  }
+
+  function onPointerDown(e, marker) {
+    const el = e.currentTarget;
+    const courtEl = courtRef.current;
+    if (!courtEl) return;
+    e.preventDefault();
+    const courtRect = courtEl.getBoundingClientRect();
+    const rect = el.getBoundingClientRect();
+    dragRef.current = {
+      marker,
+      offsetX: e.clientX - rect.left,
+      offsetY: e.clientY - rect.top,
+      halfW: rect.width / 2,
+      halfH: rect.height / 2,
+      courtRect,
+    };
+    try { el.setPointerCapture(e.pointerId); } catch { /* ignore */ }
+  }
+  function onPointerMove(e) {
+    const d = dragRef.current;
+    if (!d) return;
+    const { courtRect, offsetX, offsetY, halfW, halfH, marker } = d;
+    const visualLeft = e.clientX - courtRect.left - offsetX;
+    const visualTop  = e.clientY - courtRect.top  - offsetY;
+    const cx = visualLeft + halfW;
+    const cy = visualTop  + halfH;
+    const xPct = Math.max(6, Math.min(94, (cx / courtRect.width)  * 100));
+    const yPct = Math.max(8, Math.min(92, (cy / courtRect.height) * 100));
+    setMarkerPosition(marker, xPct, yPct);
+  }
+  function onPointerUp() { dragRef.current = null; }
+
+  function canSave() { return name.trim().length > 0; }
+  function handleSave() {
+    onSave({
+      id: initial?.id,
+      name: name.trim() || 'New Preset',
+      rotations,
+      is_default: !!initial?.is_default,
+    });
+  }
+
+  const positions = rotations[rot][mode];
+
+  return (
+    <div className="gpb-sub-overlay" onClick={onCancel}>
+      <div className="gpb-preset-editor" onClick={e => e.stopPropagation()}>
+        <div className="gpb-sub-head">
+          <div className="gpb-sub-eyebrow">{isNew ? 'NEW PRESET' : 'EDIT PRESET'}</div>
+          <input
+            className="gpb-preset-name-input"
+            value={name}
+            onChange={e => setName(e.target.value)}
+            placeholder="Preset name (e.g. 5-1 Base)"
+            maxLength={64}
+            autoFocus={isNew}
+          />
+        </div>
+
+        <div className="gpb-preset-editor-toolbar">
+          <div className="gpb-toolbar-group gpb-toolbar-rots">
+            {[1,2,3,4,5,6].map(r => (
+              <button
+                key={r}
+                type="button"
+                className={`gpb-rot-btn${r === rot ? ' active' : ''}`}
+                onClick={() => setRot(r)}
+              >R{r}</button>
+            ))}
+          </div>
+          <div className="gpb-toolbar-sep" aria-hidden="true" />
+          <div className="gpb-toolbar-group gpb-toolbar-mode">
+            <button
+              type="button"
+              className={`gpb-mode-btn${mode === 'serve' ? ' active' : ''}`}
+              onClick={() => setMode('serve')}
+            >Serve</button>
+            <button
+              type="button"
+              className={`gpb-mode-btn${mode === 'receive' ? ' active' : ''}`}
+              onClick={() => setMode('receive')}
+            >Serve Receive</button>
+          </div>
+        </div>
+
+        <div
+          ref={courtRef}
+          className="gpb-preset-court"
+          onPointerMove={onPointerMove}
+          onPointerUp={onPointerUp}
+          onPointerCancel={onPointerUp}
+        >
+          <div className="gpb-court-net" />
+          <div className="gpb-court-row-label gpb-court-row-front">FRONT ROW · NET</div>
+          <div className="gpb-court-row-label gpb-court-row-back">BACK ROW</div>
+          {PRESET_ROLES.map(marker => {
+            const p = positions[marker];
+            return (
+              <div
+                key={marker}
+                className="gpb-preset-marker"
+                style={{
+                  left: `${p.x}%`,
+                  top: `${p.y}%`,
+                  background: PRESET_ROLE_COLORS[marker],
+                }}
+                onPointerDown={(e) => onPointerDown(e, marker)}
+                title={`${PRESET_ROLE_LABELS[marker]} — drag to set R${rot} ${mode === 'serve' ? 'serve' : 'receive'} position`}
+              >
+                {marker}
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="gpb-sub-actions">
+          <button type="button" className="gpb-sub-btn gpb-sub-cancel" onClick={onCancel}>Cancel</button>
+          <button type="button" className="gpb-sub-btn gpb-sub-confirm" onClick={handleSave} disabled={!canSave()}>
+            {isNew ? 'Save Preset' : 'Save Changes'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Named exports so the RotationPal dashboard can drive the preset library
+// (SCHEMES card) with the exact same UI + persistence the modal uses.
+export { PresetManager, PresetEditor, fetchPresets, upsertPreset, deletePreset };

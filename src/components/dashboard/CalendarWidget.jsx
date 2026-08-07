@@ -52,9 +52,26 @@ function buildMonthGrid(year, month) {
   return cells;
 }
 
+// Format a "HH:MM" 24-h string as "h:MM AM/PM". Returns '' if not set.
+function fmt12(hhmm) {
+  if (!hhmm) return '';
+  const [h, m] = hhmm.split(':').map(Number);
+  if (Number.isNaN(h)) return '';
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  const h12 = ((h + 11) % 12) + 1;
+  return `${h12}:${String(m || 0).padStart(2, '0')} ${ampm}`;
+}
+// Render the start–end range when both are set, otherwise just start.
+function eventTimeRange(e) {
+  if (e.startTime && e.endTime) return `${fmt12(e.startTime)} – ${fmt12(e.endTime)}`;
+  if (e.startTime) return fmt12(e.startTime);
+  return '';
+}
+
 function eventTitle(e) {
   if (e.type === 'practice') {
-    return e.startTime ? `Practice ${e.startTime}` : (e.title || 'Practice');
+    const t = eventTimeRange(e);
+    return t ? `Practice ${t}` : (e.title || 'Practice');
   }
   if (e.type === 'game') return e.title;
   return e.title || 'Event';
@@ -255,10 +272,12 @@ function EventDetailPopup({ event, onClose, onRemove }) {
         <div className="dash-cal-detail-date">{dateLabel}</div>
 
         <div className="dash-cal-detail-grid">
-          {event.startTime && (
+          {(event.startTime || event.endTime) && (
             <div className="dash-cal-detail-row">
               <span className="dash-cal-detail-lbl">Time</span>
-              <span className="dash-cal-detail-val">{event.startTime}</span>
+              <span className="dash-cal-detail-val">
+                {eventTimeRange(event) || fmt12(event.endTime)}
+              </span>
             </div>
           )}
           {event.location && (

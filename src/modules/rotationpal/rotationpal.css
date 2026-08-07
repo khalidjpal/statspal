@@ -283,6 +283,8 @@
   transition: left 0.35s cubic-bezier(.4,0,.2,1), top 0.35s cubic-bezier(.4,0,.2,1), box-shadow 0.3s ease, transform 0.15s ease;
   cursor: pointer;
   user-select: none;
+  touch-action: none;
+  will-change: left, top;
 }
 .rotationpal-module .player.OH { background: var(--role-OH); }
 .rotationpal-module .player.MB { background: var(--role-MB); }
@@ -3537,23 +3539,27 @@
 .rotationpal-module .big-chip-list {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
   max-height: 460px;
   overflow-y: auto;
   padding-right: 4px;
 }
 .rotationpal-module .big-chip {
-  display: grid;
-  grid-template-columns: 44px 1fr auto auto;
-  gap: 12px;
+  display: flex;
   align-items: center;
-  padding: 10px 14px;
+  gap: 12px;
+  height: 56px;
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 0 14px;
+  position: relative;
+  z-index: 0;
   background: var(--panel-2);
   border: 2px solid var(--line);
   border-radius: 12px;
   cursor: grab;
   user-select: none;
-  transition: all 0.12s;
+  transition: border-color 0.12s ease, background-color 0.12s ease, opacity 0.12s ease;
 }
 .rotationpal-module .big-chip:hover { border-color: var(--accent); }
 .rotationpal-module .big-chip.dragging {
@@ -3562,11 +3568,12 @@
   cursor: grabbing;
 }
 .rotationpal-module .big-chip.on-court {
-  opacity: 0.45;
+  opacity: 0.65;
   cursor: not-allowed;
   background: var(--panel);
 }
 .rotationpal-module .big-chip .chip-num {
+  flex: 0 0 40px;
   width: 40px;
   height: 40px;
   border-radius: 50%;
@@ -3585,25 +3592,25 @@
 .rotationpal-module .big-chip.L .chip-num { background: var(--role-L); }
 .rotationpal-module .big-chip.DS .chip-num { background: var(--role-DS); }
 .rotationpal-module .big-chip .chip-name {
+  flex: 1 1 auto;
+  min-width: 0;
   font-size: 14px;
   font-weight: 700;
+  line-height: 1.2;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .rotationpal-module .big-chip .chip-role {
+  flex: 0 0 auto;
   font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 1px;
-  padding: 4px 8px;
-  border-radius: 6px;
-  background: var(--panel);
+  font-weight: 700;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
   color: var(--muted);
-}
-.rotationpal-module .big-chip .chip-check {
-  font-size: 16px;
-  color: var(--accent);
-  font-weight: 800;
+  opacity: 0.7;
+  background: transparent;
+  padding: 0;
 }
 
 .rotationpal-module .lineup-libero {
@@ -6936,5 +6943,613 @@
   display: flex;
   flex-direction: column;
   gap: 6px;
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   Hub aesthetic redesign (2026-05). Tall commanding header, properly-
+   carded panels with consistent 12 px radius and a subtle accent on
+   each section. Layered ON TOP of the rules above so it can be peeled
+   off cleanly if needed.
+   ════════════════════════════════════════════════════════════════════ */
+
+/* — Header: taller + gradient halo behind team name — */
+.rotationpal-module .rp-hub-page > .dashboard-header {
+  margin: 14px 16px 4px;
+  padding: 22px 24px 18px;
+  background:
+    radial-gradient(ellipse 70% 120% at 18% 50%, rgba(88,166,255,0.18), transparent 60%),
+    radial-gradient(ellipse 60% 120% at 78% 50%, rgba(168,85,247,0.10), transparent 65%),
+    linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.02));
+  border: 1px solid rgba(88,166,255,0.22);
+  border-radius: 14px;
+  box-shadow:
+    0 1px 0 rgba(255,255,255,0.04) inset,
+    0 14px 40px rgba(0,0,0,0.25);
+  position: relative;
+  overflow: hidden;
+}
+.rotationpal-module .rp-hub-page > .dashboard-header::before {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  background: linear-gradient(90deg, transparent, rgba(88,166,255,0.45), transparent);
+  height: 1px;
+  pointer-events: none;
+}
+.rotationpal-module .rp-hub-page > .dashboard-header h1 {
+  font-size: 28px;
+  font-weight: 800;
+  letter-spacing: -0.015em;
+  margin: 0;
+  background: linear-gradient(180deg, #ffffff, #b4c4e6);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  text-shadow: 0 0 24px rgba(88,166,255,0.15);
+}
+.rotationpal-module .rp-hub-page > .dashboard-header .subtitle {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: rgba(88,166,255,0.85);
+  margin-top: 4px;
+}
+.rotationpal-module .rp-hub-page > .dashboard-header .dashboard-actions {
+  gap: 10px;
+}
+.rotationpal-module .rp-hub-page > .dashboard-header .user-pill {
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.10);
+  border-radius: 999px;
+  padding: 5px 12px;
+  font-size: 12px;
+}
+.rotationpal-module .rp-hub-page > .dashboard-header .ghost {
+  border-radius: 8px;
+  padding: 7px 14px;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+}
+
+/* — Shared card chrome (12 px radius, subtle inner glow, no hard edges) — */
+.rotationpal-module .rp-hub-page .rp-strip,
+.rotationpal-module .rp-hub-page .rp-games-list {
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,0.07);
+  background:
+    linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.015) 60%, rgba(255,255,255,0.01));
+  box-shadow:
+    0 1px 0 rgba(255,255,255,0.05) inset,
+    0 8px 28px rgba(0,0,0,0.18);
+}
+.rotationpal-module .rp-hub-page .rp-strip-head,
+.rotationpal-module .rp-hub-page .rp-games-list-head {
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+}
+.rotationpal-module .rp-hub-page .rp-strip-title,
+.rotationpal-module .rp-hub-page .rp-games-list-title {
+  font-size: 10.5px;
+  letter-spacing: 0.20em;
+  color: rgba(232,238,252,0.55);
+}
+.rotationpal-module .rp-hub-page .rp-strip-count,
+.rotationpal-module .rp-hub-page .rp-games-list-meta {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 999px;
+  padding: 2px 8px;
+  color: var(--text);
+}
+
+/* — Roster card: blue accent top stripe + sharper number badge — */
+.rotationpal-module .rp-hub-page .rp-strip-roster {
+  position: relative;
+}
+.rotationpal-module .rp-hub-page .rp-strip-roster::before {
+  content: '';
+  position: absolute;
+  left: 14px; right: 14px; top: 0;
+  height: 2px;
+  border-radius: 0 0 2px 2px;
+  background: linear-gradient(90deg, transparent, rgba(88,166,255,0.85) 30%, rgba(88,166,255,0.85) 70%, transparent);
+  pointer-events: none;
+}
+.rotationpal-module .rp-hub-page .rp-roster-fit-row {
+  padding: 0 10px;
+  border-radius: 8px;
+  transition: background 0.12s ease;
+}
+.rotationpal-module .rp-hub-page .rp-roster-fit-row:hover {
+  background: rgba(88,166,255,0.08);
+}
+.rotationpal-module .rp-hub-page .rp-roster-fit-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 30px;
+  padding: 1px 5px;
+  background: rgba(88,166,255,0.12);
+  border: 1px solid rgba(88,166,255,0.32);
+  border-radius: 5px;
+  color: #b4d5ff;
+  font-weight: 800;
+}
+.rotationpal-module .rp-hub-page .rp-roster-fit-name {
+  font-weight: 600;
+  letter-spacing: -0.005em;
+}
+.rotationpal-module .rp-hub-page .rp-roster-fit-pos {
+  font-weight: 700;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  opacity: 0.6;
+}
+
+/* — Playground card: distinct purple/indigo accent — */
+.rotationpal-module .rp-hub-page .rp-playground-strip {
+  border-radius: 12px;
+  border-color: rgba(168,85,247,0.30);
+  background:
+    radial-gradient(ellipse 80% 60% at top, rgba(168,85,247,0.12), transparent 60%),
+    linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.015));
+  box-shadow:
+    0 1px 0 rgba(255,255,255,0.05) inset,
+    0 10px 30px rgba(168,85,247,0.12),
+    0 8px 28px rgba(0,0,0,0.18);
+  position: relative;
+  overflow: hidden;
+}
+.rotationpal-module .rp-hub-page .rp-playground-strip::before {
+  content: '';
+  position: absolute;
+  left: 14px; right: 14px; top: 0;
+  height: 2px;
+  border-radius: 0 0 2px 2px;
+  background: linear-gradient(90deg, transparent, rgba(192,132,252,0.85) 30%, rgba(168,85,247,0.85) 70%, transparent);
+  pointer-events: none;
+}
+.rotationpal-module .rp-hub-page .rp-playground-head {
+  padding: 14px 16px;
+}
+.rotationpal-module .rp-hub-page .rp-playground-item {
+  border-radius: 9px;
+}
+
+/* — Games to Gameplan: card framing + spacious cards — */
+.rotationpal-module .rp-hub-page .rp-games-list {
+  flex: 1;
+}
+.rotationpal-module .rp-hub-page .rp-games-list-head {
+  padding: 16px 18px 12px;
+}
+.rotationpal-module .rp-hub-page .rp-games-list-body {
+  padding: 12px 14px 14px;
+  gap: 10px;
+}
+.rotationpal-module .rp-hub-page .rp-game-card {
+  padding: 16px 18px;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,0.07);
+  border-left-width: 4px;
+  background: linear-gradient(135deg, rgba(255,255,255,0.045), rgba(255,255,255,0.012));
+  transition: background 0.14s ease, border-color 0.14s ease, transform 0.10s ease;
+}
+.rotationpal-module .rp-hub-page .rp-game-card:hover {
+  background: linear-gradient(135deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02));
+  border-color: rgba(255,255,255,0.14);
+  transform: translateY(-1px);
+}
+/* default upcoming = blue */
+.rotationpal-module .rp-hub-page .rp-game-card {
+  border-left-color: rgba(88,166,255,0.65);
+}
+.rotationpal-module .rp-hub-page .rp-game-card-ready  { border-left-color: #3fb950; }
+.rotationpal-module .rp-hub-page .rp-game-card-needs  { border-left-color: #f0a500; }
+.rotationpal-module .rp-hub-page .rp-game-card-urgent { border-left-color: #f85149; }
+.rotationpal-module .rp-hub-page .rp-game-card-opp {
+  font-size: 17px;
+  font-weight: 800;
+  letter-spacing: -0.012em;
+  color: var(--text);
+}
+.rotationpal-module .rp-hub-page .rp-game-card-meta {
+  font-size: 11.5px;
+  color: rgba(232,238,252,0.55);
+  letter-spacing: 0.02em;
+  font-weight: 600;
+}
+.rotationpal-module .rp-hub-page .rp-game-status {
+  border-radius: 999px;
+  padding: 4px 10px 4px 8px;
+  font-size: 9.5px;
+  letter-spacing: 0.12em;
+  align-self: center;
+  display: inline-flex; align-items: center; gap: 6px;
+}
+.rotationpal-module .rp-hub-page .rp-game-status::before {
+  content: '';
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 0 8px currentColor;
+  flex-shrink: 0;
+}
+.rotationpal-module .rp-hub-page .rp-game-card-actions { gap: 10px; }
+.rotationpal-module .rp-hub-page .rp-game-btn {
+  border-radius: 8px;
+  padding: 9px 14px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+/* — Past games: chevron toggle + clean divider — */
+.rotationpal-module .rp-hub-page .rp-games-past {
+  border-top: 1px solid rgba(255,255,255,0.05);
+  padding-top: 14px;
+  margin-top: 8px;
+}
+.rotationpal-module .rp-hub-page .rp-games-past-toggle {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 14px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 10px;
+  color: rgba(232,238,252,0.75);
+  font-size: 11.5px;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  font-weight: 800;
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+.rotationpal-module .rp-hub-page .rp-games-past-toggle:hover {
+  background: rgba(255,255,255,0.06);
+  border-color: rgba(255,255,255,0.18);
+  color: #fff;
+}
+.rotationpal-module .rp-hub-page .rp-games-past-chevron {
+  display: inline-flex;
+  align-items: center; justify-content: center;
+  width: 18px; height: 18px;
+  font-size: 12px;
+  color: rgba(232,238,252,0.65);
+  transition: transform 0.18s ease;
+}
+.rotationpal-module .rp-hub-page .rp-games-past-toggle[aria-expanded="true"] .rp-games-past-chevron {
+  transform: rotate(90deg);
+}
+.rotationpal-module .rp-hub-page .rp-games-past-count {
+  margin-left: auto;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 999px;
+  padding: 2px 8px;
+  letter-spacing: 0;
+}
+
+/* — Right column: pill toggle for Upcoming / Past — */
+.rotationpal-module .rp-hub-page .rp-tabs-strip {
+  border-radius: 12px;
+}
+.rotationpal-module .rp-hub-page .rp-tabs-head {
+  padding: 10px 12px;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+  background: rgba(255,255,255,0.02);
+  gap: 6px;
+}
+.rotationpal-module .rp-hub-page .rp-tab-btn {
+  flex: 1;
+  border-radius: 999px;
+  padding: 8px 12px;
+  background: transparent;
+  border: 1px solid transparent;
+  color: rgba(232,238,252,0.6);
+  font-size: 11.5px;
+  font-weight: 800;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background 0.14s ease, color 0.14s ease, border-color 0.14s ease;
+}
+.rotationpal-module .rp-hub-page .rp-tab-btn:hover {
+  background: rgba(255,255,255,0.04);
+  color: #fff;
+  border-color: rgba(255,255,255,0.10);
+}
+.rotationpal-module .rp-hub-page .rp-tab-btn.active {
+  background: linear-gradient(135deg, rgba(88,166,255,0.20), rgba(88,166,255,0.05));
+  border-color: rgba(88,166,255,0.45);
+  color: #cfe3ff;
+  box-shadow: 0 0 0 1px rgba(88,166,255,0.12) inset;
+}
+.rotationpal-module .rp-hub-page .rp-tab-count {
+  margin-left: 8px;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.10);
+  border-radius: 999px;
+  padding: 1px 7px;
+  letter-spacing: 0;
+}
+.rotationpal-module .rp-hub-page .rp-tabs-body {
+  padding: 10px 12px 14px;
+  gap: 8px;
+}
+.rotationpal-module .rp-hub-page .rp-tab-game {
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, rgba(255,255,255,0.04), rgba(255,255,255,0.012));
+  border: 1px solid rgba(255,255,255,0.07);
+  transition: background 0.12s ease, border-color 0.12s ease, transform 0.10s ease;
+}
+.rotationpal-module .rp-hub-page .rp-tab-game:hover {
+  background: linear-gradient(135deg, rgba(88,166,255,0.10), rgba(88,166,255,0.02));
+  border-color: rgba(88,166,255,0.28);
+  transform: translateY(-1px);
+}
+.rotationpal-module .rp-hub-page .rp-tab-game-opp {
+  font-size: 13.5px;
+  font-weight: 700;
+  letter-spacing: -0.005em;
+}
+.rotationpal-module .rp-hub-page .rp-tab-game-meta {
+  color: rgba(232,238,252,0.55);
+  letter-spacing: 0.02em;
+}
+.rotationpal-module .rp-hub-page .rp-tab-game-plans {
+  font-family: var(--mono);
+  font-size: 10px;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 999px;
+  padding: 1px 7px;
+  letter-spacing: 0;
+}
+.rotationpal-module .rp-hub-page .rp-tab-game-btn {
+  border-radius: 8px;
+  padding: 7px 11px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  background: rgba(88,166,255,0.10);
+  border: 1px solid rgba(88,166,255,0.35);
+  color: #b4d5ff;
+}
+.rotationpal-module .rp-hub-page .rp-tab-game-btn:hover {
+  background: rgba(88,166,255,0.20);
+  border-color: rgba(88,166,255,0.55);
+  color: #fff;
+  filter: none;
+}
+
+/* — Consistent gap between columns and stacked sections — */
+.rotationpal-module .rp-hub-page .rp-hub-3 {
+  gap: 16px;
+  padding: 14px 16px;
+}
+.rotationpal-module .rp-hub-page .rp-hub-center {
+  gap: 14px;
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   Hub v2 layout (2026-05): no left roster, two columns (center + right
+   season-summary). Centre stacks "Upcoming Games" and "Playground" as
+   full-width sections; playground sessions arrange in a 2-col grid.
+   ════════════════════════════════════════════════════════════════════ */
+
+.rotationpal-module .rp-hub-2 {
+  grid-template-columns: 1fr;
+  gap: 16px;
+  padding: 14px 16px;
+}
+@media (min-width: 1100px) {
+  .rotationpal-module .rp-hub-2 {
+    grid-template-columns: minmax(0, 1fr) minmax(300px, 360px);
+  }
+}
+.rotationpal-module .rp-hub-2 .rp-hub-right {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* Playground session cards — 2-column grid on wider screens so they
+   don't stack into a long list. */
+.rotationpal-module .rp-hub-page .rp-playground-list {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+  padding: 10px;
+}
+@media (min-width: 720px) {
+  .rotationpal-module .rp-hub-page .rp-playground-list {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+/* ── Season Summary panel ── */
+.rotationpal-module .rp-season-card {
+  display: flex;
+  flex-direction: column;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,0.07);
+  background:
+    radial-gradient(ellipse 70% 60% at top right, rgba(88,166,255,0.10), transparent 55%),
+    linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.015) 60%, rgba(255,255,255,0.01));
+  box-shadow:
+    0 1px 0 rgba(255,255,255,0.05) inset,
+    0 8px 28px rgba(0,0,0,0.18);
+  overflow: hidden;
+}
+.rotationpal-module .rp-season-head {
+  padding: 14px 18px 10px;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+}
+.rotationpal-module .rp-season-eyebrow {
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.22em;
+  color: rgba(88,166,255,0.85);
+  text-transform: uppercase;
+}
+.rotationpal-module .rp-season-block {
+  padding: 14px 18px;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.rotationpal-module .rp-season-block:last-child { border-bottom: none; }
+.rotationpal-module .rp-season-label {
+  font-size: 9.5px;
+  font-weight: 800;
+  letter-spacing: 0.20em;
+  color: rgba(232,238,252,0.40);
+  text-transform: uppercase;
+}
+.rotationpal-module .rp-season-empty {
+  font-size: 12px;
+  color: var(--muted);
+  font-style: italic;
+  opacity: 0.7;
+}
+.rotationpal-module .rp-season-meta {
+  font-size: 11.5px;
+  color: rgba(232,238,252,0.55);
+  letter-spacing: 0.02em;
+}
+.rotationpal-module .rp-season-meta strong { color: var(--text); font-weight: 700; }
+
+/* Record */
+.rotationpal-module .rp-season-record {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  font-family: var(--mono);
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+.rotationpal-module .rp-season-record-w {
+  font-size: 38px;
+  color: #7ddc87;
+  text-shadow: 0 0 18px rgba(63,185,80,0.35);
+}
+.rotationpal-module .rp-season-record-l {
+  font-size: 38px;
+  color: #ff8a82;
+  text-shadow: 0 0 18px rgba(248,81,73,0.32);
+}
+.rotationpal-module .rp-season-record-sep {
+  font-size: 26px;
+  color: rgba(232,238,252,0.35);
+}
+.rotationpal-module .rp-season-record-pct {
+  margin-left: 8px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  color: rgba(88,166,255,0.85);
+  background: rgba(88,166,255,0.10);
+  border: 1px solid rgba(88,166,255,0.30);
+  border-radius: 999px;
+  padding: 3px 9px;
+  align-self: center;
+}
+
+/* Streak */
+.rotationpal-module .rp-season-streak-w {
+  background: linear-gradient(180deg, rgba(63,185,80,0.10), transparent);
+}
+.rotationpal-module .rp-season-streak-l {
+  background: linear-gradient(180deg, rgba(248,81,73,0.10), transparent);
+}
+.rotationpal-module .rp-season-streak-num {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  font-family: var(--mono);
+  font-size: 28px;
+  font-weight: 800;
+}
+.rotationpal-module .rp-season-streak-w .rp-season-streak-num { color: #7ddc87; }
+.rotationpal-module .rp-season-streak-l .rp-season-streak-num { color: #ff8a82; }
+.rotationpal-module .rp-season-streak-unit {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(232,238,252,0.45);
+  font-family: inherit;
+}
+
+/* Next game */
+.rotationpal-module .rp-season-next-opp {
+  font-size: 17px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  color: var(--text);
+}
+.rotationpal-module .rp-season-countdown {
+  margin-top: 4px;
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  background: rgba(88,166,255,0.10);
+  border: 1px solid rgba(88,166,255,0.30);
+  color: #b4d5ff;
+  border-radius: 999px;
+}
+.rotationpal-module .rp-season-countdown.is-soon {
+  background: rgba(240,165,0,0.14);
+  border-color: rgba(240,165,0,0.40);
+  color: #f0c878;
+  animation: rp-season-pulse 1.6s ease-in-out infinite;
+}
+@keyframes rp-season-pulse {
+  50% { box-shadow: 0 0 0 4px rgba(240,165,0,0.18); }
+}
+
+/* Top player */
+.rotationpal-module .rp-season-top-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.rotationpal-module .rp-season-top-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px; height: 44px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, rgba(88,166,255,0.22), rgba(88,166,255,0.06));
+  border: 1px solid rgba(88,166,255,0.40);
+  color: #cfe3ff;
+  font-family: var(--mono);
+  font-size: 14px;
+  font-weight: 800;
+}
+.rotationpal-module .rp-season-top-id { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.rotationpal-module .rp-season-top-name {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 

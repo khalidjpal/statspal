@@ -50,7 +50,10 @@
       "PowerShell($c = Get-Content 'C:\\\\Users\\\\kpal\\\\statspal\\\\src\\\\styles.css'; Write-Output \\('total lines: ' + $c.Count\\); Write-Output '--- last 5 lines ---'; $c[-5..-1] | ForEach-Object { Write-Output $_ })",
       "PowerShell(& \"C:\\\\Program Files\\\\nodejs\\\\npm.cmd\" run lint 2>&1 | Select-Object -Last 40)",
       "PowerShell($c = Get-NetTCPConnection -LocalPort 5174 -State Listen -ErrorAction SilentlyContinue; if \\($c\\) { $c | Select-Object -ExpandProperty OwningProcess -Unique | ForEach-Object { Stop-Process -Id $_ -Force -ErrorAction SilentlyContinue }; \"killed 5174 listener\\(s\\)\" } else { \"nothing on 5174\" })",
-      "Bash(node *)"
+      "Bash(node *)",
+      "Bash(awk 'NR>=8560 && NR<=9700 && /@media/' src/styles.css)",
+      "Bash(awk -F: '$1>8500 && $1<9800')",
+      "Bash(git check-ignore *)"
     ]
   }
 }

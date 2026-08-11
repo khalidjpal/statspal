@@ -9265,6 +9265,376 @@ td.dash-stand-team .dash-stand-name {
   box-shadow: 0 4px 14px rgba(63,185,80,0.45);
 }
 
+/* === Playground substitution flow ======================================
+   Two guided steps in the roster rail. Step 1 (pick who's out) is answered
+   on the court, step 2 (pick who's in) resolves to a candidate list here.
+   The purple accent is the same one the pair chips use, so subs read as one
+   family across the builder. */
+.gpb-subflow {
+  padding: 10px 14px 12px;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+  background: rgba(168,85,247,0.03);
+  transition: background 0.2s ease;
+}
+.gpb-subflow.is-active {
+  background: linear-gradient(180deg, rgba(168,85,247,0.12), rgba(168,85,247,0.02));
+}
+.gpb-subflow-head {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 8px; margin-bottom: 8px;
+}
+.gpb-subflow-title {
+  font-size: 10px; font-weight: 800;
+  letter-spacing: 0.14em;
+  color: #d8b4fe;
+}
+.gpb-subflow-cancel {
+  padding: 3px 9px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 6px;
+  color: #8b949e;
+  font-size: 10px; font-weight: 700;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+.gpb-subflow-cancel:hover { background: rgba(248,81,73,0.20); color: #fff; border-color: rgba(248,81,73,0.45); }
+
+/* One row per step. The numbered chip is the whole affordance — filled when
+   the step is live, ticked when answered, dimmed while it's still locked. */
+.gpb-subflow-step {
+  display: flex; align-items: center; gap: 8px;
+  padding: 4px 0;
+  font-size: 11.5px;
+  line-height: 1.35;
+}
+.gpb-subflow-stepnum {
+  flex: 0 0 auto;
+  width: 18px; height: 18px;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 10px; font-weight: 800;
+  font-family: 'Space Mono', monospace;
+  border: 1px solid rgba(255,255,255,0.16);
+  background: rgba(255,255,255,0.05);
+  color: #8b949e;
+  transition: all 0.15s ease;
+}
+.gpb-subflow-steptext { color: #8b949e; }
+.gpb-subflow-step.is-current .gpb-subflow-stepnum {
+  background: linear-gradient(135deg, #a855f7, #7c3aed);
+  border-color: rgba(168,85,247,0.75);
+  color: #fff;
+  box-shadow: 0 0 0 3px rgba(168,85,247,0.16);
+}
+.gpb-subflow-step.is-current .gpb-subflow-steptext { color: #e6edf3; }
+.gpb-subflow-step.is-done .gpb-subflow-stepnum {
+  background: rgba(168,85,247,0.16);
+  border-color: rgba(168,85,247,0.45);
+  color: #d8b4fe;
+}
+.gpb-subflow-step.is-waiting { opacity: 0.5; }
+.gpb-subflow-step strong { color: #f0f6fc; font-weight: 800; }
+.gpb-subflow-row { color: #a855f7; font-weight: 700; }
+
+/* Candidate list — name + role tag, one tap to commit. */
+.gpb-subflow-cands {
+  display: flex; flex-direction: column; gap: 4px;
+  margin-top: 8px;
+  max-height: 210px;
+  overflow-y: auto;
+}
+.gpb-subflow-cand {
+  display: flex; align-items: center; gap: 8px;
+  width: 100%;
+  padding: 7px 10px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(168,85,247,0.22);
+  border-radius: 8px;
+  color: #e6edf3;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+.gpb-subflow-cand:hover {
+  background: rgba(168,85,247,0.18);
+  border-color: rgba(168,85,247,0.60);
+  transform: translateX(2px);
+}
+.gpb-subflow-cand-num {
+  flex: 0 0 auto;
+  font-family: 'Space Mono', monospace;
+  font-size: 11px; font-weight: 800;
+  color: #d8b4fe;
+  min-width: 26px;
+}
+.gpb-subflow-cand-name {
+  flex: 1 1 auto;
+  font-weight: 600;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.gpb-subflow-cand-role {
+  flex: 0 0 auto;
+  padding: 2px 7px;
+  background: rgba(168,85,247,0.18);
+  border-radius: 10px;
+  font-size: 9.5px; font-weight: 800;
+  letter-spacing: 0.08em;
+  color: #d8b4fe;
+}
+.gpb-subflow-empty {
+  padding: 8px 10px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: #8b949e;
+  background: rgba(255,255,255,0.03);
+  border-radius: 8px;
+}
+
+/* Confirmed pairs — one scannable line each, incoming player first. */
+.gpb-subflow-pairs {
+  display: flex; flex-direction: column; gap: 3px;
+  margin-top: 10px;
+  padding-top: 9px;
+  border-top: 1px solid rgba(255,255,255,0.07);
+}
+.gpb-subflow-pair {
+  display: flex; align-items: center; gap: 6px;
+  padding: 4px 6px 4px 9px;
+  background: rgba(168,85,247,0.09);
+  border-left: 2px solid rgba(168,85,247,0.55);
+  border-radius: 0 6px 6px 0;
+  font-size: 11px;
+  color: #c9d1d9;
+}
+.gpb-subflow-pair-text { flex: 1 1 auto; line-height: 1.4; }
+.gpb-subflow-pair-text strong { color: #f0f6fc; font-weight: 800; }
+.gpb-subflow-pair-x {
+  flex: 0 0 auto;
+  width: 17px; height: 17px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.08);
+  border: none;
+  color: #8b949e;
+  font-size: 12px; font-weight: 800; line-height: 1;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: all 0.12s ease;
+}
+.gpb-subflow-pair-x:hover { background: rgba(248,81,73,0.45); color: #fff; }
+
+/* Mode switch — "Substitute Now" vs "Front Row / Back Row Pair". */
+.gpb-subflow-modes {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  margin-bottom: 9px;
+  padding: 3px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 9px;
+}
+.gpb-subflow-mode {
+  padding: 6px 6px;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  color: #8b949e;
+  font-size: 10px; font-weight: 700;
+  letter-spacing: 0.04em;
+  line-height: 1.25;
+  cursor: pointer;
+  transition: all 0.14s ease;
+}
+.gpb-subflow-mode:hover { color: #e6edf3; }
+.gpb-subflow-mode.is-on {
+  background: linear-gradient(135deg, rgba(168,85,247,0.30), rgba(124,58,237,0.22));
+  border: 1px solid rgba(168,85,247,0.50);
+  color: #fff;
+  box-shadow: 0 2px 10px rgba(168,85,247,0.20);
+}
+/* Front/Back mode leans cyan so the two modes never blur together. */
+.gpb-subflow.is-fb .gpb-subflow-mode.is-on {
+  background: linear-gradient(135deg, rgba(34,211,238,0.28), rgba(14,165,233,0.20));
+  border-color: rgba(34,211,238,0.50);
+  box-shadow: 0 2px 10px rgba(34,211,238,0.20);
+}
+.gpb-subflow.is-fb.is-active {
+  background: linear-gradient(180deg, rgba(34,211,238,0.10), rgba(34,211,238,0.02));
+}
+.gpb-subflow.is-fb .gpb-subflow-step.is-current .gpb-subflow-stepnum {
+  background: linear-gradient(135deg, #22d3ee, #0ea5e9);
+  border-color: rgba(34,211,238,0.75);
+  box-shadow: 0 0 0 3px rgba(34,211,238,0.16);
+}
+.gpb-subflow.is-fb .gpb-subflow-cand { border-color: rgba(34,211,238,0.22); }
+.gpb-subflow.is-fb .gpb-subflow-cand:hover {
+  background: rgba(34,211,238,0.16);
+  border-color: rgba(34,211,238,0.55);
+}
+.gpb-subflow.is-fb .gpb-subflow-cand-num,
+.gpb-subflow.is-fb .gpb-subflow-cand-role { color: #67e8f9; }
+.gpb-subflow.is-fb .gpb-subflow-cand-role { background: rgba(34,211,238,0.18); }
+.gpb-subflow.is-fb .gpb-subflow-row { color: #22d3ee; }
+
+.gpb-subflow-pairs-label {
+  font-size: 9px; font-weight: 800;
+  letter-spacing: 0.12em;
+  color: #67e8f9;
+  margin-bottom: 4px;
+}
+.gpb-subflow-pair.is-fb {
+  background: rgba(34,211,238,0.09);
+  border-left-color: rgba(34,211,238,0.60);
+}
+
+/* Front/Back crossing confirmation — small, centred, quick to dismiss. */
+.gpb-fb-overlay {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.55);
+  backdrop-filter: blur(3px);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 21000;
+  padding: 20px;
+  animation: gpb-fb-fade 140ms ease;
+}
+@keyframes gpb-fb-fade { from { opacity: 0; } to { opacity: 1; } }
+.gpb-fb-popup {
+  width: 100%;
+  max-width: 340px;
+  background: linear-gradient(180deg, #171b22, #10141a);
+  border: 1px solid rgba(34,211,238,0.38);
+  border-radius: 14px;
+  padding: 16px 18px 14px;
+  box-shadow: 0 24px 60px rgba(0,0,0,0.55), 0 0 0 1px rgba(255,255,255,0.03) inset;
+  animation: gpb-fb-pop 160ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+@keyframes gpb-fb-pop {
+  from { opacity: 0; transform: translateY(8px) scale(0.97); }
+  to   { opacity: 1; transform: none; }
+}
+.gpb-fb-eyebrow {
+  display: flex; align-items: center; justify-content: space-between;
+  font-size: 9.5px; font-weight: 800;
+  letter-spacing: 0.14em;
+  color: #67e8f9;
+  margin-bottom: 8px;
+}
+.gpb-fb-progress {
+  font-family: 'Space Mono', monospace;
+  font-size: 9.5px;
+  color: #8b949e;
+  letter-spacing: 0.04em;
+}
+.gpb-fb-line {
+  font-size: 13px;
+  line-height: 1.5;
+  color: #c9d1d9;
+}
+.gpb-fb-line strong { color: #f0f6fc; font-weight: 800; }
+.gpb-fb-role { color: #67e8f9; font-weight: 700; }
+.gpb-fb-slot {
+  margin-top: 6px;
+  font-family: 'Space Mono', monospace;
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  color: #6e7681;
+}
+.gpb-fb-actions {
+  display: flex; gap: 8px;
+  margin-top: 14px;
+}
+.gpb-fb-btn {
+  flex: 1;
+  padding: 9px 12px;
+  border-radius: 9px;
+  font-size: 12px; font-weight: 700;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition: all 0.13s ease;
+}
+.gpb-fb-cancel {
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.12);
+  color: #8b949e;
+}
+.gpb-fb-cancel:hover { background: rgba(255,255,255,0.10); color: #e6edf3; }
+.gpb-fb-confirm {
+  background: linear-gradient(135deg, #22d3ee, #0284c7);
+  border: 1px solid rgba(34,211,238,0.55);
+  color: #04212b;
+  font-weight: 800;
+  box-shadow: 0 4px 16px rgba(34,211,238,0.28);
+}
+.gpb-fb-confirm:hover { transform: translateY(-1px); box-shadow: 0 6px 22px rgba(34,211,238,0.45); }
+
+@media (max-width: 860px) {
+  .gpb-subflow-modes { grid-template-columns: 1fr; }
+  .gpb-subflow-mode { padding: 8px 6px; }
+  .gpb-fb-popup { max-width: 100%; }
+  .gpb-fb-btn { padding: 11px 12px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .gpb-fb-overlay, .gpb-fb-popup { animation: none; }
+}
+
+[data-theme="light"] .gpb-fb-popup {
+  background: #fff;
+  border-color: rgba(14,165,233,0.35);
+  box-shadow: 0 24px 60px rgba(15,23,42,0.22);
+}
+[data-theme="light"] .gpb-fb-line { color: #24292f; }
+[data-theme="light"] .gpb-fb-line strong { color: #0d1117; }
+[data-theme="light"] .gpb-fb-eyebrow,
+[data-theme="light"] .gpb-fb-role,
+[data-theme="light"] .gpb-subflow-pairs-label { color: #0369a1; }
+[data-theme="light"] .gpb-subflow-mode.is-on { color: #0d1117; }
+[data-theme="light"] .gpb-subflow.is-fb .gpb-subflow-cand-num,
+[data-theme="light"] .gpb-subflow.is-fb .gpb-subflow-cand-role { color: #0369a1; }
+
+/* Court bubble marked as "coming out" during step 2. */
+.gpb-bubble.is-subbing-out {
+  box-shadow:
+    0 0 0 3px rgba(168,85,247,0.85),
+    0 10px 30px rgba(168,85,247,0.55),
+    inset 0 1px 0 rgba(255,255,255,0.22);
+  animation: gpb-subbing-out-pulse 1.6s ease-in-out infinite;
+}
+@keyframes gpb-subbing-out-pulse {
+  0%, 100% { box-shadow: 0 0 0 3px rgba(168,85,247,0.85), 0 10px 30px rgba(168,85,247,0.45), inset 0 1px 0 rgba(255,255,255,0.22); }
+  50%      { box-shadow: 0 0 0 5px rgba(168,85,247,0.55), 0 12px 38px rgba(168,85,247,0.70), inset 0 1px 0 rgba(255,255,255,0.22); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .gpb-bubble.is-subbing-out { animation: none; }
+}
+
+/* Narrow widths: the roster rail stacks under the court, so the candidate
+   list gets its own scroll cap and the pair lines wrap instead of clipping. */
+@media (max-width: 860px) {
+  .gpb-subflow { padding: 9px 12px 11px; }
+  .gpb-subflow-cands { max-height: 168px; }
+  .gpb-subflow-cand { padding: 9px 10px; }
+  .gpb-subflow-pair { font-size: 10.5px; }
+  .gpb-subflow-pair-text { white-space: normal; }
+}
+
+/* Light theme overrides */
+[data-theme="light"] .gpb-subflow { background: rgba(126,34,206,0.04); }
+[data-theme="light"] .gpb-subflow.is-active {
+  background: linear-gradient(180deg, rgba(126,34,206,0.10), rgba(126,34,206,0.02));
+}
+[data-theme="light"] .gpb-subflow-title { color: #7e22ce; }
+[data-theme="light"] .gpb-subflow-step.is-current .gpb-subflow-steptext { color: #0d1117; }
+[data-theme="light"] .gpb-subflow-step strong { color: #0d1117; }
+[data-theme="light"] .gpb-subflow-row { color: #7e22ce; }
+[data-theme="light"] .gpb-subflow-cand { color: #0d1117; background: #fff; }
+[data-theme="light"] .gpb-subflow-cand-num,
+[data-theme="light"] .gpb-subflow-cand-role { color: #7e22ce; }
+[data-theme="light"] .gpb-subflow-pair { color: #24292f; }
+[data-theme="light"] .gpb-subflow-pair-text strong { color: #0d1117; }
+
 /* Light theme overrides */
 [data-theme="light"] .gpb-libero-panel {
   background: linear-gradient(180deg, rgba(251,191,36,0.10), rgba(251,191,36,0.02));

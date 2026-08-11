@@ -320,6 +320,28 @@ function pairSub(pair, playerById) {
   return pairOpponent(pair, starter);
 }
 
+// Row label ("front row" / "back row") used by the Playground sub flow.
+//
+// A player standing on the court has a real answer: read the slot they
+// occupy in the ACTIVE rotation. A bench player has no slot, so we fall
+// back to the row their ROLE plays — L/DS are back-row specialists, every
+// other role is a front-row player. That's what makes a confirmed pair read
+// "Taliyah (back row) → in for Audrenah (front row)": Audrenah's row comes
+// from where she's actually standing, Taliyah's from what she plays.
+function rowLabelFor(pid, effLineup, rotation, playerById) {
+  const idx = (effLineup || []).indexOf(pid);
+  if (idx >= 0) {
+    return FRONT_SLOTS.has(slotInRotation(`P${idx + 1}`, rotation)) ? 'front row' : 'back row';
+  }
+  return isSubRole(playerById?.[pid]) ? 'back row' : 'front row';
+}
+
+// Short role tag for the candidate list ("Taliyah — DS"). Falls back to a
+// neutral word so a player with no position set still reads cleanly.
+function roleTagFor(player) {
+  return (player?.position || '').trim().toUpperCase() || 'PLAYER';
+}
+
 // Detect pending subs when we move from rotation `from` to rotation `to`.
 // Returns array of { pairIdx, pair, starter, sub, fromSlot, toSlot, action }
 // where action is 'sub-in' (libero comes on) or 'sub-out' (starter comes back).
@@ -352,6 +374,43 @@ function detectPendingSubs(plan, fromRot, toRot, playerById) {
     }
   });
   return pending;
+}
+
+// ─── Front Row / Back Row Pairs ────────────────────────────────────────────
+//
+// A pair owns ONE lineup slot: the FRONT player is a starter sitting at some
+// assigned-array index, the BACK player (typically a DS) covers that same
+// index whenever it rotates behind the 3m line. P2/P3/P4 are front row,
+// P1/P6/P5 are back row.
+//
+// Rotation itself is untouched — the whole lineup still rotates normally.
+// This only reports the moment a pair's slot CROSSES the front/back line, so
+// the UI can ask the coach whether to make the swap. Nothing here mutates
+// the plan; the caller decides.
+//
+// Returns [{ pairIdx, atIdx, fromSlot, toSlot, outPid, inPid, toFront }].
+// A crossing where the right player is already on court is skipped, so the
+// coach is never asked to confirm a no-op.
+function detectFrontBackCrossings(plan, fromRot, toRot) {
+  if (!plan || fromRot === toRot) return [];
+  const assigned = plan.assigned_players || [];
+  const liveNow = effectiveLineupAt(plan, fromRot);
+  const out = [];
+  (plan.fb_pairs || []).forEach((pair, pairIdx) => {
+    if (!pair?.front || !pair?.back) return;
+    const atIdx = assigned.indexOf(pair.front);
+    if (atIdx < 0) return; // front player isn't a starter — pair is dormant
+    const fromSlot = slotInRotation(`P${atIdx + 1}`, fromRot);
+    const toSlot   = slotInRotation(`P${atIdx + 1}`, toRot);
+    const wasFront = FRONT_SLOTS.has(fromSlot);
+    const willFront = FRONT_SLOTS.has(toSlot);
+    if (wasFront === willFront) return; // no crossing this transition
+    const inPid = willFront ? pair.front : pair.back;
+    const outPid = liveNow[atIdx];
+    if (!outPid || outPid === inPid) return; // already the right player
+    out.push({ pairIdx, atIdx, fromSlot, toSlot, outPid, inPid, toFront: willFront });
+  });
+  return out;
 }
 
 // ─── Effective lineup (regular subs + libero auto-swap) ──
@@ -659,6 +718,13 @@ function makeNewPlan(teamId, scheduleGameId, name, position) {
     colors: {},
     subs: [],
     confirmed_subs: { 1: [], 2: [], 3: [], 4: [], 5: [], 6: [] },
+    // fb_pairs: [{ front: pid, back: pid }] — Front Row / Back Row Pairs.
+    // The FRONT player is one of the six starters; the BACK player waits on
+    // the bench. Exactly one of them is on court at a time, decided by which
+    // row their shared lineup slot sits in at the current rotation. Unlike
+    // libero_pairs (silent auto-swap), every crossing is confirmed by the
+    // coach before it fires.
+    fb_pairs: [],
     // — Live-set fields (1 gameplan = 1 set) —
     // libero_pairs: { [liberoPid]: [mbPid1, mbPid2] } — each libero may cover up
     // to two MBs. Used by effectiveLineupAt to auto-swap.
@@ -707,6 +773,8 @@ function normalizePlan(p) {
   if (!plan.libero_pairs || typeof plan.libero_pairs !== 'object') plan.libero_pairs = {};
   if (typeof plan.libero_auto !== 'boolean') plan.libero_auto = true;
   if (!Array.isArray(plan.sub_log)) plan.sub_log = [];
+  if (!Array.isArray(plan.fb_pairs)) plan.fb_pairs = [];
+  else plan.fb_pairs = plan.fb_pairs.filter(p => p && p.front && p.back);
   return plan;
 }
 
@@ -899,6 +967,20 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
   //    a player in a pair, hits Confirm to write back to plan.subs.
   //  - `pairPopup` is null when closed, an array of { a, b } drafts otherwise.
   const [pairPopup, setPairPopup] = useState(null);
+
+  // Playground two-step sub flow (replaces the Pair Subs popup there).
+  //   step 1 — tap an on-court bubble  → { outPid, outIdx }
+  //   step 2 — tap a bench candidate   → commit
+  // null when idle. Gameplan/Scheme keep the pairPopup flow untouched.
+  const [subFlow, setSubFlow] = useState(null);
+  // Which thing the two-step flow builds:
+  //   'sub' — a one-off substitution, applied immediately
+  //   'fb'  — a Front Row / Back Row Pair that auto-prompts on every crossing
+  const [subMode, setSubMode] = useState('sub');
+  // Queued Front/Back crossings awaiting confirmation, plus the rotation
+  // change that produced them (staged until the queue is drained).
+  //   { fromRot, toRot, queue: [crossing], cursor }
+  const [fbSwap, setFbSwap] = useState(null);
 
   // Sub popup: { fromRot, toRot, pendingList: [...] }
   const [subPopup, setSubPopup] = useState(null);
@@ -1566,6 +1648,14 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
         return;
       }
 
+      // A real drag just ended. The browser still fires a click after
+      // pointerup, so swallow exactly one — otherwise releasing a drag reads
+      // as a tap and opens the Playground sub flow on the bubble you just
+      // moved. Cleared on the next tick if no click materialises.
+      const swallowClick = (ev) => { ev.stopPropagation(); ev.preventDefault(); };
+      court.addEventListener('click', swallowClick, { capture: true, once: true });
+      setTimeout(() => court.removeEventListener('click', swallowClick, { capture: true }), 0);
+
       // Drop the lift instantly + arm a brief settle transition for the
       // upcoming React re-render that may snap to a slightly-different
       // committed position (e.g. clamped within COURT_BOUNDS).
@@ -1650,6 +1740,132 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
     if (idx < 0 || idx >= subs.length) return;
     subs.splice(idx, 1);
     patchActivePlan({ subs });
+  }
+
+  // ── Playground two-step sub flow ──
+  // Step 1: tap an on-court bubble. Tapping the same bubble again clears it,
+  // so the flow is always escapable without hunting for a cancel button.
+  function startSubFlow(outPid) {
+    if (!activePlan) return;
+    const outIdx = effectiveLineup.indexOf(outPid);
+    if (outIdx < 0) return;
+    // A Front/Back pair is anchored to a STARTER's lineup slot — that's the
+    // index the crossing detector follows around the rotation. Someone who
+    // is only on court via a sub has no slot of their own to anchor to.
+    if (subMode === 'fb' && !(activePlan.assigned_players || []).includes(outPid)) {
+      addToast('Pick a starting player as the front-row half of the pair', 'error');
+      return;
+    }
+    setSelectedRosterId(null);
+    setSubFlow(prev => (prev?.outPid === outPid ? null : { outPid, outIdx }));
+  }
+  function cancelSubFlow() { setSubFlow(null); }
+
+  // ── Front Row / Back Row Pairs ──
+  // Step 2 in 'fb' mode: link the tapped starter (front) to a bench partner
+  // (back). No swap fires now — the pair only acts when a rotation carries
+  // its slot across the front/back line, and even then only on confirm.
+  function createFrontBackPair(backPid) {
+    if (!activePlan || !subFlow) return;
+    const frontPid = subFlow.outPid;
+    if (!backPid || backPid === frontPid) return;
+    const pairs = activePlan.fb_pairs || [];
+    // One pair per player on either side — a slot can't have two partners,
+    // and a DS can't cover two slots at once.
+    const clash = pairs.some(p =>
+      p.front === frontPid || p.back === frontPid ||
+      p.front === backPid  || p.back === backPid,
+    );
+    if (clash) {
+      addToast('One of those players is already in a Front/Back pair', 'error');
+      return;
+    }
+    patchActivePlan({ fb_pairs: [...pairs, { front: frontPid, back: backPid }] });
+    setSubFlow(null);
+  }
+  function removeFrontBackPair(idx) {
+    if (!activePlan) return;
+    const pairs = [...(activePlan.fb_pairs || [])];
+    if (idx < 0 || idx >= pairs.length) return;
+    pairs.splice(idx, 1);
+    patchActivePlan({ fb_pairs: pairs });
+    setSubFlow(null);
+  }
+
+  // Confirm one queued crossing: perform the swap, then move to the next.
+  // Cancel just advances — the player already on court stays put, and the
+  // rotation still completes.
+  function confirmFbSwap() {
+    const item = fbSwap?.queue?.[fbSwap.cursor];
+    if (!item || !activePlan) { advanceFbSwap(); return; }
+    const entry = buildRegularSubEntry(item.atIdx, item.inPid, fbSwap.toRot);
+    if (!entry) {
+      addToast('That swap is not legal under FIVB rules — 6-sub limit or slot conflict', 'error');
+      advanceFbSwap();
+      return;
+    }
+    patchActivePlan({ sub_log: [...(activePlan.sub_log || []), entry] });
+    advanceFbSwap();
+  }
+  // Stable identity (functional setState only) so the Esc handler can depend
+  // on it without re-binding the listener every render.
+  const advanceFbSwap = useCallback(() => {
+    setFbSwap(curr => {
+      if (!curr) return null;
+      const nextCursor = curr.cursor + 1;
+      if (nextCursor >= curr.queue.length) {
+        // Queue drained — now let the rotation change land.
+        setActiveRotation(curr.toRot);
+        return null;
+      }
+      return { ...curr, cursor: nextCursor };
+    });
+  }, []);
+  const cancelFbSwap = advanceFbSwap;
+
+  // Removing a confirmed pair line in Playground reads as "undo this
+  // substitution", so it drops BOTH the pairing and the swaps it produced —
+  // otherwise the line vanishes while the substitute stays on the court.
+  // Only log entries between exactly these two players are dropped, so a
+  // later swap at the same slot involving a third player survives.
+  function removePlaygroundPair(idx) {
+    if (!activePlan) return;
+    const subs = [...(activePlan.subs || [])];
+    if (idx < 0 || idx >= subs.length) return;
+    const { a, b } = subs[idx];
+    subs.splice(idx, 1);
+    const sub_log = (activePlan.sub_log || []).filter(e => !(
+      (e.fromPid === a && e.toPid === b) || (e.fromPid === b && e.toPid === a)
+    ));
+    patchActivePlan({ subs, sub_log });
+    setSubFlow(null);
+  }
+
+  // Step 2: pick who comes in. This both records the PAIR (plan.subs, so the
+  // relationship survives and drives pair lines / bench hints) and applies
+  // the physical sub through the existing engine — one tap, no separate
+  // "now actually sub them in" step.
+  function confirmSubFlow(inPid) {
+    if (!activePlan || !subFlow) return;
+    const { outPid, outIdx } = subFlow;
+    if (!inPid || inPid === outPid) return;
+    const entry = buildRegularSubEntry(outIdx, inPid);
+    if (!entry) {
+      addToast('That substitution is not legal under FIVB rules', 'error');
+      return;
+    }
+    // Record the pair alongside the swap. The engine treats {a,b} as
+    // unordered (pairStarter/pairSub infer direction from roles), so we also
+    // stamp `inPid` — we KNOW who walked on here, and the confirmed-pair line
+    // must never render backwards. Order-independent dedupe.
+    const subs = [...(activePlan.subs || [])];
+    const key = [outPid, inPid].sort().join('::');
+    const exists = subs.some(p => [p.a, p.b].sort().join('::') === key);
+    patchActivePlan({
+      sub_log: [...(activePlan.sub_log || []), entry],
+      ...(exists ? {} : { subs: [...subs, { a: outPid, b: inPid, inPid }] }),
+    });
+    setSubFlow(null);
   }
 
   // ── Libero pairing operations ──
@@ -1840,25 +2056,34 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
   // The new pid is written into the sub_log at the starter's assigned-array
   // index. effectiveLineupAt re-derives the on-court state, the CourtBubble
   // re-mounts at that slot, and the gpb-bubble-sub-in animation fires.
-  function applyRegularSub(atIdx, toPid) {
-    if (!activePlan) return false;
+  // Build the sub_log entry for a legal regular sub, or null if the swap is
+  // illegal / a no-op. Split out from applyRegularSub so the Playground flow
+  // can fold the sub and its pair into ONE patchActivePlan call —
+  // patchActivePlan snapshots `activePlan` from its closure, so two calls in
+  // the same tick would clobber each other.
+  function buildRegularSubEntry(atIdx, toPid, atRot = activeRotation) {
+    if (!activePlan) return null;
     const base = activePlan.assigned_players || [];
     const original = base[atIdx];
-    if (!original) return false;
+    if (!original) return null;
     // FIVB-strict legality check (pair-slot uniqueness, sub limit, etc.)
-    if (!canRegularSub(activePlan, atIdx, toPid)) return false;
+    if (!canRegularSub(activePlan, atIdx, toPid)) return null;
     // Current effective player at this idx (might already be a substitute).
     const fromPid = effectiveLineup[atIdx] || original;
-    if (fromPid === toPid) return false;
-    const entry = {
+    if (fromPid === toPid) return null;
+    return {
       id: cryptoRandomId(),
       kind: 'regular',
       atIdx,
-      atRot: activeRotation,
+      atRot,
       fromPid,
       toPid,
       ts: Date.now(),
     };
+  }
+  function applyRegularSub(atIdx, toPid) {
+    const entry = buildRegularSubEntry(atIdx, toPid);
+    if (!entry) return false;
     patchActivePlan({ sub_log: [...(activePlan.sub_log || []), entry] });
     return true;
   }
@@ -1881,8 +2106,21 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
 
   // ── Court click ──
   function onCourtClick(e) {
-    if (!selectedRosterId || !activePlan || !courtRef.current) return;
+    if (!activePlan || !courtRef.current) return;
     if (e.target.closest('.gpb-bubble-x')) return;
+
+    // Playground step 1: with nothing armed for placement, a tap on an
+    // on-court bubble starts (or clears) a substitution. This only fires on
+    // a genuine click — the drag pipeline swallows the event once the
+    // pointer has actually moved, so dragging a bubble never opens the flow.
+    if (!selectedRosterId) {
+      if (!isPlayground) return;
+      const el = e.target.closest('.gpb-bubble');
+      const pid = el?.dataset?.pid;
+      if (pid) startSubFlow(pid);
+      else cancelSubFlow();
+      return;
+    }
 
     const player = playerById[selectedRosterId];
     if (!player) { setSelectedRosterId(null); return; }
@@ -1972,6 +2210,17 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
   const handleRotationClick = useCallback((targetRotation) => {
     if (targetRotation === activeRotation) return;
     if (!activePlan) { setActiveRotation(targetRotation); return; }
+
+    // Playground: Front/Back pairs own the rotation-crossing prompt. The
+    // legacy plan.subs popup is skipped here so a single rotation click can
+    // never raise two competing dialogs — Gameplan keeps it unchanged.
+    if (isPlayground) {
+      const crossings = detectFrontBackCrossings(activePlan, activeRotation, targetRotation);
+      if (crossings.length === 0) { setActiveRotation(targetRotation); return; }
+      setFbSwap({ fromRot: activeRotation, toRot: targetRotation, queue: crossings, cursor: 0 });
+      return;
+    }
+
     const pending = detectPendingSubs(activePlan, activeRotation, targetRotation, playerById);
     // Filter out pairs that are already confirmed for the target rotation
     const confirmedForTarget = new Set(activePlan.confirmed_subs?.[targetRotation] || []);
@@ -1988,7 +2237,7 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
       queue: unconfirmed,
       cursor: 0,
     });
-  }, [activeRotation, activePlan, playerById]);
+  }, [activeRotation, activePlan, playerById, isPlayground]);
 
   function confirmCurrentSub() {
     if (!subPopup || !activePlan) return;
@@ -2024,6 +2273,25 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
     [effectiveLineup],
   );
   const courtIsFull = onCourtIds.size === 6;
+
+  // Step-2 candidate set: who may come in for the player picked in step 1.
+  // Only bench players, never a libero (they ride the free auto-swap path,
+  // not the 6-per-set regular sub counter), and only swaps the FIVB engine
+  // will actually accept — so tapping a listed name always succeeds.
+  const subCandidates = useMemo(() => {
+    if (!subFlow || !activePlan) return [];
+    const bench = roster.filter(p => !onCourtIds.has(p.id) && !isLibero(p));
+    if (subMode === 'fb') {
+      // Linking a pair swaps nobody yet, so FIVB legality isn't in play —
+      // it's checked at each crossing instead. Just keep every player to a
+      // single pair.
+      const taken = new Set();
+      for (const fp of activePlan.fb_pairs || []) { taken.add(fp.front); taken.add(fp.back); }
+      return bench.filter(p => !taken.has(p.id));
+    }
+    return bench.filter(p => canRegularSub(activePlan, subFlow.outIdx, p.id));
+  }, [subFlow, subMode, activePlan, roster, onCourtIds]);
+
   const allValid = violations.length === 0;
   const tipTarget = useMemo(() => {
     if (!violations.length) return null;
@@ -2051,7 +2319,11 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
         if (presetMgrOpen) { setPresetMgrOpen(false); return; }
         if (presetEditing) { setPresetEditing(null); return; }
         if (subPopup) { setSubPopup(null); return; }
+        // Esc on a crossing prompt reads as "leave the lineup alone" — it
+        // still advances the queue so the rotation completes.
+        if (fbSwap) { cancelFbSwap(); return; }
         if (pairPopup) { setPairPopup(null); return; }
+        if (subFlow) { setSubFlow(null); return; }
         if (selectedRosterId) { setSelectedRosterId(null); return; }
         if (benchDrag) return;
         onClose?.();
@@ -2060,7 +2332,7 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
       // Don't fire shortcut keys while typing.
       if (isTypingTarget(e.target)) return;
       // Don't fire while a modal popup is open.
-      if (subPopup || pairPopup || applyPickerOpen || presetMgrOpen || presetEditing) return;
+      if (subPopup || fbSwap || pairPopup || applyPickerOpen || presetMgrOpen || presetEditing) return;
       if (e.metaKey || e.ctrlKey || e.altKey) return;
 
       if (e.key >= '1' && e.key <= '6') {
@@ -2078,7 +2350,11 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
       window.removeEventListener('keydown', onKey);
       document.body.style.overflow = '';
     };
-  }, [onClose, benchDrag, selectedRosterId, pairPopup, subPopup, applyPickerOpen, presetMgrOpen, presetEditing, handleRotationClick]);
+  }, [onClose, benchDrag, selectedRosterId, pairPopup, subPopup, subFlow, fbSwap, cancelFbSwap, applyPickerOpen, presetMgrOpen, presetEditing, handleRotationClick]);
+
+  // The picked-out player is identified by array index, so a rotation change
+  // or a plan switch would silently re-target the flow. Drop it instead.
+  useEffect(() => { setSubFlow(null); }, [activeRotation, activePlanId]);
 
   return (
     <div className="gpb-overlay" onClick={onClose}>
@@ -2399,6 +2675,7 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
                     onRemovePlayer={removePlayerFromPlan}
                     onBubbleDragStart={onBubbleDragStart}
                     assignedPlayers={effectiveLineup}
+                    subOutPid={subFlow?.outPid || null}
                     courtWidth={courtSize.width}
                     courtHeight={courtSize.height}
                     tooltipRef={tooltipRef}
@@ -2445,10 +2722,27 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
                     onAutoDetect={autoDetectLibero}
                   />
 
-                  {/* One-tap Pair Subs button — opens a popup with auto-detected
-                      pairs and lets the coach swap any player. Existing pair
-                      chips below give a quick at-a-glance view and a one-click
-                      remove without re-opening the popup. */}
+                  {/* Playground: guided two-step sub flow (pick who's OUT on
+                      the court, then who's IN from the bench). Gameplan keeps
+                      the original one-tap Pair Subs popup — same component,
+                      two flows, so neither surface changes under the other. */}
+                  {isPlayground ? (
+                    <SubFlowPanel
+                      subFlow={subFlow}
+                      mode={subMode}
+                      onModeChange={(m) => { setSubMode(m); setSubFlow(null); }}
+                      candidates={subCandidates}
+                      pairs={activePlan.subs || []}
+                      fbPairs={activePlan.fb_pairs || []}
+                      playerById={playerById}
+                      effectiveLineup={effectiveLineup}
+                      activeRotation={activeRotation}
+                      onCancel={cancelSubFlow}
+                      onPickIn={subMode === 'fb' ? createFrontBackPair : confirmSubFlow}
+                      onUnpair={removePlaygroundPair}
+                      onUnpairFb={removeFrontBackPair}
+                    />
+                  ) : (
                   <div className="gpb-pair-bar">
                     <button
                       type="button"
@@ -2482,6 +2776,7 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
                       </div>
                     )}
                   </div>
+                  )}
                   </>)}
 
                   <div className="gpb-roster-hint">
@@ -2489,6 +2784,8 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
                       ? 'Click an empty or filled bubble on the court'
                       : isScheme
                       ? 'Click a name to arm placement · drag a row onto the court to change who fills a role'
+                      : isPlayground
+                      ? 'Click a name to arm placement · tap a court bubble to substitute'
                       : 'Click a name to arm placement · drag a row onto the court'}
                   </div>
                   <div className="gpb-roster-list">
@@ -2515,7 +2812,12 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
                           if (partnerIdx >= 0) { subInIdx = partnerIdx; break; }
                         }
                       }
-                      const canSubIn = subInIdx >= 0 && canRegularSub(activePlan, subInIdx, p.id);
+                      // Playground drives subs from the guided panel above, so
+                      // the per-row SUB IN shortcut is suppressed there — it's
+                      // the "pick the bench player first" path we removed.
+                      const canSubIn = !isPlayground
+                        && subInIdx >= 0
+                        && canRegularSub(activePlan, subInIdx, p.id);
                       return (
                         <BenchRow
                           key={p.id}
@@ -2567,6 +2869,18 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
             queueTotal={subPopup.queue.length}
             onConfirm={confirmCurrentSub}
             onCancel={cancelCurrentSub}
+          />
+        )}
+
+        {/* Front/Back pair crossing confirmation (Playground) */}
+        {fbSwap && fbSwap.queue[fbSwap.cursor] && (
+          <FrontBackSwapPopup
+            item={fbSwap.queue[fbSwap.cursor]}
+            playerById={playerById}
+            queueIndex={fbSwap.cursor + 1}
+            queueTotal={fbSwap.queue.length}
+            onConfirm={confirmFbSwap}
+            onCancel={cancelFbSwap}
           />
         )}
 
@@ -2628,7 +2942,7 @@ function CourtSurface({
   courtRef, activePlan, activeRotation, activeMode,
   currentPositions, playerById, violationByPid,
   tipTarget, onCourtClick, selectedRosterId, benchDragActive, courtIsFull,
-  onRemovePlayer, onBubbleDragStart, assignedPlayers,
+  onRemovePlayer, onBubbleDragStart, assignedPlayers, subOutPid,
   courtWidth, courtHeight, tooltipRef, tooltipTextRef,
 }) {
   const { setNodeRef, isOver } = useDroppable({
@@ -2720,6 +3034,7 @@ function CourtSurface({
               slotLabel={slotLabel}
               courtWidth={courtWidth}
               courtHeight={courtHeight}
+              subbingOut={pid === subOutPid}
               onDragStart={onBubbleDragStart}
               onRemove={onRemovePlayer}
             />
@@ -2819,7 +3134,7 @@ function PairLines({ subs, positions, playerById, courtWidth, courtHeight }) {
 // of sibling bubbles during a drag.
 const CourtBubble = memo(function CourtBubble({
   player, playerId, arrayIdx, position, plan, violation, slotLabel,
-  courtWidth, courtHeight, onDragStart, onRemove,
+  courtWidth, courtHeight, subbingOut, onDragStart, onRemove,
 }) {
   const halfBubble = BUBBLE_RADIUS;
   // Bubble's TOP-LEFT in pixels from the court's top-left.
@@ -2838,6 +3153,7 @@ const CourtBubble = memo(function CourtBubble({
       className={[
         'gpb-bubble',
         violation ? 'is-violation' : '',
+        subbingOut ? 'is-subbing-out' : '',
       ].filter(Boolean).join(' ')}
       style={{
         left: `${px}px`,
@@ -2947,6 +3263,214 @@ function BenchRow({
           SUB IN
         </button>
       )}
+    </div>
+  );
+}
+
+// ─── SubFlowPanel — Playground substitution UI ─────────────────────────────
+//
+// Two guided steps, always in the same order:
+//   STEP 1  tap a bubble on the court  → that player is "coming out"
+//   STEP 2  tap a name from the bench  → they come in, pair recorded
+//
+// Step 2 only exists once step 1 is answered, so the coach is never asked to
+// pick a substitute before knowing who they're replacing. Candidates carry a
+// role tag (“Taliyah — DS”) so the reason the swap makes sense is on screen.
+//
+// Confirmed pairs render one per line, incoming player first:
+//   Taliyah (back row) → in for Audrenah (front row)
+function SubFlowPanel({
+  subFlow, mode, onModeChange, candidates, pairs, fbPairs, playerById,
+  effectiveLineup, activeRotation, onCancel, onPickIn, onUnpair, onUnpairFb,
+}) {
+  const isFb = mode === 'fb';
+  const outPlayer = subFlow ? playerById[subFlow.outPid] : null;
+  const outRow = subFlow
+    ? rowLabelFor(subFlow.outPid, effectiveLineup, activeRotation, playerById)
+    : null;
+  const outName = outPlayer ? (lastNameOf(outPlayer.name) || outPlayer.name) : '';
+
+  return (
+    <div className={`gpb-subflow${subFlow ? ' is-active' : ''}${isFb ? ' is-fb' : ''}`}>
+      <div className="gpb-subflow-head">
+        <span className="gpb-subflow-title">SUBSTITUTIONS</span>
+        {subFlow && (
+          <button
+            type="button"
+            className="gpb-subflow-cancel"
+            onClick={onCancel}
+            title="Cancel (Esc)"
+          >Cancel</button>
+        )}
+      </div>
+
+      {/* Mode switch — a one-off swap, or a standing front/back pairing. */}
+      <div className="gpb-subflow-modes" role="tablist">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={!isFb}
+          className={`gpb-subflow-mode${!isFb ? ' is-on' : ''}`}
+          onClick={() => onModeChange('sub')}
+        >Substitute Now</button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={isFb}
+          className={`gpb-subflow-mode${isFb ? ' is-on' : ''}`}
+          onClick={() => onModeChange('fb')}
+        >Front Row / Back Row Pair</button>
+      </div>
+
+      {/* STEP 1 */}
+      <div className={`gpb-subflow-step${subFlow ? ' is-done' : ' is-current'}`}>
+        <span className="gpb-subflow-stepnum">1</span>
+        {outPlayer ? (
+          <span className="gpb-subflow-steptext">
+            <strong>{outName}</strong>
+            {isFb
+              ? <> is the front-row player<span className="gpb-subflow-row"> · {outRow} now</span></>
+              : <> is coming out<span className="gpb-subflow-row"> · {outRow}</span></>}
+          </span>
+        ) : (
+          <span className="gpb-subflow-steptext">
+            {isFb
+              ? 'Tap the front-row player on the court'
+              : 'Tap a player on the court to sub them out'}
+          </span>
+        )}
+      </div>
+
+      {/* STEP 2 — only reachable once step 1 is answered. */}
+      <div className={`gpb-subflow-step${subFlow ? ' is-current' : ' is-waiting'}`}>
+        <span className="gpb-subflow-stepnum">2</span>
+        <span className="gpb-subflow-steptext">
+          {isFb
+            ? (outPlayer
+                ? <>Pick the back-row partner who covers for <strong>{outName}</strong></>
+                : 'Then pick their back-row partner')
+            : (outPlayer
+                ? <>Pick who goes in for <strong>{outName}</strong></>
+                : 'Then pick who goes in for them')}
+        </span>
+      </div>
+
+      {subFlow && (
+        <div className="gpb-subflow-cands">
+          {candidates.length === 0 ? (
+            <div className="gpb-subflow-empty">
+              {isFb
+                ? 'No eligible partner — every bench player is already in a Front/Back pair.'
+                : 'No eligible substitute — every bench player is either already locked to another sub slot or the 6-sub limit is spent.'}
+            </div>
+          ) : candidates.map(p => (
+            <button
+              key={p.id}
+              type="button"
+              className="gpb-subflow-cand"
+              onClick={() => onPickIn(p.id)}
+            >
+              <span className="gpb-subflow-cand-num">#{p.jersey_number || '?'}</span>
+              <span className="gpb-subflow-cand-name">{p.name}</span>
+              <span className="gpb-subflow-cand-role">{roleTagFor(p)}</span>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Active Front/Back pairs — independent of each other, one line each. */}
+      {fbPairs.length > 0 && (
+        <div className="gpb-subflow-pairs gpb-subflow-fbpairs">
+          <div className="gpb-subflow-pairs-label">FRONT / BACK PAIRS</div>
+          {fbPairs.map((pair, i) => {
+            const pf = playerById[pair.front];
+            const pb = playerById[pair.back];
+            if (!pf || !pb) return null;
+            return (
+              <div key={`fb-${pair.front}::${pair.back}::${i}`} className="gpb-subflow-pair is-fb">
+                <span className="gpb-subflow-pair-text">
+                  <strong>{lastNameOf(pf.name) || pf.name}</strong> (front)
+                  {' ↔ '}
+                  <strong>{lastNameOf(pb.name) || pb.name}</strong> (back)
+                </span>
+                <button
+                  type="button"
+                  className="gpb-subflow-pair-x"
+                  onClick={() => onUnpairFb(i)}
+                  aria-label={`Remove ${pf.name} / ${pb.name} front-back pair`}
+                  title="Remove pair"
+                >×</button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {pairs.length > 0 && (
+        <div className="gpb-subflow-pairs">
+          {pairs.map((pair, i) => {
+            // Pairs written by this flow carry the true direction; older
+            // pairs (auto-detect / gameplan popup) fall back to the
+            // role-based guess.
+            const inPid  = pair.inPid || pairSub(pair, playerById);
+            const outPid = pairOpponent(pair, inPid);
+            const pIn  = playerById[inPid];
+            const pOut = playerById[outPid];
+            if (!pIn || !pOut) return null;
+            return (
+              <div key={`${pair.a}::${pair.b}::${i}`} className="gpb-subflow-pair">
+                <span className="gpb-subflow-pair-text">
+                  <strong>{lastNameOf(pIn.name) || pIn.name}</strong>
+                  {' '}({rowLabelFor(inPid, effectiveLineup, activeRotation, playerById)})
+                  {' → in for '}
+                  <strong>{lastNameOf(pOut.name) || pOut.name}</strong>
+                  {' '}({rowLabelFor(outPid, effectiveLineup, activeRotation, playerById)})
+                </span>
+                <button
+                  type="button"
+                  className="gpb-subflow-pair-x"
+                  onClick={() => onUnpair(i)}
+                  aria-label={`Remove ${pIn.name} / ${pOut.name} pair`}
+                  title="Remove pair"
+                >×</button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── FrontBackSwapPopup ────────────────────────────────────────────────────
+// Small, quick confirmation raised when a rotation carries a Front/Back
+// pair's slot across the front/back line. Deliberately compact — one
+// sentence, two buttons — so it doesn't feel like leaving the court view.
+function FrontBackSwapPopup({ item, playerById, queueIndex, queueTotal, onConfirm, onCancel }) {
+  if (!item) return null;
+  const pIn  = playerById[item.inPid];
+  const pOut = playerById[item.outPid];
+  if (!pIn || !pOut) return null;
+  const movedTo = item.toFront ? 'front row' : 'back row';
+
+  return (
+    <div className="gpb-fb-overlay" onClick={onCancel}>
+      <div className="gpb-fb-popup" onClick={e => e.stopPropagation()}>
+        <div className="gpb-fb-eyebrow">
+          FRONT / BACK PAIR
+          {queueTotal > 1 && <span className="gpb-fb-progress">{queueIndex} / {queueTotal}</span>}
+        </div>
+        <div className="gpb-fb-line">
+          Rotation moved <strong>{lastNameOf(pOut.name) || pOut.name}</strong> to the {movedTo}.
+          {' '}Sub in <strong>{lastNameOf(pIn.name) || pIn.name}</strong>
+          {' '}<span className="gpb-fb-role">({roleTagFor(pIn)})</span>?
+        </div>
+        <div className="gpb-fb-slot">{item.fromSlot} → {item.toSlot}</div>
+        <div className="gpb-fb-actions">
+          <button type="button" className="gpb-fb-btn gpb-fb-cancel" onClick={onCancel}>Cancel</button>
+          <button type="button" className="gpb-fb-btn gpb-fb-confirm" onClick={onConfirm}>Confirm</button>
+        </div>
+      </div>
     </div>
   );
 }

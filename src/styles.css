@@ -6687,6 +6687,15 @@ td.dash-stand-team .dash-stand-name {
   to   { opacity: 1; transform: scale(1) translateY(0); }
 }
 
+/* Playground gets a noticeably larger canvas — three columns need the room.
+   Still capped so it doesn't sprawl on an ultrawide. */
+.gpb-overlay.is-playground { padding: 12px; }
+.gpb-modal.is-playground {
+  width: 97vw;
+  height: 96vh;
+  max-width: 1880px;
+}
+
 /* === Header === */
 .gpb-header {
   display: flex; align-items: flex-start; justify-content: space-between;
@@ -6907,6 +6916,17 @@ td.dash-stand-team .dash-stand-name {
   grid-template-columns: 1fr 320px;
   gap: 14px; padding: 14px 18px 18px;
   min-height: 0;
+}
+
+/* Playground: roster | court | subs. The court takes the slack so it stays
+   the visual centre; the two rails are fixed and scroll independently. */
+.gpb-body.is-playground {
+  grid-template-columns: 232px minmax(0, 1fr) 352px;
+  gap: 16px;
+  padding: 14px 20px 20px;
+}
+.gpb-body.is-playground.roster-collapsed {
+  grid-template-columns: minmax(0, 1fr) 352px;
 }
 .gpb-loading {
   grid-column: 1 / -1;
@@ -7293,6 +7313,201 @@ td.dash-stand-team .dash-stand-name {
   padding: 8px;
   display: flex; flex-direction: column; gap: 4px;
 }
+
+/* ── Roster grouping (Playground) ──
+   On Court vs Bench stated as a heading AND a dot, so the split survives
+   without colour. Blocked rows are greyed and carry their reason inline. */
+.gpb-roster-group {
+  display: flex; align-items: center; gap: 6px;
+  padding: 10px 6px 5px;
+  font-size: 9.5px; font-weight: 800;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: #8b949e;
+}
+.gpb-roster-group:first-child { padding-top: 4px; }
+.gpb-roster-group-dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  flex: 0 0 auto;
+}
+.gpb-roster-group-dot.is-oncourt {
+  background: #3fb950;
+  box-shadow: 0 0 0 2px rgba(63,185,80,0.20);
+}
+.gpb-roster-group-dot.is-bench {
+  background: transparent;
+  border: 1.5px solid #6e7681;
+}
+.gpb-roster-group-count {
+  margin-left: auto;
+  font-family: 'Space Mono', monospace;
+  font-size: 10px; font-weight: 700;
+  letter-spacing: 0.02em;
+  color: #6e7681;
+}
+.gpb-bench-status {
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: #6e7681;
+}
+.gpb-bench-status.is-oncourt { color: #3fb950; }
+.gpb-bench-row.is-blocked {
+  opacity: 0.42;
+  cursor: not-allowed;
+  filter: grayscale(0.7);
+}
+.gpb-bench-row.is-blocked:hover { transform: none; }
+.gpb-bench-blocked {
+  margin-top: 3px;
+  font-size: 9.5px;
+  font-weight: 600;
+  line-height: 1.35;
+  color: #ff9b95;
+  letter-spacing: 0.01em;
+}
+
+/* ── Substitution status glyph ──
+   One small icon at the end of each roster row: chain = paired, padlock =
+   already used this set, faint dot = free. Colour is a reinforcement; the
+   shape and the title/aria label carry the meaning. */
+.gpb-substatus {
+  flex: 0 0 auto;
+  width: 18px; height: 18px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 5px;
+  cursor: help;
+}
+/* Pairing colour by TYPE — blue = Front/Back auto-swap, purple = manual
+   one-time sub. Same two accents the active-pairs badges use, so a player's
+   colour in the roster matches their row in the sub window. */
+.gpb-substatus.is-paired {
+  color: #67e8f9;
+  background: rgba(34,211,238,0.12);
+}
+.gpb-substatus.is-paired.is-pair-fb {
+  color: #67e8f9;
+  background: rgba(34,211,238,0.12);
+}
+.gpb-substatus.is-paired.is-pair-sub {
+  color: #d8b4fe;
+  background: rgba(168,85,247,0.14);
+}
+.gpb-substatus.is-locked {
+  color: #ffb3ae;
+  background: rgba(248,81,73,0.12);
+}
+.gpb-substatus.is-available { color: #6e7681; background: transparent; }
+.gpb-substatus-dot {
+  width: 5px; height: 5px;
+  border-radius: 50%;
+  border: 1.2px solid currentColor;
+  opacity: 0.45;
+}
+/* A used-up bench player reads as spent: name greyed, row de-emphasised. */
+.gpb-bench-row.is-locked .gpb-bench-name { color: #7d8590; }
+.gpb-bench-row.is-locked:not(.on-court) { opacity: 0.78; }
+
+/* Tiny key, shown only once something is paired or locked. */
+.gpb-roster-legend {
+  display: flex; flex-wrap: wrap; gap: 4px 10px;
+  margin-top: 10px;
+  padding: 8px 6px 2px;
+  border-top: 1px solid rgba(255,255,255,0.06);
+  font-size: 9px; font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #6e7681;
+}
+.gpb-roster-legend-item { display: inline-flex; align-items: center; gap: 3px; }
+.gpb-roster-legend .gpb-substatus { width: 15px; height: 15px; }
+
+[data-theme="light"] .gpb-substatus.is-paired,
+[data-theme="light"] .gpb-substatus.is-paired.is-pair-fb { color: #0369a1; }
+[data-theme="light"] .gpb-substatus.is-paired.is-pair-sub { color: #6b21a8; }
+[data-theme="light"] .gpb-bench-pair.is-pair-fb  { color: #0369a1; }
+[data-theme="light"] .gpb-bench-pair.is-pair-sub { color: #6b21a8; }
+[data-theme="light"] .gpb-bench-pair-type { background: rgba(15,23,42,0.08); }
+[data-theme="light"] .gpb-substatus.is-locked { color: #a40e26; }
+[data-theme="light"] .gpb-bench-row.is-locked .gpb-bench-name { color: #6e7781; }
+
+/* Set badge + New Set control in the sub counter bar. */
+.gpb-set-badge {
+  flex: 0 0 auto;
+  padding: 2px 7px;
+  border-radius: 4px;
+  background: rgba(88,166,255,0.14);
+  border: 1px solid rgba(88,166,255,0.32);
+  color: #79c0ff;
+  font-size: 9px; font-weight: 800;
+  letter-spacing: 0.10em;
+}
+.gpb-sub-newset {
+  flex: 0 0 auto;
+  padding: 4px 9px;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.13);
+  border-radius: 6px;
+  color: #c9d1d9;
+  font-size: 10px; font-weight: 700;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+.gpb-sub-newset:hover {
+  background: rgba(88,166,255,0.18);
+  border-color: rgba(88,166,255,0.45);
+  color: #fff;
+}
+
+/* Global first/last name toggle in the Playground toolbar. */
+.gpb-nametoggle {
+  display: inline-flex;
+  padding: 2px;
+  gap: 2px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.09);
+  border-radius: 7px;
+}
+.gpb-nametoggle-btn {
+  padding: 3px 10px;
+  background: transparent;
+  border: none;
+  border-radius: 5px;
+  color: #8b949e;
+  font-size: 10px; font-weight: 700;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+.gpb-nametoggle-btn:hover { color: #e6edf3; }
+.gpb-nametoggle-btn.is-on {
+  background: rgba(88,166,255,0.20);
+  color: #fff;
+  box-shadow: inset 0 0 0 1px rgba(88,166,255,0.32);
+}
+
+[data-theme="light"] .gpb-bench-blocked { color: #a40e26; }
+[data-theme="light"] .gpb-roster-group { color: #57606a; }
+[data-theme="light"] .gpb-nametoggle-btn.is-on { color: #0d1117; }
+[data-theme="light"] .gpb-sub-newset { color: #24292f; }
+
+/* ── Playground three-column rails ──
+   Each rail owns its own scroll so a long roster or a stack of pairs can
+   never push content out of the modal. */
+.gpb-col-roster,
+.gpb-col-subs {
+  min-height: 0;
+  overflow: hidden;
+}
+.gpb-col-subs {
+  overflow-y: auto;
+  display: block;          /* content flows; no flex stretch on the panels */
+  padding-bottom: 4px;
+}
+/* The sub rail is a column of panels, not a roster — drop the roster's
+   internal borders so it reads as one calm surface. */
+.gpb-col-subs .gpb-sub-counter-bar { border-bottom: none; }
+.gpb-col-subs .gpb-subflow { border-bottom: none; }
 .gpb-roster-empty {
   padding: 24px 14px; text-align: center;
   color: #6e7681; font-size: 12px;
@@ -7497,6 +7712,21 @@ td.dash-stand-team .dash-stand-name {
   font-size: 10px;
   letter-spacing: 0.04em;
   white-space: nowrap;
+}
+/* Playground tints the partner note to match the pairing type, and prefixes
+   it with the same "Pair" / "Sub" word the active-pairs list uses so the
+   distinction survives without colour. */
+.gpb-bench-pair.is-pair-fb  { color: rgba(103,232,249,0.90); }
+.gpb-bench-pair.is-pair-sub { color: rgba(216,180,254,0.90); }
+.gpb-bench-pair-type {
+  margin-right: 4px;
+  padding: 0 4px;
+  border-radius: 3px;
+  background: rgba(255,255,255,0.10);
+  font-size: 8.5px; font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  /* colour inherits from .is-pair-fb / .is-pair-sub on the parent */
 }
 
 /* ── Rotation tab sub-confirm badge ── */
@@ -9301,42 +9531,17 @@ td.dash-stand-team .dash-stand-name {
 }
 .gpb-subflow-cancel:hover { background: rgba(248,81,73,0.20); color: #fff; border-color: rgba(248,81,73,0.45); }
 
-/* One row per step. The numbered chip is the whole affordance — filled when
-   the step is live, ticked when answered, dimmed while it's still locked. */
-.gpb-subflow-step {
-  display: flex; align-items: center; gap: 8px;
-  padding: 4px 0;
-  font-size: 11.5px;
-  line-height: 1.35;
+/* The player tapped on the court. No step numbers, no prose — the tag and
+   the candidate list below it carry the whole flow. */
+.gpb-subflow-picked {
+  display: flex; align-items: center; gap: 7px;
+  padding: 7px 0 8px;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
 }
-.gpb-subflow-stepnum {
-  flex: 0 0 auto;
-  width: 18px; height: 18px;
-  border-radius: 50%;
-  display: flex; align-items: center; justify-content: center;
-  font-size: 10px; font-weight: 800;
-  font-family: 'Space Mono', monospace;
-  border: 1px solid rgba(255,255,255,0.16);
-  background: rgba(255,255,255,0.05);
-  color: #8b949e;
-  transition: all 0.15s ease;
+.gpb-subflow-cands-head {
+  display: flex; align-items: center;
+  padding: 2px 0 1px;
 }
-.gpb-subflow-steptext { color: #8b949e; }
-.gpb-subflow-step.is-current .gpb-subflow-stepnum {
-  background: linear-gradient(135deg, #a855f7, #7c3aed);
-  border-color: rgba(168,85,247,0.75);
-  color: #fff;
-  box-shadow: 0 0 0 3px rgba(168,85,247,0.16);
-}
-.gpb-subflow-step.is-current .gpb-subflow-steptext { color: #e6edf3; }
-.gpb-subflow-step.is-done .gpb-subflow-stepnum {
-  background: rgba(168,85,247,0.16);
-  border-color: rgba(168,85,247,0.45);
-  color: #d8b4fe;
-}
-.gpb-subflow-step.is-waiting { opacity: 0.5; }
-.gpb-subflow-step strong { color: #f0f6fc; font-weight: 800; }
-.gpb-subflow-row { color: #a855f7; font-weight: 700; }
 
 /* Candidate list — name + role tag, one tap to commit. */
 .gpb-subflow-cands {
@@ -9363,26 +9568,24 @@ td.dash-stand-team .dash-stand-name {
   border-color: rgba(168,85,247,0.60);
   transform: translateX(2px);
 }
+.gpb-subflow-cand.is-in {
+  border-color: rgba(63,185,80,0.28);
+}
+.gpb-subflow-cand.is-in:hover {
+  background: rgba(63,185,80,0.14);
+  border-color: rgba(63,185,80,0.55);
+}
 .gpb-subflow-cand-num {
   flex: 0 0 auto;
   font-family: 'Space Mono', monospace;
   font-size: 11px; font-weight: 800;
-  color: #d8b4fe;
+  color: #8b949e;
   min-width: 26px;
 }
 .gpb-subflow-cand-name {
   flex: 1 1 auto;
   font-weight: 600;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-.gpb-subflow-cand-role {
-  flex: 0 0 auto;
-  padding: 2px 7px;
-  background: rgba(168,85,247,0.18);
-  border-radius: 10px;
-  font-size: 9.5px; font-weight: 800;
-  letter-spacing: 0.08em;
-  color: #d8b4fe;
 }
 .gpb-subflow-empty {
   padding: 8px 10px;
@@ -9393,37 +9596,121 @@ td.dash-stand-team .dash-stand-name {
   border-radius: 8px;
 }
 
-/* Confirmed pairs — one scannable line each, incoming player first. */
+/* ── Shared sub-UI vocabulary ───────────────────────────────────────────
+   Two semantic colours only — OUT is rose, IN is green — and every use is
+   paired with a word ("GOING OUT" / "COMING IN"), never colour alone. Pair
+   TYPE is carried by a text badge instead of a third and fourth hue, so the
+   panel stays a small, calm palette. */
+.gpb-rolepill {
+  flex: 0 0 auto;
+  padding: 1px 6px;
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.10);
+  border-radius: 4px;
+  font-size: 9px; font-weight: 800;
+  letter-spacing: 0.07em;
+  color: #9aa4b0;
+  line-height: 1.6;
+  white-space: nowrap;
+}
+.gpb-dirtag {
+  flex: 0 0 auto;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 8.5px; font-weight: 800;
+  letter-spacing: 0.11em;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+.gpb-dirtag.is-out   { background: rgba(248,81,73,0.16);  color: #ff9b95; border: 1px solid rgba(248,81,73,0.32); }
+.gpb-dirtag.is-in    { background: rgba(63,185,80,0.16);  color: #7ee787; border: 1px solid rgba(63,185,80,0.34); }
+.gpb-dirtag.is-front { background: rgba(255,255,255,0.07); color: #b9c2cc; border: 1px solid rgba(255,255,255,0.12); }
+.gpb-dirtag.is-back  { background: rgba(255,255,255,0.07); color: #b9c2cc; border: 1px solid rgba(255,255,255,0.12); }
+
+/* name prominent, number + role + row secondary */
+.gpb-playerline {
+  display: inline-flex; align-items: center; gap: 5px;
+  min-width: 0;
+}
+.gpb-playerline-num {
+  font-family: 'Space Mono', monospace;
+  font-size: 10px; font-weight: 700;
+  color: #6e7681;
+}
+.gpb-playerline-name {
+  font-size: 12px; font-weight: 800;
+  color: #f0f6fc;
+  letter-spacing: 0.01em;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.gpb-playerline.is-out .gpb-playerline-name { color: #ffb3ae; }
+.gpb-playerline.is-in  .gpb-playerline-name { color: #8ff0a4; }
+.gpb-playerline-note {
+  font-size: 9.5px; font-weight: 600;
+  color: #6e7681;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+/* ── Active pairs list ── */
 .gpb-subflow-pairs {
-  display: flex; flex-direction: column; gap: 3px;
-  margin-top: 10px;
-  padding-top: 9px;
+  display: flex; flex-direction: column; gap: 0;
+  margin-top: 12px;
+  padding-top: 8px;
   border-top: 1px solid rgba(255,255,255,0.07);
 }
-.gpb-subflow-pair {
-  display: flex; align-items: center; gap: 6px;
-  padding: 4px 6px 4px 9px;
-  background: rgba(168,85,247,0.09);
-  border-left: 2px solid rgba(168,85,247,0.55);
-  border-radius: 0 6px 6px 0;
-  font-size: 11px;
-  color: #c9d1d9;
+/* No box: rows sit directly on the rail, separated by a hairline only. */
+.gpb-pairrow {
+  display: flex; align-items: center; gap: 8px;
+  padding: 7px 2px;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
 }
-.gpb-subflow-pair-text { flex: 1 1 auto; line-height: 1.4; }
-.gpb-subflow-pair-text strong { color: #f0f6fc; font-weight: 800; }
-.gpb-subflow-pair-x {
+.gpb-pairrow:last-child { border-bottom: none; }
+.gpb-pairrow-type {
   flex: 0 0 auto;
-  width: 17px; height: 17px;
-  border-radius: 50%;
-  background: rgba(255,255,255,0.08);
+  align-self: flex-start;
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: 8.5px; font-weight: 800;
+  letter-spacing: 0.06em;
+  line-height: 1.6;
+  white-space: nowrap;
+}
+.gpb-pairrow-type.is-sub {
+  background: rgba(168,85,247,0.16);
+  border: 1px solid rgba(168,85,247,0.38);
+  color: #d8b4fe;
+}
+.gpb-pairrow-type.is-fb {
+  background: rgba(34,211,238,0.14);
+  border: 1px solid rgba(34,211,238,0.36);
+  color: #67e8f9;
+}
+.gpb-pairrow-body {
+  flex: 1 1 auto;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 4px 7px;
+  min-width: 0;
+}
+.gpb-pairrow-arrow {
+  flex: 0 0 auto;
+  font-size: 9.5px; font-weight: 700;
+  letter-spacing: 0.05em;
+  color: #6e7681;
+}
+.gpb-pairrow-x {
+  flex: 0 0 auto;
+  align-self: flex-start;
+  width: 22px; height: 22px;
+  border-radius: 6px;
+  background: rgba(255,255,255,0.06);
   border: none;
   color: #8b949e;
-  font-size: 12px; font-weight: 800; line-height: 1;
+  font-size: 13px; font-weight: 800; line-height: 1;
   cursor: pointer;
   display: flex; align-items: center; justify-content: center;
   transition: all 0.12s ease;
 }
-.gpb-subflow-pair-x:hover { background: rgba(248,81,73,0.45); color: #fff; }
+.gpb-pairrow-x:hover { background: rgba(248,81,73,0.45); color: #fff; }
 
 /* Mode switch — "Substitute Now" vs "Front Row / Back Row Pair". */
 .gpb-subflow-modes {
@@ -9455,39 +9742,23 @@ td.dash-stand-team .dash-stand-name {
   color: #fff;
   box-shadow: 0 2px 10px rgba(168,85,247,0.20);
 }
-/* Front/Back mode leans cyan so the two modes never blur together. */
+/* Front/Back mode keeps the SAME accent as manual subs — the two are told
+   apart by their labels and the F/B PAIR badge, not by repainting the whole
+   panel. Only the active tab's tint shifts, and only slightly. */
 .gpb-subflow.is-fb .gpb-subflow-mode.is-on {
-  background: linear-gradient(135deg, rgba(34,211,238,0.28), rgba(14,165,233,0.20));
-  border-color: rgba(34,211,238,0.50);
-  box-shadow: 0 2px 10px rgba(34,211,238,0.20);
+  background: linear-gradient(135deg, rgba(34,211,238,0.24), rgba(14,165,233,0.16));
+  border-color: rgba(34,211,238,0.45);
+  box-shadow: 0 2px 10px rgba(34,211,238,0.14);
 }
 .gpb-subflow.is-fb.is-active {
-  background: linear-gradient(180deg, rgba(34,211,238,0.10), rgba(34,211,238,0.02));
+  background: linear-gradient(180deg, rgba(34,211,238,0.07), rgba(34,211,238,0.015));
 }
-.gpb-subflow.is-fb .gpb-subflow-step.is-current .gpb-subflow-stepnum {
-  background: linear-gradient(135deg, #22d3ee, #0ea5e9);
-  border-color: rgba(34,211,238,0.75);
-  box-shadow: 0 0 0 3px rgba(34,211,238,0.16);
-}
-.gpb-subflow.is-fb .gpb-subflow-cand { border-color: rgba(34,211,238,0.22); }
-.gpb-subflow.is-fb .gpb-subflow-cand:hover {
-  background: rgba(34,211,238,0.16);
-  border-color: rgba(34,211,238,0.55);
-}
-.gpb-subflow.is-fb .gpb-subflow-cand-num,
-.gpb-subflow.is-fb .gpb-subflow-cand-role { color: #67e8f9; }
-.gpb-subflow.is-fb .gpb-subflow-cand-role { background: rgba(34,211,238,0.18); }
-.gpb-subflow.is-fb .gpb-subflow-row { color: #22d3ee; }
 
 .gpb-subflow-pairs-label {
   font-size: 9px; font-weight: 800;
   letter-spacing: 0.12em;
-  color: #67e8f9;
-  margin-bottom: 4px;
-}
-.gpb-subflow-pair.is-fb {
-  background: rgba(34,211,238,0.09);
-  border-left-color: rgba(34,211,238,0.60);
+  color: #6e7681;
+  margin-bottom: 2px;
 }
 
 /* Front/Back crossing confirmation — small, centred, quick to dismiss. */
@@ -9528,29 +9799,55 @@ td.dash-stand-team .dash-stand-name {
   color: #8b949e;
   letter-spacing: 0.04em;
 }
-.gpb-fb-line {
-  font-size: 13px;
+/* WHY this popup appeared — the rotation event, stated plainly. */
+.gpb-fb-why {
+  font-size: 11.5px;
   line-height: 1.5;
-  color: #c9d1d9;
+  color: #8b949e;
 }
-.gpb-fb-line strong { color: #f0f6fc; font-weight: 800; }
-.gpb-fb-role { color: #67e8f9; font-weight: 700; }
-.gpb-fb-slot {
-  margin-top: 6px;
+.gpb-fb-why strong {
+  color: #c9d1d9;
+  font-weight: 700;
   font-family: 'Space Mono', monospace;
-  font-size: 10.5px;
-  letter-spacing: 0.06em;
+  font-size: 11px;
+}
+/* WHO — two clearly separated rows, same OUT/IN vocabulary as the panel. */
+.gpb-fb-swap {
+  margin-top: 12px;
+  display: flex; flex-direction: column;
+  gap: 2px;
+}
+.gpb-fb-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 9px 10px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+}
+.gpb-fb-row.is-out {
+  background: rgba(248,81,73,0.09);
+  border-color: rgba(248,81,73,0.24);
+}
+.gpb-fb-row.is-in {
+  background: rgba(63,185,80,0.09);
+  border-color: rgba(63,185,80,0.26);
+}
+.gpb-fb-arrow {
+  text-align: center;
+  font-size: 12px;
+  line-height: 1;
   color: #6e7681;
+  padding: 1px 0;
 }
 .gpb-fb-actions {
   display: flex; gap: 8px;
-  margin-top: 14px;
+  margin-top: 16px;
 }
 .gpb-fb-btn {
   flex: 1;
-  padding: 9px 12px;
+  min-height: 44px;
+  padding: 11px 12px;
   border-radius: 9px;
-  font-size: 12px; font-weight: 700;
+  font-size: 12.5px; font-weight: 700;
   letter-spacing: 0.04em;
   cursor: pointer;
   transition: all 0.13s ease;
@@ -9574,7 +9871,10 @@ td.dash-stand-team .dash-stand-name {
   .gpb-subflow-modes { grid-template-columns: 1fr; }
   .gpb-subflow-mode { padding: 8px 6px; }
   .gpb-fb-popup { max-width: 100%; }
-  .gpb-fb-btn { padding: 11px 12px; }
+  /* Stack each pair row's two players so names never truncate on a phone. */
+  .gpb-pairrow-body { flex-direction: column; align-items: flex-start; gap: 3px; }
+  .gpb-pairrow-arrow { padding-left: 2px; }
+  .gpb-pairrow-x { width: 26px; height: 26px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .gpb-fb-overlay, .gpb-fb-popup { animation: none; }
@@ -9585,14 +9885,20 @@ td.dash-stand-team .dash-stand-name {
   border-color: rgba(14,165,233,0.35);
   box-shadow: 0 24px 60px rgba(15,23,42,0.22);
 }
-[data-theme="light"] .gpb-fb-line { color: #24292f; }
-[data-theme="light"] .gpb-fb-line strong { color: #0d1117; }
-[data-theme="light"] .gpb-fb-eyebrow,
-[data-theme="light"] .gpb-fb-role,
-[data-theme="light"] .gpb-subflow-pairs-label { color: #0369a1; }
+[data-theme="light"] .gpb-fb-why { color: #57606a; }
+[data-theme="light"] .gpb-fb-why strong { color: #0d1117; }
 [data-theme="light"] .gpb-subflow-mode.is-on { color: #0d1117; }
-[data-theme="light"] .gpb-subflow.is-fb .gpb-subflow-cand-num,
-[data-theme="light"] .gpb-subflow.is-fb .gpb-subflow-cand-role { color: #0369a1; }
+[data-theme="light"] .gpb-playerline-name { color: #0d1117; }
+[data-theme="light"] .gpb-playerline.is-out .gpb-playerline-name { color: #a40e26; }
+[data-theme="light"] .gpb-playerline.is-in  .gpb-playerline-name { color: #116329; }
+[data-theme="light"] .gpb-rolepill { color: #57606a; background: rgba(15,23,42,0.05); border-color: rgba(15,23,42,0.12); }
+[data-theme="light"] .gpb-dirtag.is-out { color: #a40e26; }
+[data-theme="light"] .gpb-dirtag.is-in  { color: #116329; }
+[data-theme="light"] .gpb-dirtag.is-front,
+[data-theme="light"] .gpb-dirtag.is-back { color: #57606a; background: rgba(15,23,42,0.05); border-color: rgba(15,23,42,0.12); }
+[data-theme="light"] .gpb-pairrow { background: #fff; border-color: #e6e9ee; }
+[data-theme="light"] .gpb-pairrow-type.is-sub { color: #6b21a8; }
+[data-theme="light"] .gpb-pairrow-type.is-fb  { color: #0369a1; }
 
 /* Court bubble marked as "coming out" during step 2. */
 .gpb-bubble.is-subbing-out {
@@ -9615,9 +9921,31 @@ td.dash-stand-team .dash-stand-name {
 @media (max-width: 860px) {
   .gpb-subflow { padding: 9px 12px 11px; }
   .gpb-subflow-cands { max-height: 168px; }
-  .gpb-subflow-cand { padding: 9px 10px; }
-  .gpb-subflow-pair { font-size: 10.5px; }
-  .gpb-subflow-pair-text { white-space: normal; }
+  .gpb-subflow-cand { padding: 10px; min-height: 42px; }
+}
+
+/* ── Playground narrow widths ──
+   Three columns can't fit, so they stack: court first (it's the subject),
+   then the sub window (what you act on), then the roster. The modal itself
+   scrolls so nothing is cut off. */
+@media (max-width: 1080px) {
+  .gpb-overlay.is-playground { padding: 8px; }
+  .gpb-modal.is-playground { width: 100%; height: 97vh; }
+  .gpb-body.is-playground,
+  .gpb-body.is-playground.roster-collapsed {
+    grid-template-columns: minmax(0, 1fr);
+    grid-auto-rows: min-content;
+    overflow-y: auto;
+    gap: 12px;
+    padding: 12px 12px 16px;
+  }
+  .gpb-body.is-playground .gpb-court-wrap { order: 1; min-height: 60vh; }
+  .gpb-body.is-playground .gpb-col-subs   { order: 2; overflow: visible; }
+  .gpb-body.is-playground .gpb-col-roster { order: 3; }
+  /* Rails size to their content once stacked instead of fighting for height. */
+  .gpb-body.is-playground .gpb-col-roster,
+  .gpb-body.is-playground .gpb-col-subs { max-height: none; }
+  .gpb-body.is-playground .gpb-roster-list { max-height: 320px; }
 }
 
 /* Light theme overrides */
@@ -9626,14 +9954,8 @@ td.dash-stand-team .dash-stand-name {
   background: linear-gradient(180deg, rgba(126,34,206,0.10), rgba(126,34,206,0.02));
 }
 [data-theme="light"] .gpb-subflow-title { color: #7e22ce; }
-[data-theme="light"] .gpb-subflow-step.is-current .gpb-subflow-steptext { color: #0d1117; }
-[data-theme="light"] .gpb-subflow-step strong { color: #0d1117; }
-[data-theme="light"] .gpb-subflow-row { color: #7e22ce; }
 [data-theme="light"] .gpb-subflow-cand { color: #0d1117; background: #fff; }
-[data-theme="light"] .gpb-subflow-cand-num,
-[data-theme="light"] .gpb-subflow-cand-role { color: #7e22ce; }
-[data-theme="light"] .gpb-subflow-pair { color: #24292f; }
-[data-theme="light"] .gpb-subflow-pair-text strong { color: #0d1117; }
+[data-theme="light"] .gpb-subflow-cand-num { color: #57606a; }
 
 /* Light theme overrides */
 [data-theme="light"] .gpb-libero-panel {

@@ -1,4 +1,7 @@
-import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState, useCallback } from 'react';
+import {
+  createContext, useContext, memo, useEffect, useLayoutEffect,
+  useMemo, useRef, useState, useCallback,
+} from 'react';
 import {
   DndContext, DragOverlay, useDraggable, useDroppable,
   PointerSensor, KeyboardSensor, useSensors, useSensor,
@@ -100,6 +103,26 @@ function lastNameOf(name) {
   const parts = (name || '').trim().split(/\s+/);
   return parts.length === 1 ? parts[0] : parts.slice(1).join(' ');
 }
+function firstNameOf(name) {
+  const parts = (name || '').trim().split(/\s+/);
+  return parts[0] || '';
+}
+
+// ─── Global first/last name display ────────────────────────────────────────
+// One switch drives every bubble, every roster row, and every overlap
+// message, so a name never reads one way on the court and another in the
+// warning about it. Context rather than props: CourtBubble is memoised and
+// threading a prop through would churn its identity on every toggle.
+const NameModeContext = createContext('last');
+function nameIn(player, mode) {
+  const full = (player?.name || '').trim();
+  if (!full) return '';
+  return (mode === 'first' ? firstNameOf(full) : lastNameOf(full)) || full;
+}
+function useDisplayName() {
+  const mode = useContext(NameModeContext);
+  return useCallback((player) => nameIn(player, mode), [mode]);
+}
 function fmtDate(s) {
   if (!s) return '';
   return new Date(s + 'T00:00:00').toLocaleDateString('en-US', {
@@ -134,8 +157,20 @@ function clampToCourt(x, y) {
   };
 }
 
+// "Ryan (6)" — the player standing in a slot, tagged with that slot's
+// position number. Falls back to the bare position when the slot is empty so
+// a message is never left dangling.
+function slotTag(slot, slotToPid, playerById, nameMode) {
+  const num = slot.slice(1);
+  const player = playerById?.[slotToPid[slot]];
+  const nm = player ? nameIn(player, nameMode) : '';
+  return nm ? `${nm} (${num})` : `Position ${num}`;
+}
+
 // FIVB overlap rules + libero rule. Returns { playerId, reason } violations.
-function validateFormation(positions, assignedPlayers, rotationN, playerById) {
+// Messages name both players involved so the warning points at people, not
+// coordinates: "Ryan (6) must be to the right of John (5)".
+function validateFormation(positions, assignedPlayers, rotationN, playerById, nameMode = 'last') {
   if (!assignedPlayers?.length) return [];
   const slotToPid = {};
   assignedPlayers.forEach((pid, idx) => {
@@ -146,6 +181,7 @@ function validateFormation(positions, assignedPlayers, rotationN, playerById) {
     const pid = slotToPid[slot];
     return pid ? (positions[pid] || null) : null;
   };
+  const tag = (slot) => slotTag(slot, slotToPid, playerById, nameMode);
   const violations = [];
   const add = (pid, reason) => {
     if (pid && !violations.find(v => v.playerId === pid && v.reason === reason)) {
@@ -155,33 +191,23 @@ function validateFormation(positions, assignedPlayers, rotationN, playerById) {
   for (const [front, back] of [['P4','P5'], ['P3','P6'], ['P2','P1']]) {
     const fp = posOf(front), bp = posOf(back);
     if (fp && bp && fp.y >= bp.y) {
-      add(slotToPid[front], `${front} must stay closer to net than ${back}`);
-      add(slotToPid[back],  `${back} must stay behind ${front}`);
+      add(slotToPid[front], `${tag(front)} must be in front of ${tag(back)}`);
+      add(slotToPid[back],  `${tag(back)} has to be behind ${tag(front)}`);
     }
   }
-  if (posOf('P4') && posOf('P3') && posOf('P4').x >= posOf('P3').x) {
-    add(slotToPid['P4'], 'P4 must stay left of P3');
-    add(slotToPid['P3'], 'P3 must stay right of P4');
-  }
-  if (posOf('P3') && posOf('P2') && posOf('P3').x >= posOf('P2').x) {
-    add(slotToPid['P3'], 'P3 must stay left of P2');
-    add(slotToPid['P2'], 'P2 must stay right of P3');
-  }
-  if (posOf('P5') && posOf('P6') && posOf('P5').x >= posOf('P6').x) {
-    add(slotToPid['P5'], 'P5 must stay left of P6');
-    add(slotToPid['P6'], 'P6 must stay right of P5');
-  }
-  if (posOf('P6') && posOf('P1') && posOf('P6').x >= posOf('P1').x) {
-    add(slotToPid['P6'], 'P6 must stay left of P1');
-    add(slotToPid['P1'], 'P1 must stay right of P6');
+  for (const [left, right] of [['P4','P3'], ['P3','P2'], ['P5','P6'], ['P6','P1']]) {
+    const lp = posOf(left), rp = posOf(right);
+    if (lp && rp && lp.x >= rp.x) {
+      add(slotToPid[left],  `${tag(left)} must be to the left of ${tag(right)}`);
+      add(slotToPid[right], `${tag(right)} must be to the right of ${tag(left)}`);
+    }
   }
   for (const slot of ['P2','P3','P4']) {
     const pid = slotToPid[slot];
     if (!pid) continue;
     const player = playerById[pid];
     if (player && isLibero(player)) {
-      const last = lastNameOf(player.name) || 'Libero';
-      add(pid, `${last} (Libero) must stay in back row`);
+      add(pid, `${tag(slot)} is a libero — must stay in the back row`);
     }
   }
   return violations;
@@ -465,6 +491,131 @@ function effectiveLineupAt(plan, rotation) {
   return arr;
 }
 
+// ─── 12-substitution rule (Playground) ─────────────────────────────────────
+//
+// Standard indoor: a team gets 12 substitutions per SET, and every entry
+// counts — a starter leaving and coming back is two of the twelve. On top of
+// the count, each starter may only ever be replaced by ONE bench player for
+// the whole set: once a substitute enters for Starter A they are A's partner
+// and nobody else's. The two of them may swap back and forth freely.
+//
+// This is a different accounting from the FIVB 6-per-set model that
+// regularSubCount/canRegularSub implement for Gameplan, so it lives
+// alongside rather than replacing it.
+const SET_SUB_LIMIT = 12;
+
+function setSubCount(plan) {
+  return (plan?.sub_log || []).length;
+}
+
+// The assigned-array index a player is bound to this set, or -1 if they
+// haven't taken part in a substitution yet. Starters are bound to their own
+// slot; substitutes are bound by their first appearance.
+function boundSlotIdxFor(plan, pid) {
+  if (!pid) return -1;
+  const starterIdx = (plan?.assigned_players || []).indexOf(pid);
+  if (starterIdx >= 0) return starterIdx;
+  for (const e of plan?.sub_log || []) {
+    if (e.fromPid === pid || e.toPid === pid) return e.atIdx;
+  }
+  return -1;
+}
+
+// Can `candidatePid` enter at slot `atIdx` right now? Returns a reason on
+// refusal so the roster and the picker can both explain themselves.
+function setSubEligibility(plan, atIdx, candidatePid, playerById, nameMode = 'last') {
+  const deny = (reason) => ({ ok: false, reason });
+  if (!plan || atIdx < 0 || atIdx > 5 || !candidatePid) return deny('Not a valid substitution');
+  const assigned = plan.assigned_players || [];
+  const starter = assigned[atIdx];
+  if (!starter) return deny('No starter in this slot');
+
+  const live = effectiveLineupAt(plan, plan.rotation_index || 1);
+  if (live[atIdx] === candidatePid) return deny('Already on court in this slot');
+
+  if (setSubCount(plan) >= SET_SUB_LIMIT) {
+    return deny(`Set limit reached — ${SET_SUB_LIMIT} substitutions used`);
+  }
+
+  // Re-entering the starter is only a substitution if they were subbed out.
+  if (candidatePid === starter) {
+    return (plan.sub_log || []).some(e => e.atIdx === atIdx)
+      ? { ok: true, reason: null }
+      : deny('Already on court');
+  }
+
+  const bound = boundSlotIdxFor(plan, candidatePid);
+  if (bound >= 0 && bound !== atIdx) {
+    const partner = playerById?.[assigned[bound]];
+    const who = partner ? nameIn(partner, nameMode) : 'another starter';
+    return deny(`Already paired with ${who} this set`);
+  }
+  return { ok: true, reason: null };
+}
+
+// Roster substitution status — "can I still use this player for a sub?"
+//
+//   locked    — a non-starter who has already entered this set. Under the
+//               12-sub rule they belong to that one starter and nobody else.
+//   paired    — linked in a pairing (manual sub pair or Front/Back pair) but
+//               not yet committed by an actual entry.
+//   available — free to use.
+//
+// Derived from plan state only, so it re-computes the moment a sub is made,
+// undone, or a new set is started.
+// `pairType` distinguishes the two kinds of pairing so the roster can tint
+// the indicator: 'fb' (Front/Back auto-swap) is blue, 'sub' (manual one-time
+// substitution) is purple — the same two accents the active-pairs list uses.
+// A player in both is shown as 'fb', the stronger, standing relationship.
+function rosterSubStatus(plan, pid, playerById, nameMode = 'last') {
+  const free = {
+    kind: 'available', label: 'Available for a substitution',
+    partner: null, pairType: null, typeLabel: null,
+  };
+  if (!plan || !pid) return free;
+  const assigned = plan.assigned_players || [];
+  const isStarter = assigned.indexOf(pid) >= 0;
+
+  if (!isStarter) {
+    const bound = boundSlotIdxFor(plan, pid);
+    if (bound >= 0) {
+      const starter = playerById?.[assigned[bound]];
+      const who = starter ? nameIn(starter, nameMode) : 'a starter';
+      return {
+        kind: 'locked', label: `Already paired with ${who} this set`,
+        partner: who, pairType: null, typeLabel: null,
+      };
+    }
+  }
+
+  const fbPartners = [];
+  for (const fp of plan.fb_pairs || []) {
+    if (fp.front === pid || fp.back === pid) {
+      const other = playerById?.[fp.front === pid ? fp.back : fp.front];
+      if (other) fbPartners.push(nameIn(other, nameMode));
+    }
+  }
+  const subPartners = [];
+  for (const pr of plan.subs || []) {
+    if (pr.a === pid || pr.b === pid) {
+      const other = playerById?.[pairOpponent(pr, pid)];
+      if (other) subPartners.push(nameIn(other, nameMode));
+    }
+  }
+  if (fbPartners.length || subPartners.length) {
+    const fb = fbPartners.length > 0;
+    const who = [...new Set(fb ? fbPartners : subPartners)].join(', ');
+    return {
+      kind: 'paired',
+      pairType: fb ? 'fb' : 'sub',
+      typeLabel: fb ? 'Pair' : 'Sub',
+      label: fb ? `Front/Back pair with ${who}` : `Sub pair with ${who}`,
+      partner: who,
+    };
+  }
+  return free;
+}
+
 // FIVB sub counter: a TEAM gets 6 regular substitutions per set. Each unique
 // starting array-index that has been mutated by a regular sub counts once,
 // regardless of how many times its starter/substitute swap back and forth
@@ -725,6 +876,9 @@ function makeNewPlan(teamId, scheduleGameId, name, position) {
     // libero_pairs (silent auto-swap), every crossing is confirmed by the
     // coach before it fires.
     fb_pairs: [],
+    // Which set the Playground's 12-substitution budget is currently
+    // tracking. "New Set" clears sub_log/subs and bumps this.
+    set_number: 1,
     // — Live-set fields (1 gameplan = 1 set) —
     // libero_pairs: { [liberoPid]: [mbPid1, mbPid2] } — each libero may cover up
     // to two MBs. Used by effectiveLineupAt to auto-swap.
@@ -775,6 +929,7 @@ function normalizePlan(p) {
   if (!Array.isArray(plan.sub_log)) plan.sub_log = [];
   if (!Array.isArray(plan.fb_pairs)) plan.fb_pairs = [];
   else plan.fb_pairs = plan.fb_pairs.filter(p => p && p.front && p.back);
+  if (!Number.isFinite(plan.set_number) || plan.set_number < 1) plan.set_number = 1;
   return plan;
 }
 
@@ -957,6 +1112,16 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
 
   const [activeRotation, setActiveRotation] = useState(1);
   const [activeMode, setActiveMode] = useState('serve');
+
+  // Global first/last name display. Session-scoped per the spec — the choice
+  // survives navigating around the app but doesn't outlive the tab.
+  const [nameMode, setNameMode] = useState(() => {
+    try { return sessionStorage.getItem('gpb-name-mode') === 'first' ? 'first' : 'last'; }
+    catch { return 'last'; }
+  });
+  useEffect(() => {
+    try { sessionStorage.setItem('gpb-name-mode', nameMode); } catch { /* ignore */ }
+  }, [nameMode]);
 
   // Click-to-place: roster row is "armed".
   const [selectedRosterId, setSelectedRosterId] = useState(null);
@@ -1245,8 +1410,8 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
   // ── Validation against the *committed* positions only (not mid-drag) ──
   const violations = useMemo(() => {
     if (!activePlan) return [];
-    return validateFormation(currentPositions, effectiveLineup, activeRotation, playerById);
-  }, [activePlan, currentPositions, effectiveLineup, activeRotation, playerById]);
+    return validateFormation(currentPositions, effectiveLineup, activeRotation, playerById, nameMode);
+  }, [activePlan, currentPositions, effectiveLineup, activeRotation, playerById, nameMode]);
   const violationByPid = useMemo(() => {
     const m = {};
     for (const v of violations) if (!m[v.playerId]) m[v.playerId] = v.reason;
@@ -1454,6 +1619,16 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
       otherSlots[pid] = slotInRotation(`P${i + 1}`, activeRotation);
     });
 
+    // "Name (n)" for every slot, cached once — the live drag tooltip names
+    // both players in the offending relationship, same as the committed
+    // violation messages.
+    const slotToPidNow = {};
+    assigned.forEach((pid, i) => {
+      if (pid) slotToPidNow[slotInRotation(`P${i + 1}`, activeRotation)] = pid;
+    });
+    const tagBySlot = {};
+    for (const s of SLOTS) tagBySlot[s] = slotTag(s, slotToPidNow, playerById, nameMode);
+
     const draggedIdx = assigned.indexOf(playerId);
     if (draggedIdx < 0) return;
     const draggedSlot = slotInRotation(`P${draggedIdx + 1}`, activeRotation);
@@ -1480,6 +1655,8 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
       otherCenters,
       otherSlots,
       draggedSlot,
+      tagBySlot,
+      draggedName: nameIn(draggedPlayer, nameMode),
       draggedIsLibero: isLibero(draggedPlayer),
       currentX: bubbleRect.left - courtRect.left,
       currentY: bubbleRect.top  - courtRect.top,
@@ -1564,34 +1741,41 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
       const cBySlot = {};
       for (const pid in d.otherSlots) cBySlot[d.otherSlots[pid]] = d.otherCenters[pid];
 
+      // Messages name both players: "Ryan (6) must be to the right of John (5)".
+      const T = d.tagBySlot;
+      const rightOf = (other) => `${T[slot]} must be to the right of ${T[other]}`;
+      const leftOf  = (other) => `${T[slot]} must be to the left of ${T[other]}`;
+      const inFront = (other) => `${T[slot]} must be in front of ${T[other]}`;
+      const behind  = (other) => `${T[slot]} has to be behind ${T[other]}`;
+
       // Side-to-side
       if (slot === 'P2' && cBySlot.P3 && centerX <= cBySlot.P3.x) {
-        violationMsg = 'P2 must stay right of P3';
+        violationMsg = rightOf('P3');
       } else if (slot === 'P4' && cBySlot.P3 && centerX >= cBySlot.P3.x) {
-        violationMsg = 'P4 must stay left of P3';
+        violationMsg = leftOf('P3');
       } else if (slot === 'P3') {
-        if (cBySlot.P4 && centerX <= cBySlot.P4.x) violationMsg = 'P3 must stay right of P4';
-        else if (cBySlot.P2 && centerX >= cBySlot.P2.x) violationMsg = 'P3 must stay left of P2';
+        if (cBySlot.P4 && centerX <= cBySlot.P4.x) violationMsg = rightOf('P4');
+        else if (cBySlot.P2 && centerX >= cBySlot.P2.x) violationMsg = leftOf('P2');
       } else if (slot === 'P1' && cBySlot.P6 && centerX <= cBySlot.P6.x) {
-        violationMsg = 'P1 must stay right of P6';
+        violationMsg = rightOf('P6');
       } else if (slot === 'P5' && cBySlot.P6 && centerX >= cBySlot.P6.x) {
-        violationMsg = 'P5 must stay left of P6';
+        violationMsg = leftOf('P6');
       } else if (slot === 'P6') {
-        if (cBySlot.P5 && centerX <= cBySlot.P5.x) violationMsg = 'P6 must stay right of P5';
-        else if (cBySlot.P1 && centerX >= cBySlot.P1.x) violationMsg = 'P6 must stay left of P1';
+        if (cBySlot.P5 && centerX <= cBySlot.P5.x) violationMsg = rightOf('P5');
+        else if (cBySlot.P1 && centerX >= cBySlot.P1.x) violationMsg = leftOf('P1');
       }
       // Front-back
       if (!violationMsg) {
-        if      (slot === 'P2' && cBySlot.P1 && centerY >= cBySlot.P1.y) violationMsg = 'P2 must stay closer to net than P1';
-        else if (slot === 'P3' && cBySlot.P6 && centerY >= cBySlot.P6.y) violationMsg = 'P3 must stay closer to net than P6';
-        else if (slot === 'P4' && cBySlot.P5 && centerY >= cBySlot.P5.y) violationMsg = 'P4 must stay closer to net than P5';
-        else if (slot === 'P1' && cBySlot.P2 && centerY <= cBySlot.P2.y) violationMsg = 'P1 must stay behind P2';
-        else if (slot === 'P6' && cBySlot.P3 && centerY <= cBySlot.P3.y) violationMsg = 'P6 must stay behind P3';
-        else if (slot === 'P5' && cBySlot.P4 && centerY <= cBySlot.P4.y) violationMsg = 'P5 must stay behind P4';
+        if      (slot === 'P2' && cBySlot.P1 && centerY >= cBySlot.P1.y) violationMsg = inFront('P1');
+        else if (slot === 'P3' && cBySlot.P6 && centerY >= cBySlot.P6.y) violationMsg = inFront('P6');
+        else if (slot === 'P4' && cBySlot.P5 && centerY >= cBySlot.P5.y) violationMsg = inFront('P5');
+        else if (slot === 'P1' && cBySlot.P2 && centerY <= cBySlot.P2.y) violationMsg = behind('P2');
+        else if (slot === 'P6' && cBySlot.P3 && centerY <= cBySlot.P3.y) violationMsg = behind('P3');
+        else if (slot === 'P5' && cBySlot.P4 && centerY <= cBySlot.P4.y) violationMsg = behind('P4');
       }
       // Libero (back row only)
       if (!violationMsg && d.draggedIsLibero && centerY < cr.height / 2) {
-        violationMsg = 'Libero must stay in the back row';
+        violationMsg = `${d.draggedName} is a libero — must stay in the back row`;
       }
 
       d.currentX = x;
@@ -1688,7 +1872,7 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
     court.addEventListener('pointermove', move, { passive: false });
     court.addEventListener('pointerup', up);
     court.addEventListener('pointercancel', up);
-  }, [activePlan, effectiveLineup, currentPositions, activeRotation, playerById]);
+  }, [activePlan, effectiveLineup, currentPositions, activeRotation, playerById, nameMode]);
 
   // Cleanup on unmount.
   useEffect(() => () => {
@@ -2066,8 +2250,12 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
     const base = activePlan.assigned_players || [];
     const original = base[atIdx];
     if (!original) return null;
-    // FIVB-strict legality check (pair-slot uniqueness, sub limit, etc.)
-    if (!canRegularSub(activePlan, atIdx, toPid)) return null;
+    // Playground runs the 12-per-set rule with one locked partner per
+    // starter; gameplan keeps the FIVB 6-pair-slot check.
+    const legal = isPlayground
+      ? setSubEligibility(activePlan, atIdx, toPid, playerById, nameMode).ok
+      : canRegularSub(activePlan, atIdx, toPid);
+    if (!legal) return null;
     // Current effective player at this idx (might already be a substitute).
     const fromPid = effectiveLineup[atIdx] || original;
     if (fromPid === toPid) return null;
@@ -2087,6 +2275,25 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
     patchActivePlan({ sub_log: [...(activePlan.sub_log || []), entry] });
     return true;
   }
+  // Start a fresh set: the 12-substitution budget and every starter↔sub
+  // lock reset. Front/Back pair configuration is a standing setup, not a
+  // per-set consequence, so it survives.
+  function startNewSet() {
+    if (!activePlan) return;
+    const used = setSubCount(activePlan);
+    if (used > 0 && !confirm(
+      `Start set ${(activePlan.set_number || 1) + 1}? This clears ${used} substitution${used === 1 ? '' : 's'} and all starter/sub locks.`,
+    )) return;
+    patchActivePlan({
+      sub_log: [],
+      subs: [],
+      confirmed_subs: { 1: [], 2: [], 3: [], 4: [], 5: [], 6: [] },
+      set_number: (activePlan.set_number || 1) + 1,
+    });
+    setSubFlow(null);
+    addToast(`Set ${(activePlan.set_number || 1) + 1} — substitutions reset`, 'success');
+  }
+
   function undoLastSub() {
     if (!activePlan) return;
     const log = activePlan.sub_log || [];
@@ -2282,15 +2489,47 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
     if (!subFlow || !activePlan) return [];
     const bench = roster.filter(p => !onCourtIds.has(p.id) && !isLibero(p));
     if (subMode === 'fb') {
-      // Linking a pair swaps nobody yet, so FIVB legality isn't in play —
+      // Linking a pair swaps nobody yet, so sub legality isn't in play —
       // it's checked at each crossing instead. Just keep every player to a
       // single pair.
       const taken = new Set();
       for (const fp of activePlan.fb_pairs || []) { taken.add(fp.front); taken.add(fp.back); }
       return bench.filter(p => !taken.has(p.id));
     }
-    return bench.filter(p => canRegularSub(activePlan, subFlow.outIdx, p.id));
-  }, [subFlow, subMode, activePlan, roster, onCourtIds]);
+    return bench.filter(p =>
+      setSubEligibility(activePlan, subFlow.outIdx, p.id, playerById, nameMode).ok,
+    );
+  }, [subFlow, subMode, activePlan, roster, onCourtIds, playerById, nameMode]);
+
+  // Roster eligibility while a substitution is being set up: who can take
+  // this slot, and if not, why. Drives the greyed-out rows on the left.
+  const rosterEligibility = useMemo(() => {
+    const map = {};
+    if (!activePlan || !isPlayground || !subFlow || subMode === 'fb') return map;
+    for (const p of roster) {
+      if (onCourtIds.has(p.id) || isLibero(p)) continue;
+      map[p.id] = setSubEligibility(activePlan, subFlow.outIdx, p.id, playerById, nameMode);
+    }
+    return map;
+  }, [activePlan, isPlayground, subFlow, subMode, roster, onCourtIds, playerById, nameMode]);
+
+  // Per-player substitution status for the roster glyphs. Recomputed from
+  // plan state, so making, undoing, or resetting subs updates it live.
+  const subStatusByPid = useMemo(() => {
+    const map = {};
+    if (!activePlan || !isPlayground) return map;
+    for (const p of roster) {
+      map[p.id] = rosterSubStatus(activePlan, p.id, playerById, nameMode);
+    }
+    return map;
+  }, [activePlan, isPlayground, roster, playerById, nameMode]);
+
+  // The legend only appears once at least one player is off the default
+  // state — an empty roster shouldn't carry a key to nothing.
+  const showStatusLegend = useMemo(
+    () => Object.values(subStatusByPid).some(s => s.kind !== 'available'),
+    [subStatusByPid],
+  );
 
   const allValid = violations.length === 0;
   const tipTarget = useMemo(() => {
@@ -2357,8 +2596,12 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
   useEffect(() => { setSubFlow(null); }, [activeRotation, activePlanId]);
 
   return (
-    <div className="gpb-overlay" onClick={onClose}>
-      <div className="gpb-modal" onClick={e => e.stopPropagation()}>
+    <NameModeContext.Provider value={nameMode}>
+    <div className={`gpb-overlay${isPlayground ? ' is-playground' : ''}`} onClick={onClose}>
+      <div
+        className={`gpb-modal${isPlayground ? ' is-playground' : ''}`}
+        onClick={e => e.stopPropagation()}
+      >
 
         {/* HEADER */}
         <header className="gpb-header">
@@ -2422,6 +2665,26 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
                 >
                   {playgroundSaving ? 'Saving…' : '↓ Save'}
                 </button>
+
+                {/* Global name display — flips every bubble, roster row and
+                    overlap message at once. */}
+                <div className="gpb-nametoggle" role="group" aria-label="Name display">
+                  <button
+                    type="button"
+                    className={`gpb-nametoggle-btn${nameMode === 'first' ? ' is-on' : ''}`}
+                    aria-pressed={nameMode === 'first'}
+                    onClick={() => setNameMode('first')}
+                    title="Show first names on every bubble"
+                  >First</button>
+                  <button
+                    type="button"
+                    className={`gpb-nametoggle-btn${nameMode === 'last' ? ' is-on' : ''}`}
+                    aria-pressed={nameMode === 'last'}
+                    onClick={() => setNameMode('last')}
+                    title="Show last names on every bubble"
+                  >Last</button>
+                </div>
+
                 <button
                   type="button"
                   className="gpb-pg-tool"
@@ -2622,7 +2885,7 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
           onDragCancel={handleDragCancel}
           autoScroll={false}
         >
-          <div className={`gpb-body${rosterCollapsed ? ' roster-collapsed' : ''}`}>
+          <div className={`gpb-body${isPlayground ? ' is-playground' : ''}${rosterCollapsed ? ' roster-collapsed' : ''}`}>
             {loading ? (
               <div className="gpb-loading">Loading plans…</div>
             ) : loadError ? (
@@ -2656,8 +2919,11 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
               }} />
             ) : !activePlan ? (
               <div className="gpb-loading">No plan selected</div>
-            ) : (
-              <>
+            ) : (() => {
+              // The three body pieces are built once and arranged differently
+              // per surface: Playground lays them out as roster | court | subs,
+              // gameplan/scheme keep the original court + combined aside.
+              const courtColumn = (
                 <div className="gpb-court-wrap">
                   <CourtSurface
                     courtRef={courtRef}
@@ -2676,38 +2942,70 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
                     onBubbleDragStart={onBubbleDragStart}
                     assignedPlayers={effectiveLineup}
                     subOutPid={subFlow?.outPid || null}
+                    hideHint={isPlayground}
                     courtWidth={courtSize.width}
                     courtHeight={courtSize.height}
                     tooltipRef={tooltipRef}
                     tooltipTextRef={tooltipTextRef}
                   />
                 </div>
+              );
 
-                {!rosterCollapsed && (
-                <aside className="gpb-roster">
-                  <div className="gpb-roster-head">
-                    <span>ROSTER</span>
-                    <span className="gpb-roster-count">{onCourtIds.size}/6 in plan</span>
-                  </div>
+              const rosterHead = (
+                <div className="gpb-roster-head">
+                  <span>ROSTER</span>
+                  <span className="gpb-roster-count">{onCourtIds.size}/6 in plan</span>
+                </div>
+              );
 
-                  {/* Sub / libero chrome — gameplan & playground only. A scheme
-                      is just the six role positions, so no subs/libero here. */}
-                  {!isScheme && (<>
+              // Sub / libero chrome — gameplan & playground only. A scheme is
+              // just the six role positions, so no subs/libero here.
+              const subChrome = isScheme ? null : (<>
                   {/* FIVB sub counter + undo. Only regular subs count; libero
                       auto-swaps are unlimited and free. */}
                   <div className="gpb-sub-counter-bar">
-                    <span className={`gpb-sub-counter${regularSubCount(activePlan) >= 6 ? ' is-full' : ''}`}>
-                      Subs: <strong>{regularSubCount(activePlan)}</strong>/6
-                    </span>
-                    <button
-                      type="button"
-                      className="gpb-sub-undo"
-                      onClick={undoLastSub}
-                      disabled={(activePlan.sub_log || []).length === 0}
-                      title="Undo last substitution"
-                    >
-                      ↶ Undo
-                    </button>
+                    {isPlayground ? (
+                      <>
+                        <span className="gpb-set-badge" title="Substitution rules apply per set">
+                          SET {activePlan.set_number || 1}
+                        </span>
+                        <span className={`gpb-sub-counter${setSubCount(activePlan) >= SET_SUB_LIMIT ? ' is-full' : ''}`}>
+                          <strong>{setSubCount(activePlan)}</strong>/{SET_SUB_LIMIT} subs
+                        </span>
+                        <button
+                          type="button"
+                          className="gpb-sub-undo"
+                          onClick={undoLastSub}
+                          disabled={(activePlan.sub_log || []).length === 0}
+                          title="Undo last substitution"
+                        >
+                          ↶
+                        </button>
+                        <button
+                          type="button"
+                          className="gpb-sub-newset"
+                          onClick={startNewSet}
+                          title="Clear this set's substitutions and starter/sub locks"
+                        >
+                          New Set
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <span className={`gpb-sub-counter${regularSubCount(activePlan) >= 6 ? ' is-full' : ''}`}>
+                          Subs: <strong>{regularSubCount(activePlan)}</strong>/6
+                        </span>
+                        <button
+                          type="button"
+                          className="gpb-sub-undo"
+                          onClick={undoLastSub}
+                          disabled={(activePlan.sub_log || []).length === 0}
+                          title="Undo last substitution"
+                        >
+                          ↶ Undo
+                        </button>
+                      </>
+                    )}
                   </div>
 
                   {/* Dedicated Libero pairing panel — only shows when a
@@ -2777,22 +3075,23 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
                     )}
                   </div>
                   )}
-                  </>)}
+                  </>);
 
-                  <div className="gpb-roster-hint">
-                    {selectedRosterId
-                      ? 'Click an empty or filled bubble on the court'
-                      : isScheme
-                      ? 'Click a name to arm placement · drag a row onto the court to change who fills a role'
-                      : isPlayground
-                      ? 'Click a name to arm placement · tap a court bubble to substitute'
-                      : 'Click a name to arm placement · drag a row onto the court'}
-                  </div>
-                  <div className="gpb-roster-list">
-                    {roster.length === 0 && (
-                      <div className="gpb-roster-empty">No players on the roster yet.</div>
-                    )}
-                    {roster.map(p => {
+              // Playground drops the instructional line — the columns carry
+              // the meaning now. Gameplan/scheme keep their hint.
+              const rosterHint = isPlayground ? null : (
+                <div className="gpb-roster-hint">
+                  {selectedRosterId
+                    ? 'Click an empty or filled bubble on the court'
+                    : isScheme
+                    ? 'Click a name to arm placement · drag a row onto the court to change who fills a role'
+                    : 'Click a name to arm placement · drag a row onto the court'}
+                </div>
+              );
+
+              // One roster row. Playground groups these under On Court /
+              // Bench headings; the other surfaces keep a single flat list.
+              const renderRosterRow = (p) => {
                       const onCourt = onCourtIds.has(p.id);
                       const idx = (activePlan.assigned_players || []).indexOf(p.id);
                       const isSelected = selectedRosterId === p.id;
@@ -2818,6 +3117,7 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
                       const canSubIn = !isPlayground
                         && subInIdx >= 0
                         && canRegularSub(activePlan, subInIdx, p.id);
+                      const elig = rosterEligibility[p.id];
                       return (
                         <BenchRow
                           key={p.id}
@@ -2830,16 +3130,100 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
                           plan={activePlan}
                           canSubIn={canSubIn}
                           subInIdx={subInIdx}
+                          showStatus={isPlayground}
+                          subStatus={subStatusByPid[p.id]}
+                          blockedReason={elig && !elig.ok ? elig.reason : null}
                           onSubIn={() => applyRegularSub(subInIdx, p.id)}
                           onClick={() => onRosterClick(p)}
                         />
                       );
-                    })}
+              };
+
+              const onCourtRoster = roster.filter(p => onCourtIds.has(p.id));
+              const benchRoster   = roster.filter(p => !onCourtIds.has(p.id));
+
+              const rosterList = isPlayground ? (
+                  <div className="gpb-roster-list">
+                    {roster.length === 0 && (
+                      <div className="gpb-roster-empty">No players on the roster yet.</div>
+                    )}
+                    {onCourtRoster.length > 0 && (
+                      <>
+                        <div className="gpb-roster-group">
+                          <span className="gpb-roster-group-dot is-oncourt" aria-hidden="true" />
+                          On Court
+                          <span className="gpb-roster-group-count">{onCourtRoster.length}</span>
+                        </div>
+                        {onCourtRoster.map(renderRosterRow)}
+                      </>
+                    )}
+                    {benchRoster.length > 0 && (
+                      <>
+                        <div className="gpb-roster-group">
+                          <span className="gpb-roster-group-dot is-bench" aria-hidden="true" />
+                          Bench
+                          <span className="gpb-roster-group-count">{benchRoster.length}</span>
+                        </div>
+                        {benchRoster.map(renderRosterRow)}
+                      </>
+                    )}
+                    {showStatusLegend && (
+                      <div className="gpb-roster-legend">
+                        <span className="gpb-roster-legend-item">
+                          <SubStatusIcon status={{ kind: 'paired', pairType: 'fb', label: 'Front/Back pair' }} /> pair
+                        </span>
+                        <span className="gpb-roster-legend-item">
+                          <SubStatusIcon status={{ kind: 'paired', pairType: 'sub', label: 'Manual sub pair' }} /> sub
+                        </span>
+                        <span className="gpb-roster-legend-item">
+                          <SubStatusIcon status={{ kind: 'locked', label: 'Already used this set' }} /> used
+                        </span>
+                        <span className="gpb-roster-legend-item">
+                          <SubStatusIcon status={{ kind: 'available', label: 'Available' }} /> free
+                        </span>
+                      </div>
+                    )}
                   </div>
-                </aside>
-                )}
-              </>
-            )}
+              ) : (
+                  <div className="gpb-roster-list">
+                    {roster.length === 0 && (
+                      <div className="gpb-roster-empty">No players on the roster yet.</div>
+                    )}
+                    {roster.map(renderRosterRow)}
+                  </div>
+              );
+
+              // Playground: roster | court | subs, as three real columns.
+              if (isPlayground) {
+                return (
+                  <>
+                    {!rosterCollapsed && (
+                      <aside className="gpb-roster gpb-col-roster">
+                        {rosterHead}
+                        {rosterList}
+                      </aside>
+                    )}
+                    {courtColumn}
+                    <aside className="gpb-roster gpb-col-subs">{subChrome}</aside>
+                  </>
+                );
+              }
+
+              // Gameplan / scheme: unchanged court + single combined aside.
+              return (
+                <>
+                  {courtColumn}
+                  {!rosterCollapsed && (
+                    <aside className="gpb-roster">
+                      {rosterHead}
+                      {subChrome}
+                      {rosterHint}
+                      {rosterList}
+                    </aside>
+                  )}
+                </>
+              );
+            })()}
           </div>
 
           {/* Bench → court drags use the DragOverlay so the user sees a
@@ -2933,6 +3317,7 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
         )}
       </div>
     </div>
+    </NameModeContext.Provider>
   );
 }
 
@@ -2942,7 +3327,7 @@ function CourtSurface({
   courtRef, activePlan, activeRotation, activeMode,
   currentPositions, playerById, violationByPid,
   tipTarget, onCourtClick, selectedRosterId, benchDragActive, courtIsFull,
-  onRemovePlayer, onBubbleDragStart, assignedPlayers, subOutPid,
+  onRemovePlayer, onBubbleDragStart, assignedPlayers, subOutPid, hideHint,
   courtWidth, courtHeight, tooltipRef, tooltipTextRef,
 }) {
   const { setNodeRef, isOver } = useDroppable({
@@ -2967,7 +3352,7 @@ function CourtSurface({
         <span className="gpb-court-rot">
           R{activeRotation} · <span className="gpb-court-mode">{activeMode === 'serve' ? 'Serve' : 'Serve Receive'}</span>
         </span>
-        <span className="gpb-court-hint">{hint}</span>
+        {!hideHint && <span className="gpb-court-hint">{hint}</span>}
       </div>
       <div
         ref={(el) => { setNodeRef(el); courtRef.current = el; }}
@@ -3136,6 +3521,7 @@ const CourtBubble = memo(function CourtBubble({
   player, playerId, arrayIdx, position, plan, violation, slotLabel,
   courtWidth, courtHeight, subbingOut, onDragStart, onRemove,
 }) {
+  const dn = useDisplayName();
   const halfBubble = BUBBLE_RADIUS;
   // Bubble's TOP-LEFT in pixels from the court's top-left.
   const px = (position.x / 100) * courtWidth  - halfBubble;
@@ -3165,7 +3551,7 @@ const CourtBubble = memo(function CourtBubble({
     >
       {slotLabel && <div className="gpb-bubble-slot">{slotLabel}</div>}
       <div className="gpb-bubble-num">{player.jersey_number || '?'}</div>
-      <div className="gpb-bubble-name">{lastNameOf(player.name) || player.name}</div>
+      <div className="gpb-bubble-name">{dn(player)}</div>
       <button
         type="button"
         className="gpb-bubble-x"
@@ -3180,24 +3566,67 @@ const CourtBubble = memo(function CourtBubble({
 
 
 function BubblePreview({ player, colorVars, slotLabel }) {
+  const dn = useDisplayName();
   return (
     <div className="gpb-bubble lifted" style={colorVars}>
       {slotLabel && <div className="gpb-bubble-slot">{slotLabel}</div>}
       <div className="gpb-bubble-num">{player.jersey_number || '?'}</div>
-      <div className="gpb-bubble-name">{lastNameOf(player.name) || player.name}</div>
+      <div className="gpb-bubble-name">{dn(player)}</div>
     </div>
+  );
+}
+
+// ─── SubStatusIcon ─────────────────────────────────────────────────────────
+// One small glyph per roster row saying whether the player is still usable
+// for a substitution. Icon + colour + a title/aria label, so the meaning
+// never rests on colour alone. `available` draws a faint hollow dot rather
+// than nothing, which keeps the column aligned and lets "clean" read as a
+// deliberate state instead of a missing one.
+function SubStatusIcon({ status }) {
+  const kind = status?.kind || 'available';
+  const label = status?.label || 'Available for a substitution';
+  // Blue for a Front/Back pair, purple for a manual sub pair. The row's
+  // "Pair"/"Sub" text and this element's label say which regardless.
+  const tint = kind === 'paired' && status?.pairType ? ` is-pair-${status.pairType}` : '';
+  return (
+    <span
+      className={`gpb-substatus is-${kind}${tint}`}
+      title={label}
+      aria-label={label}
+      role="img"
+    >
+      {kind === 'locked' && (
+        <svg viewBox="0 0 24 24" width="11" height="11" aria-hidden="true">
+          <rect x="5" y="11" width="14" height="9" rx="2"
+                fill="none" stroke="currentColor" strokeWidth="2.2" />
+          <path d="M8.5 11V8a3.5 3.5 0 0 1 7 0v3"
+                fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
+        </svg>
+      )}
+      {kind === 'paired' && (
+        <svg viewBox="0 0 24 24" width="12" height="12" aria-hidden="true">
+          <path d="M10 14a4.5 4.5 0 0 0 6.4 0l2.6-2.6a4.5 4.5 0 0 0-6.4-6.4L11.4 6.2"
+                fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
+          <path d="M14 10a4.5 4.5 0 0 0-6.4 0L5 12.6a4.5 4.5 0 0 0 6.4 6.4l1.2-1.2"
+                fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
+        </svg>
+      )}
+      {kind === 'available' && <span className="gpb-substatus-dot" aria-hidden="true" />}
+    </span>
   );
 }
 
 function BenchRow({
   player, isOnCourt, isSelected, pairs, playerById,
-  arrayIdx, plan, canSubIn, subInIdx, onSubIn, onClick,
+  arrayIdx, plan, canSubIn, subInIdx, showStatus, subStatus, blockedReason,
+  onSubIn, onClick,
 }) {
   const { setNodeRef, listeners, attributes, isDragging } = useDraggable({
     id: `bench-${player.id}`,
     data: { kind: 'bench', playerId: player.id, player },
-    disabled: isOnCourt,
+    disabled: isOnCourt || !!blockedReason,
   });
+  const dn = useDisplayName();
   const libero = isLibero(player);
   const colorVars = colorVarsFor(player, arrayIdx, plan);
   // 1:N pair model — collect every partner of this player so we can render a
@@ -3216,39 +3645,67 @@ function BenchRow({
     <div
       ref={setNodeRef}
       role="button"
-      tabIndex={isOnCourt ? -1 : 0}
+      tabIndex={isOnCourt || blockedReason ? -1 : 0}
       aria-pressed={isSelected}
+      aria-disabled={blockedReason ? true : undefined}
       className={[
         'gpb-bench-row',
         isOnCourt ? 'on-court' : '',
         isSelected ? 'selected' : '',
         libero ? 'libero' : '',
         isDragging ? 'is-dragging-row' : '',
+        blockedReason ? 'is-blocked' : '',
+        showStatus && subStatus?.kind === 'locked' ? 'is-locked' : '',
       ].filter(Boolean).join(' ')}
       style={colorVars}
-      onClick={onClick}
-      onKeyDown={onKeyDown}
+      onClick={blockedReason ? undefined : onClick}
+      onKeyDown={blockedReason ? undefined : onKeyDown}
+      title={blockedReason || undefined}
       {...listeners}
       {...attributes}
     >
       <span className="gpb-bench-dot" aria-hidden="true" />
       <div className="gpb-bench-num">{player.jersey_number || '?'}</div>
       <div className="gpb-bench-mid">
-        <div className="gpb-bench-name">{player.name}</div>
+        <div className="gpb-bench-name">{showStatus ? dn(player) : player.name}</div>
         <div className="gpb-bench-meta">
-          {[player.position, player.grade].filter(Boolean).join(' · ') || 'Player'}
-          {partners.length === 1 && (
+          {/* Playground says the status in words as well as by colour. */}
+          {showStatus && (
+            <span className={`gpb-bench-status${isOnCourt ? ' is-oncourt' : ''}`}>
+              {isOnCourt ? 'On court' : 'Bench'}
+            </span>
+          )}
+          {!showStatus && ([player.position, player.grade].filter(Boolean).join(' · ') || 'Player')}
+          {showStatus && player.position && (
+            <span className="gpb-rolepill">{roleTagFor(player)}</span>
+          )}
+          {showStatus && subStatus?.partner && (
+            <span className={`gpb-bench-pair${subStatus.pairType ? ` is-pair-${subStatus.pairType}` : ''}`}>
+              {subStatus.typeLabel && (
+                <span className="gpb-bench-pair-type">{subStatus.typeLabel}</span>
+              )}
+              ↔ {subStatus.partner}
+            </span>
+          )}
+          {!showStatus && partners.length === 1 && (
             <span className="gpb-bench-pair">↔ {lastNameOf(partners[0].name) || partners[0].name}</span>
           )}
-          {partners.length > 1 && (
+          {!showStatus && partners.length > 1 && (
             <span className="gpb-bench-pair" title={partners.map(p => p.name).join(', ')}>
               ↔ {partners.length} subs
             </span>
           )}
         </div>
+        {blockedReason && (
+          <div className="gpb-bench-blocked">{blockedReason}</div>
+        )}
       </div>
-      {libero && <div className="gpb-bench-libero" title="Libero">L</div>}
-      {isOnCourt && <div className="gpb-bench-check" title="On court">✓</div>}
+      {/* Playground: the role pill already marks liberos and the group
+          heading already says on-court, so the row ends with exactly one
+          glyph — the substitution status. */}
+      {!showStatus && libero && <div className="gpb-bench-libero" title="Libero">L</div>}
+      {!showStatus && isOnCourt && <div className="gpb-bench-check" title="On court">✓</div>}
+      {showStatus && <SubStatusIcon status={subStatus} />}
       {!isOnCourt && canSubIn && (
         <button
           type="button"
@@ -3279,6 +3736,28 @@ function BenchRow({
 //
 // Confirmed pairs render one per line, incoming player first:
 //   Taliyah (back row) → in for Audrenah (front row)
+// Small shared pieces so a player reads identically in every sub surface:
+// name prominent, role and row secondary, direction always spelled out in
+// words as well as colour (colour alone is never the only signal).
+function RolePill({ player }) {
+  return <span className="gpb-rolepill">{roleTagFor(player)}</span>;
+}
+function DirTag({ kind, children }) {
+  // kind: 'out' | 'in' | 'front' | 'back'
+  return <span className={`gpb-dirtag is-${kind}`}>{children || kind.toUpperCase()}</span>;
+}
+function PlayerLine({ player, dir, note }) {
+  const dn = useDisplayName();
+  return (
+    <span className={`gpb-playerline${dir ? ` is-${dir}` : ''}`}>
+      <span className="gpb-playerline-num">#{player.jersey_number || '?'}</span>
+      <span className="gpb-playerline-name">{dn(player)}</span>
+      <RolePill player={player} />
+      {note && <span className="gpb-playerline-note">{note}</span>}
+    </span>
+  );
+}
+
 function SubFlowPanel({
   subFlow, mode, onModeChange, candidates, pairs, fbPairs, playerById,
   effectiveLineup, activeRotation, onCancel, onPickIn, onUnpair, onUnpairFb,
@@ -3288,7 +3767,6 @@ function SubFlowPanel({
   const outRow = subFlow
     ? rowLabelFor(subFlow.outPid, effectiveLineup, activeRotation, playerById)
     : null;
-  const outName = outPlayer ? (lastNameOf(outPlayer.name) || outPlayer.name) : '';
 
   return (
     <div className={`gpb-subflow${subFlow ? ' is-active' : ''}${isFb ? ' is-fb' : ''}`}>
@@ -3322,41 +3800,27 @@ function SubFlowPanel({
         >Front Row / Back Row Pair</button>
       </div>
 
-      {/* STEP 1 */}
-      <div className={`gpb-subflow-step${subFlow ? ' is-done' : ' is-current'}`}>
-        <span className="gpb-subflow-stepnum">1</span>
-        {outPlayer ? (
-          <span className="gpb-subflow-steptext">
-            <strong>{outName}</strong>
-            {isFb
-              ? <> is the front-row player<span className="gpb-subflow-row"> · {outRow} now</span></>
-              : <> is coming out<span className="gpb-subflow-row"> · {outRow}</span></>}
-          </span>
-        ) : (
-          <span className="gpb-subflow-steptext">
-            {isFb
-              ? 'Tap the front-row player on the court'
-              : 'Tap a player on the court to sub them out'}
-          </span>
-        )}
-      </div>
-
-      {/* STEP 2 — only reachable once step 1 is answered. */}
-      <div className={`gpb-subflow-step${subFlow ? ' is-current' : ' is-waiting'}`}>
-        <span className="gpb-subflow-stepnum">2</span>
-        <span className="gpb-subflow-steptext">
-          {isFb
-            ? (outPlayer
-                ? <>Pick the back-row partner who covers for <strong>{outName}</strong></>
-                : 'Then pick their back-row partner')
-            : (outPlayer
-                ? <>Pick who goes in for <strong>{outName}</strong></>
-                : 'Then pick who goes in for them')}
-        </span>
-      </div>
+      {/* The selected court player, once tapped. No step numbers and no
+          instructional copy — the tag says which half they are, and the
+          candidate list appearing underneath is the next move. */}
+      {outPlayer && (
+        <div className="gpb-subflow-picked">
+          <DirTag kind={isFb ? 'front' : 'out'}>
+            {isFb ? 'FRONT' : 'OUT'}
+          </DirTag>
+          <PlayerLine
+            player={outPlayer}
+            dir={isFb ? 'front' : 'out'}
+            note={isFb ? `now ${outRow}` : outRow}
+          />
+        </div>
+      )}
 
       {subFlow && (
         <div className="gpb-subflow-cands">
+          <div className="gpb-subflow-cands-head">
+            <DirTag kind={isFb ? 'back' : 'in'}>{isFb ? 'BACK' : 'IN'}</DirTag>
+          </div>
           {candidates.length === 0 ? (
             <div className="gpb-subflow-empty">
               {isFb
@@ -3367,35 +3831,39 @@ function SubFlowPanel({
             <button
               key={p.id}
               type="button"
-              className="gpb-subflow-cand"
+              className={`gpb-subflow-cand${isFb ? '' : ' is-in'}`}
               onClick={() => onPickIn(p.id)}
             >
               <span className="gpb-subflow-cand-num">#{p.jersey_number || '?'}</span>
               <span className="gpb-subflow-cand-name">{p.name}</span>
-              <span className="gpb-subflow-cand-role">{roleTagFor(p)}</span>
+              <RolePill player={p} />
             </button>
           ))}
         </div>
       )}
 
-      {/* Active Front/Back pairs — independent of each other, one line each. */}
-      {fbPairs.length > 0 && (
-        <div className="gpb-subflow-pairs gpb-subflow-fbpairs">
-          <div className="gpb-subflow-pairs-label">FRONT / BACK PAIRS</div>
+      {/* Active pairs. Both lists share one row shape so they scan as a
+          single column; the type badge on the left says which kind each
+          row is without needing colour to carry it. */}
+      {(fbPairs.length > 0 || pairs.length > 0) && (
+        <div className="gpb-subflow-pairs">
+          <div className="gpb-subflow-pairs-label">ACTIVE PAIRS</div>
+
           {fbPairs.map((pair, i) => {
             const pf = playerById[pair.front];
             const pb = playerById[pair.back];
             if (!pf || !pb) return null;
             return (
-              <div key={`fb-${pair.front}::${pair.back}::${i}`} className="gpb-subflow-pair is-fb">
-                <span className="gpb-subflow-pair-text">
-                  <strong>{lastNameOf(pf.name) || pf.name}</strong> (front)
-                  {' ↔ '}
-                  <strong>{lastNameOf(pb.name) || pb.name}</strong> (back)
+              <div key={`fb-${pair.front}::${pair.back}::${i}`} className="gpb-pairrow is-fb">
+                <span className="gpb-pairrow-type is-fb">Pair</span>
+                <span className="gpb-pairrow-body">
+                  <PlayerLine player={pf} dir="front" note="front" />
+                  <span className="gpb-pairrow-arrow" aria-label="swaps with">↔</span>
+                  <PlayerLine player={pb} dir="back" note="back" />
                 </span>
                 <button
                   type="button"
-                  className="gpb-subflow-pair-x"
+                  className="gpb-pairrow-x"
                   onClick={() => onUnpairFb(i)}
                   aria-label={`Remove ${pf.name} / ${pb.name} front-back pair`}
                   title="Remove pair"
@@ -3403,11 +3871,7 @@ function SubFlowPanel({
               </div>
             );
           })}
-        </div>
-      )}
 
-      {pairs.length > 0 && (
-        <div className="gpb-subflow-pairs">
           {pairs.map((pair, i) => {
             // Pairs written by this flow carry the true direction; older
             // pairs (auto-detect / gameplan popup) fall back to the
@@ -3418,17 +3882,24 @@ function SubFlowPanel({
             const pOut = playerById[outPid];
             if (!pIn || !pOut) return null;
             return (
-              <div key={`${pair.a}::${pair.b}::${i}`} className="gpb-subflow-pair">
-                <span className="gpb-subflow-pair-text">
-                  <strong>{lastNameOf(pIn.name) || pIn.name}</strong>
-                  {' '}({rowLabelFor(inPid, effectiveLineup, activeRotation, playerById)})
-                  {' → in for '}
-                  <strong>{lastNameOf(pOut.name) || pOut.name}</strong>
-                  {' '}({rowLabelFor(outPid, effectiveLineup, activeRotation, playerById)})
+              <div key={`${pair.a}::${pair.b}::${i}`} className="gpb-pairrow">
+                <span className="gpb-pairrow-type is-sub">Sub</span>
+                <span className="gpb-pairrow-body">
+                  <PlayerLine
+                    player={pIn}
+                    dir="in"
+                    note={rowLabelFor(inPid, effectiveLineup, activeRotation, playerById)}
+                  />
+                  <span className="gpb-pairrow-arrow">→ in for</span>
+                  <PlayerLine
+                    player={pOut}
+                    dir="out"
+                    note={rowLabelFor(outPid, effectiveLineup, activeRotation, playerById)}
+                  />
                 </span>
                 <button
                   type="button"
-                  className="gpb-subflow-pair-x"
+                  className="gpb-pairrow-x"
                   onClick={() => onUnpair(i)}
                   aria-label={`Remove ${pIn.name} / ${pOut.name} pair`}
                   title="Remove pair"
@@ -3457,18 +3928,32 @@ function FrontBackSwapPopup({ item, playerById, queueIndex, queueTotal, onConfir
     <div className="gpb-fb-overlay" onClick={onCancel}>
       <div className="gpb-fb-popup" onClick={e => e.stopPropagation()}>
         <div className="gpb-fb-eyebrow">
-          FRONT / BACK PAIR
+          <span className="gpb-pairrow-type is-fb">Pair</span>
           {queueTotal > 1 && <span className="gpb-fb-progress">{queueIndex} / {queueTotal}</span>}
         </div>
-        <div className="gpb-fb-line">
-          Rotation moved <strong>{lastNameOf(pOut.name) || pOut.name}</strong> to the {movedTo}.
-          {' '}Sub in <strong>{lastNameOf(pIn.name) || pIn.name}</strong>
-          {' '}<span className="gpb-fb-role">({roleTagFor(pIn)})</span>?
+
+        {/* WHY — the rotation event that triggered this. */}
+        <div className="gpb-fb-why">
+          Rotation moved this slot <strong>{item.fromSlot} → {item.toSlot}</strong>,
+          {' '}into the <strong>{movedTo}</strong>.
         </div>
-        <div className="gpb-fb-slot">{item.fromSlot} → {item.toSlot}</div>
+
+        {/* WHO — same OUT/IN language and colour used across the sub UI. */}
+        <div className="gpb-fb-swap">
+          <div className="gpb-fb-row is-out">
+            <DirTag kind="out">GOING OUT</DirTag>
+            <PlayerLine player={pOut} dir="out" />
+          </div>
+          <div className="gpb-fb-arrow" aria-hidden="true">↓</div>
+          <div className="gpb-fb-row is-in">
+            <DirTag kind="in">COMING IN</DirTag>
+            <PlayerLine player={pIn} dir="in" />
+          </div>
+        </div>
+
         <div className="gpb-fb-actions">
           <button type="button" className="gpb-fb-btn gpb-fb-cancel" onClick={onCancel}>Cancel</button>
-          <button type="button" className="gpb-fb-btn gpb-fb-confirm" onClick={onConfirm}>Confirm</button>
+          <button type="button" className="gpb-fb-btn gpb-fb-confirm" onClick={onConfirm}>Confirm swap</button>
         </div>
       </div>
     </div>
@@ -3787,6 +4272,7 @@ function GameplanLoadError({ error, onRetry }) {
 //     libero on the court in any rotation where a paired MB is in the back
 //     row. When OFF, the libero stays off until the coach turns it back on.
 function LiberoPairingPanel({ roster, liberoPairs, liberoAuto, playerById, onSetPair, onToggleAuto, onAutoDetect }) {
+  const nameMode = useContext(NameModeContext);
   const [picker, setPicker] = useState(null); // { liberoId, slot }
   const liberos = roster.filter(isLibero);
   const mbsOnly = roster.filter(p => ['MB', 'MH', 'M'].includes((p.position || '').toUpperCase().trim()));
@@ -3836,7 +4322,7 @@ function LiberoPairingPanel({ roster, liberoPairs, liberoAuto, playerById, onSet
                       {mb ? (
                         <>
                           <span className="gpb-libero-slot-num">#{mb.jersey_number || '?'}</span>
-                          <span className="gpb-libero-slot-name">{lastNameOf(mb.name) || mb.name}</span>
+                          <span className="gpb-libero-slot-name">{nameIn(mb, nameMode)}</span>
                         </>
                       ) : (
                         <span className="gpb-libero-slot-pick">+ Pick MB</span>

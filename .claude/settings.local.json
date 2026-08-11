@@ -55,7 +55,12 @@
       "Bash(awk -F: '$1>8500 && $1<9800')",
       "Bash(git check-ignore *)",
       "Bash(gh auth *)",
-      "Bash(git stash *)"
+      "Bash(git stash *)",
+      "Bash(git diff *)",
+      "Bash(awk -F: '$1>2900 && $1<3100')",
+      "Bash(awk 'NR>3100 && /^      <\\\\/div>$|^    <\\\\/div>$|^  \\\\\\);$|^}$/ {print NR\": \"$0}' src/components/modals/GameplanBuilderModal.jsx)",
+      "Bash(sed -i \"s/P\\\\[n\\\\]={id:'p'+i,name:n+' Smith',position:'OH'}/P[n]={id:'p'+i,name:n+' '+n+'son',position:'OH'}/\" subrule.mjs)",
+      "Bash(sed -i \"s|check\\('  reason names Amy    ', /Amy/.test|check\\('  reason names Amy    ', /Amyson/.test|\" subrule.mjs)"
     ]
   }
 }

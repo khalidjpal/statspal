@@ -1356,7 +1356,11 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
     // for the duration of this drag, so we cache once.
     const otherCenters = {};   // pid → { x, y } (px in court coords)
     const otherSlots = {};     // pid → 'P1'..'P6'
-    const assigned = activePlan.assigned_players || [];
+    // Use the EFFECTIVE lineup (starters + replayed regular subs + libero
+    // auto-swap), not the raw starters array — a subbed-in player owns the
+    // bubble at that idx, so looking them up in assigned_players would miss
+    // and abort the drag.
+    const assigned = effectiveLineup;
     assigned.forEach((pid, i) => {
       if (!pid || pid === playerId) return;
       const pos = currentPositions[pid];
@@ -1594,7 +1598,7 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
     court.addEventListener('pointermove', move, { passive: false });
     court.addEventListener('pointerup', up);
     court.addEventListener('pointercancel', up);
-  }, [activePlan, currentPositions, activeRotation, playerById]);
+  }, [activePlan, effectiveLineup, currentPositions, activeRotation, playerById]);
 
   // Cleanup on unmount.
   useEffect(() => () => {

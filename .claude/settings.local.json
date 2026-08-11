@@ -53,7 +53,8 @@
       "Bash(node *)",
       "Bash(awk 'NR>=8560 && NR<=9700 && /@media/' src/styles.css)",
       "Bash(awk -F: '$1>8500 && $1<9800')",
-      "Bash(git check-ignore *)"
+      "Bash(git check-ignore *)",
+      "Bash(gh auth *)"
     ]
   }
 }

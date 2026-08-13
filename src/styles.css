@@ -6687,13 +6687,16 @@ td.dash-stand-team .dash-stand-name {
   to   { opacity: 1; transform: scale(1) translateY(0); }
 }
 
-/* Playground gets a noticeably larger canvas — three columns need the room.
-   Still capped so it doesn't sprawl on an ultrawide. */
+/* Playground gets a larger canvas — three columns need the room — but it is
+   bounded by the viewport in BOTH axes so it can never spill off a small
+   laptop. dvh keeps it honest when mobile browser chrome slides away. */
 .gpb-overlay.is-playground { padding: 12px; }
 .gpb-modal.is-playground {
-  width: 97vw;
+  width: min(97vw, 1880px);
   height: 96vh;
-  max-width: 1880px;
+  height: min(96vh, 96dvh);
+  max-width: 100%;
+  max-height: 100%;
 }
 
 /* === Header === */
@@ -6921,12 +6924,234 @@ td.dash-stand-team .dash-stand-name {
 /* Playground: roster | court | subs. The court takes the slack so it stays
    the visual centre; the two rails are fixed and scroll independently. */
 .gpb-body.is-playground {
-  grid-template-columns: 232px minmax(0, 1fr) 352px;
-  gap: 16px;
-  padding: 14px 20px 20px;
+  /* Rails compress on a small laptop instead of pushing the court off the
+     right edge; they stop growing once there's plenty of room. */
+  grid-template-columns:
+    clamp(170px, 15vw, 232px)
+    minmax(0, 1fr)
+    clamp(250px, 24vw, 352px);
+  gap: clamp(10px, 1.2vw, 16px);
+  padding: 14px clamp(12px, 1.5vw, 20px) clamp(12px, 1.5vw, 20px);
+  min-height: 0;
+  overflow: hidden;
 }
 .gpb-body.is-playground.roster-collapsed {
-  grid-template-columns: minmax(0, 1fr) 352px;
+  grid-template-columns: minmax(0, 1fr) clamp(250px, 24vw, 352px);
+}
+/* The court's floor scales with viewport height. The old flat 380px was
+   taller than the space a 1366x768 laptop actually leaves once the header,
+   both toolbars and the body padding are accounted for — the modal clips
+   overflow, so the bottom of the court simply vanished off-screen. */
+/* The floor used to be dictated by the fixed 88px bubble. Now that bubbles
+   size themselves from the court (bubbleSizeFor), spacing is guaranteed at
+   any height, so this is just a "don't squash it to nothing" guard. */
+.gpb-body.is-playground .gpb-court {
+  min-height: clamp(200px, 38vh, 460px);
+  /* On a very wide window the court would otherwise stretch into a letterbox
+     while the rails stay narrow. Cap it near a playing-court proportion and
+     centre it, so extra width becomes margin rather than distortion. */
+  max-width: min(100%, calc((100vh - 190px) * 1.9));
+  margin-inline: auto;
+  width: 100%;
+}
+/* ── Playground slim toolbar ───────────────────────────────────────────────
+   One row replaces what used to be three stacked bands. Only the controls
+   touched constantly live here; the rest is behind the ⋯ menu. Height is
+   driven by the tallest control (~30px) plus a hair of padding. */
+.gpb-slimbar {
+  flex: 0 0 auto;
+  display: flex; align-items: center;
+  gap: clamp(5px, 0.55vw, 9px);
+  padding: clamp(5px, 0.7vh, 9px) clamp(9px, 0.9vw, 14px);
+  border-bottom: 1px solid rgba(88,166,255,0.14);
+  background: linear-gradient(180deg, rgba(168,85,247,0.07), transparent);
+  min-width: 0;
+}
+.gpb-slim-eyebrow {
+  flex: 0 0 auto;
+  font-size: 14px;
+  color: #d8b4fe;
+  line-height: 1;
+}
+.gpb-slim-sep {
+  flex: 0 0 auto;
+  width: 1px; height: 18px;
+  background: rgba(255,255,255,0.10);
+}
+.gpb-slim-spacer { flex: 1 1 auto; min-width: 0; }
+
+/* Rotation pills — number only; the tooltip carries the rest. */
+.gpb-slim-rots { flex: 0 0 auto; display: flex; gap: 3px; }
+.gpb-slim-rot {
+  position: relative;
+  /* Explicit flex centring rather than relying on UA button defaults. The
+     global reset (`* { padding: 0 }`) strips the UA's button padding, so a
+     fixed-height button lays its line box out at the TOP of the content box
+     and the digit rides high; line-height:normal makes it worse. Centring
+     both axes here is deterministic whatever font ends up resolving. */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px; height: 26px;
+  padding: 0;
+  line-height: 1;
+  text-align: center;
+  border-radius: 7px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.08);
+  color: #8b949e;
+  font-family: 'Space Mono', monospace;
+  font-size: 11.5px; font-weight: 700;
+  /* Space Mono's digits carry uneven side bearings; centring the glyph box
+     is what the flex rules above do, and this keeps the baseline metric from
+     nudging it off-centre vertically. */
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+.gpb-slim-rot:hover { color: #e6edf3; border-color: rgba(255,255,255,0.2); }
+.gpb-slim-rot.configured { color: #c9d1d9; border-color: rgba(88,166,255,0.28); }
+.gpb-slim-rot.active {
+  background: linear-gradient(135deg, #1f6feb, #1958c2);
+  border-color: rgba(88,166,255,0.65);
+  color: #fff;
+  box-shadow: 0 0 0 2px rgba(31,111,235,0.20);
+}
+
+/* Serve / Recv segmented control. */
+.gpb-slim-modes {
+  flex: 0 0 auto;
+  display: flex; gap: 2px;
+  padding: 2px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 8px;
+}
+.gpb-slim-mode {
+  padding: 3px 9px;
+  background: transparent;
+  border: none; border-radius: 6px;
+  color: #8b949e;
+  font-size: 10.5px; font-weight: 700;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+.gpb-slim-mode:hover { color: #e6edf3; }
+.gpb-slim-mode.active {
+  background: rgba(88,166,255,0.22);
+  color: #fff;
+  box-shadow: inset 0 0 0 1px rgba(88,166,255,0.32);
+}
+
+.gpb-slim-status {
+  flex: 0 0 auto;
+  padding: 3px 9px;
+  border-radius: 6px;
+  font-size: 10px; font-weight: 800;
+  letter-spacing: 0.07em;
+  white-space: nowrap;
+}
+.gpb-slim-status.ok  { background: rgba(63,185,80,0.15);  border: 1px solid rgba(63,185,80,0.35);  color: #7ee787; }
+.gpb-slim-status.bad { background: rgba(248,81,73,0.15);  border: 1px solid rgba(248,81,73,0.38);  color: #ff9b95; }
+
+.gpb-slim-btn {
+  flex: 0 0 auto;
+  width: 28px; height: 28px;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.10);
+  border-radius: 7px;
+  color: #c9d1d9;
+  font-size: 15px; line-height: 1;
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+.gpb-slim-btn:hover { background: rgba(255,255,255,0.12); color: #fff; }
+.gpb-slim-btn.is-on { background: rgba(88,166,255,0.22); border-color: rgba(88,166,255,0.45); color: #fff; }
+.gpb-slim-close:hover { background: rgba(248,81,73,0.30); border-color: rgba(248,81,73,0.5); }
+
+/* The name editor sits inline rather than stacked under an eyebrow. */
+.gpb-slimbar .gpb-head-title,
+.gpb-slimbar .gpb-head-title-input {
+  font-size: clamp(12px, 1vw, 14.5px);
+  max-width: clamp(100px, 15vw, 250px);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  padding: 2px 4px;
+  margin: 0;
+}
+.gpb-slimbar .gpb-head-title-edit { display: flex; align-items: center; min-width: 0; }
+
+/* ── Overflow menu ── */
+.gpb-slim-more { position: relative; flex: 0 0 auto; }
+.gpb-slimmenu {
+  position: absolute;
+  top: calc(100% + 7px); right: 0;
+  z-index: 12000;
+  width: 250px;
+  padding: 6px;
+  display: flex; flex-direction: column; gap: 1px;
+  background: #12161f;
+  border: 1px solid rgba(88,166,255,0.22);
+  border-radius: 11px;
+  box-shadow: 0 20px 50px rgba(0,0,0,0.6);
+  animation: gpb-pop 0.14s cubic-bezier(0.32, 0.72, 0.45, 1.05);
+}
+.gpb-slimmenu-item {
+  display: block; width: 100%;
+  padding: 8px 10px;
+  background: transparent;
+  border: none; border-radius: 7px;
+  color: #c9d1d9;
+  font-size: 12px; font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.1s ease, color 0.1s ease;
+}
+.gpb-slimmenu-item:hover:not(:disabled) { background: rgba(255,255,255,0.07); color: #fff; }
+.gpb-slimmenu-item:disabled { opacity: 0.4; cursor: not-allowed; }
+.gpb-slimmenu-item.is-primary { color: #7ee787; }
+.gpb-slimmenu-item.is-danger  { color: #ff9b95; }
+.gpb-slimmenu-item.is-danger:hover { background: rgba(248,81,73,0.18); color: #fff; }
+.gpb-slimmenu-sep { height: 1px; margin: 4px 6px; background: rgba(255,255,255,0.07); }
+.gpb-slimmenu-row {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 8px; padding: 5px 10px;
+}
+.gpb-slimmenu-label {
+  font-size: 9.5px; font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #6e7681;
+}
+.gpb-slimmenu-notes {
+  display: flex; flex-direction: column; gap: 5px;
+  padding: 5px 10px 7px;
+}
+.gpb-slimmenu-notes .gpb-pg-notes {
+  width: 100%;
+  resize: vertical;
+  font-family: inherit;
+  line-height: 1.4;
+}
+
+[data-theme="light"] .gpb-slimmenu { background: #fff; border-color: rgba(31,111,235,0.22); }
+[data-theme="light"] .gpb-slimmenu-item { color: #24292f; }
+[data-theme="light"] .gpb-slim-rot { color: #57606a; }
+[data-theme="light"] .gpb-slim-rot.active { color: #fff; }
+[data-theme="light"] .gpb-slim-mode.active { color: #0d1117; }
+
+/* Narrow: the row may wrap, and tap targets grow. */
+@media (max-width: 720px) {
+  .gpb-slimbar { flex-wrap: wrap; row-gap: 6px; }
+  .gpb-slim-rot { width: 30px; height: 30px; }
+  .gpb-slim-mode { padding: 5px 10px; }
+  .gpb-slim-btn { width: 32px; height: 32px; }
+  .gpb-slimmenu { width: min(280px, calc(100vw - 32px)); }
+}
+
+.gpb-body.is-playground .gpb-court-info {
+  margin-bottom: clamp(4px, 0.8vh, 10px);
 }
 .gpb-loading {
   grid-column: 1 / -1;
@@ -7081,7 +7306,12 @@ td.dash-stand-team .dash-stand-name {
   --bubble-edge: rgba(255,255,255,0.20);
 
   position: absolute;
-  width: 88px; height: 88px;
+  /* --gpb-bubble is set in JS from the measured court, so bubbles scale with
+     the space available. Everything inside is expressed as a fraction of it
+     so a small court gets a smaller, still-legible bubble rather than a
+     clipped one. */
+  width: var(--gpb-bubble, 88px);
+  height: var(--gpb-bubble, 88px);
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   background: var(--bubble-bg);
   border: 2px solid var(--bubble-edge);
@@ -7147,7 +7377,7 @@ td.dash-stand-team .dash-stand-name {
    player shows P1 in R1 and P6 in R2, P5 in R3, etc. */
 .gpb-bubble-slot {
   position: absolute;
-  top: -10px; left: 50%;
+  top: calc(var(--gpb-bubble, 88px) * -0.114); left: 50%;
   transform: translateX(-50%);
   background: rgba(0,0,0,0.78);
   border: 1px solid var(--bubble-edge);
@@ -7185,7 +7415,7 @@ td.dash-stand-team .dash-stand-name {
    dnd-kit pins this element to the cursor; we just style the look. */
 .gpb-bubble.lifted {
   position: relative;
-  width: 88px; height: 88px;
+  width: var(--gpb-bubble, 88px); height: var(--gpb-bubble, 88px);
   transform: scale(1.18);
   cursor: grabbing;
   z-index: 20000;
@@ -7202,28 +7432,50 @@ td.dash-stand-team .dash-stand-name {
 .gpb-bubble.lifted::before { opacity: 0.9; }
 
 .gpb-bubble-num {
-  font-size: 26px; font-weight: 800;
+  font-size: clamp(15px, calc(var(--gpb-bubble, 88px) * 0.30), 30px); font-weight: 800;
   font-family: 'Space Mono', monospace;
   line-height: 1;
   text-shadow: 0 1px 3px rgba(0,0,0,0.55), 0 0 10px rgba(0,0,0,0.35);
   pointer-events: none;
 }
 .gpb-bubble-name {
-  font-size: 9.5px; font-weight: 700;
-  margin-top: 4px;
+  font-size: clamp(7.5px, calc(var(--gpb-bubble, 88px) * 0.108), 11px); font-weight: 700;
+  margin-top: calc(var(--gpb-bubble, 88px) * 0.045);
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  max-width: 80px;
+  max-width: calc(var(--gpb-bubble, 88px) * 0.91);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   text-shadow: 0 1px 2px rgba(0,0,0,0.5);
   pointer-events: none;
 }
 
 /* Hover-only X button */
+/* Remove-player button.
+   Three things here are load-bearing, all learned the hard way:
+   1. pointer-events stays AUTO at all times. It used to be `none` until the
+      parent bubble was :hover/:focus-within, which meant it was NEVER
+      clickable on touch (no hover exists) and on desktop the hover chain
+      broke the moment the cursor left the bubble's circle — the corner the
+      button sits in is outside border-radius, so the parent stopped being
+      hovered exactly as you reached for it.
+   2. transform stays scale(1). Transforms are applied before hit-testing, so
+      the old resting scale(0.5) shrank the real target to ~12px.
+   3. It sits mostly INSIDE the circle. Bubbles are kept 2r apart, so their
+      circles never overlap — but the square corner this button used to hang
+      out into could be covered by a neighbour that paints later in DOM
+      order (P5's button sat under P6, which renders after it). Pulling it
+      in, plus the z-index lift below, keeps it on top in every position. */
 .gpb-bubble-x {
   position: absolute;
-  top: -10px; right: -10px;
-  width: 24px; height: 24px;
+  /* Kept as the same fractions of the bubble (2/88 and 26/88) so the
+     "centre stays inside the circle" property holds at every bubble size.
+     The min() floor guarantees a tappable target on the smallest bubbles —
+     a proportionally larger button sits even further inside the circle, so
+     the floor can't break the invariant. */
+  top: min(2px, calc(var(--gpb-bubble, 88px) * 0.023));
+  right: min(2px, calc(var(--gpb-bubble, 88px) * 0.023));
+  width: max(22px, calc(var(--gpb-bubble, 88px) * 0.295));
+  height: max(22px, calc(var(--gpb-bubble, 88px) * 0.295));
   border-radius: 50%;
   background: linear-gradient(135deg, #f85149, #c33834);
   color: #fff;
@@ -7231,18 +7483,38 @@ td.dash-stand-team .dash-stand-name {
   font-size: 14px; font-weight: 800; line-height: 1;
   cursor: pointer;
   display: flex; align-items: center; justify-content: center;
-  opacity: 0;
-  transform: scale(0.5);
-  transition: opacity 0.16s ease, transform 0.22s cubic-bezier(0.32, 0.72, 0.45, 1.5), background 0.15s ease;
+  opacity: 0.5;
+  transform: scale(1);
+  transition: opacity 0.16s ease, background 0.15s ease, box-shadow 0.15s ease;
   box-shadow: 0 4px 12px rgba(248,81,73,0.5);
-  pointer-events: none;
+  pointer-events: auto;
+  touch-action: manipulation;
   z-index: 12;
 }
+/* Comfortable thumb target without growing the painted circle. */
+.gpb-bubble-x::after {
+  content: '';
+  position: absolute;
+  inset: -7px;
+  border-radius: 50%;
+}
+/* Hover/focus only brightens it — it was already clickable. */
 .gpb-bubble:hover .gpb-bubble-x,
-.gpb-bubble:focus-within .gpb-bubble-x {
+.gpb-bubble:focus-within .gpb-bubble-x,
+.gpb-bubble-x:focus-visible {
   opacity: 1;
-  transform: scale(1);
-  pointer-events: auto;
+}
+.gpb-bubble-x:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 1px;
+}
+/* Lift the whole bubble (and therefore its button, which lives inside this
+   bubble's stacking context) above its siblings while it's being reached
+   for. Every bubble is z-index 5, so without this the later-rendered
+   neighbour wins any overlap. */
+.gpb-bubble:hover,
+.gpb-bubble:focus-within {
+  z-index: 30;
 }
 .gpb-bubble-x:hover { background: linear-gradient(135deg, #ff6b63, #d63a36); transform: scale(1.15); }
 
@@ -9008,6 +9280,7 @@ td.dash-stand-team .dash-stand-name {
 }
 .gpb-playground-toolbar {
   display: flex; align-items: center; gap: 10px;
+  flex-wrap: wrap;
   padding: 10px 18px;
   border-bottom: 1px solid rgba(168,85,247,0.18);
   background: linear-gradient(180deg, rgba(168,85,247,0.08), transparent);
@@ -9282,6 +9555,7 @@ td.dash-stand-team .dash-stand-name {
 /* ── Sub counter + undo bar ── */
 .gpb-sub-counter-bar {
   display: flex; align-items: center; gap: 8px;
+  flex-wrap: wrap;
   padding: 8px 14px;
   border-bottom: 1px solid rgba(255,255,255,0.05);
   background: rgba(255,255,255,0.015);
@@ -9697,6 +9971,98 @@ td.dash-stand-team .dash-stand-name {
   letter-spacing: 0.05em;
   color: #6e7681;
 }
+
+/* ── Intended front/back rows on a sub pair ──
+   One line: who is the front-row half, a ⇄ to flip, an × to clear. */
+.gpb-rowintent {
+  flex: 1 0 100%;
+  display: flex; align-items: center; flex-wrap: wrap; gap: 4px;
+  margin-top: 2px;
+  font-size: 9.5px;
+  color: #6e7681;
+}
+.gpb-rowintent-state { letter-spacing: 0.02em; }
+.gpb-rowintent-state strong { color: #c9d1d9; font-weight: 700; }
+.gpb-rowintent-btn {
+  width: 16px; height: 16px;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(255,255,255,0.06);
+  border: none; border-radius: 4px;
+  color: #8b949e;
+  font-size: 10px; line-height: 1;
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+.gpb-rowintent-btn:hover { background: rgba(255,255,255,0.14); color: #fff; }
+.gpb-rowintent-set {
+  padding: 2px 7px;
+  background: transparent;
+  border: 1px dashed rgba(255,255,255,0.18);
+  border-radius: 5px;
+  color: #8b949e;
+  font-size: 9px; font-weight: 700;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+.gpb-rowintent-set:hover { border-color: rgba(255,255,255,0.35); color: #e6edf3; }
+
+/* ── Row-mismatch flag ──
+   Amber: noticeable, but distinct from the red used for illegal overlaps —
+   this is an intent mismatch, not an FIVB violation. Labelled in words. */
+.gpb-pairrow.has-issue {
+  background: rgba(240,165,0,0.05);
+  border-left: 2px solid rgba(240,165,0,0.55);
+  padding-left: 8px;
+  border-radius: 0 5px 5px 0;
+}
+.gpb-rowflag {
+  flex: 1 0 100%;
+  display: flex; flex-direction: column; gap: 3px;
+  margin-top: 4px;
+  padding: 6px 7px;
+  background: rgba(240,165,0,0.09);
+  border: 1px solid rgba(240,165,0,0.26);
+  border-radius: 6px;
+}
+.gpb-rowflag-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+}
+.gpb-rowflag-tag {
+  font-size: 8.5px; font-weight: 800;
+  letter-spacing: 0.11em;
+  color: #f0a500;
+}
+.gpb-rowflag-swap {
+  padding: 3px 10px;
+  min-height: 24px;
+  background: rgba(240,165,0,0.20);
+  border: 1px solid rgba(240,165,0,0.50);
+  border-radius: 5px;
+  color: #ffd479;
+  font-size: 10px; font-weight: 800;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+.gpb-rowflag-swap:hover { background: rgba(240,165,0,0.34); color: #fff; }
+.gpb-rowflag-line {
+  font-size: 10px;
+  line-height: 1.45;
+  color: #c9d1d9;
+}
+.gpb-rowflag-line strong { color: #f0f6fc; font-weight: 800; }
+.gpb-rowflag-hint {
+  font-size: 9px;
+  color: #8b949e;
+  letter-spacing: 0.03em;
+}
+
+[data-theme="light"] .gpb-rowintent-state strong { color: #0d1117; }
+[data-theme="light"] .gpb-rowflag-line { color: #24292f; }
+[data-theme="light"] .gpb-rowflag-line strong { color: #0d1117; }
+[data-theme="light"] .gpb-rowflag-tag { color: #9a6700; }
+[data-theme="light"] .gpb-rowflag-swap { color: #7a5200; }
 .gpb-pairrow-x {
   flex: 0 0 auto;
   align-self: flex-start;
@@ -9916,6 +10282,23 @@ td.dash-stand-team .dash-stand-name {
   .gpb-bubble.is-subbing-out { animation: none; }
 }
 
+/* Court bubble whose position contradicts its pair's front/back label.
+   Amber ring — separate from the red illegal-overlap ring, and it never
+   moves the bubble; the message in the sub window names the problem. */
+.gpb-bubble.is-row-flag {
+  box-shadow:
+    0 0 0 3px rgba(240,165,0,0.85),
+    0 10px 30px rgba(240,165,0,0.42),
+    inset 0 1px 0 rgba(255,255,255,0.22);
+}
+/* An actual rule violation outranks an intent mismatch. */
+.gpb-bubble.is-violation.is-row-flag {
+  box-shadow:
+    0 0 0 3px rgba(248,81,73,0.85),
+    0 10px 30px rgba(248,81,73,0.45),
+    inset 0 1px 0 rgba(255,255,255,0.22);
+}
+
 /* Narrow widths: the roster rail stacks under the court, so the candidate
    list gets its own scroll cap and the pair lines wrap instead of clipping. */
 @media (max-width: 860px) {
@@ -9940,6 +10323,9 @@ td.dash-stand-team .dash-stand-name {
     padding: 12px 12px 16px;
   }
   .gpb-body.is-playground .gpb-court-wrap { order: 1; min-height: 60vh; }
+  /* Stacked: the court gets the full column width — the wide-window cap
+     would otherwise letterbox it on a landscape phone. */
+  .gpb-body.is-playground .gpb-court { max-width: 100%; }
   .gpb-body.is-playground .gpb-col-subs   { order: 2; overflow: visible; }
   .gpb-body.is-playground .gpb-col-roster { order: 3; }
   /* Rails size to their content once stacked instead of fighting for height. */

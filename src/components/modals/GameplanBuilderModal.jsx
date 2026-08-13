@@ -31,6 +31,32 @@ const COURT_BOUNDS = { minX: 7, maxX: 93, minY: 9, maxY: 91 };
 
 // Half the bubble width/height in px — stays in sync with .gpb-bubble's CSS.
 const BUBBLE_RADIUS = 44;
+
+// ─── Adaptive bubble sizing ────────────────────────────────────────────────
+//
+// Bubbles are sized from the LIVE measured court, never a fixed px value.
+//
+// Primary rule: a fraction of the court's SHORTER side. That is what makes
+// them shrink on a laptop and grow on a monitor — an earlier version keyed
+// off the per-axis slot spacing instead, which was so generous that the max
+// was binding at every resolution and bubbles were effectively fixed at
+// 104px (30% of the short side on a scaled laptop).
+//
+// Secondary rule, as a safety ceiling: the default slot grid puts centres at
+// x = 22/50/78% and y = 28/72%, so neighbours are 28% of the width and 44%
+// of the height apart. Capping at 0.82 of the tighter of those guarantees
+// clear air between all six even on an odd aspect ratio.
+const BUBBLE_MIN = 52;
+const BUBBLE_MAX = 108;
+const BUBBLE_SHORT_SIDE_RATIO = 0.17;
+const BUBBLE_GRID_HEADROOM = 0.82;
+function bubbleSizeFor(courtWidth, courtHeight) {
+  if (!courtWidth || !courtHeight) return 88;
+  const byShortSide = Math.min(courtWidth, courtHeight) * BUBBLE_SHORT_SIDE_RATIO;
+  const byGrid = Math.min(courtWidth * 0.28, courtHeight * 0.44) * BUBBLE_GRID_HEADROOM;
+  const fit = Math.min(byShortSide, byGrid);
+  return Math.round(Math.max(BUBBLE_MIN, Math.min(BUBBLE_MAX, fit)));
+}
 // Inner padding (matches .gpb-court::before { inset: 14px } + 2px guard).
 const COURT_INNER_PAD = 16;
 // Defensive % clamp applied at render time so any historically-stored
@@ -551,6 +577,60 @@ function setSubEligibility(plan, atIdx, candidatePid, playerById, nameMode = 'la
     return deny(`Already paired with ${who} this set`);
   }
   return { ok: true, reason: null };
+}
+
+// ─── Intended-row labels on a sub pair ─────────────────────────────────────
+//
+// A pair may carry `rows: { [pid]: 'front' | 'back' }` — the coach's stated
+// intent for where each of the two should stand. We then check that against
+// where their bubble ACTUALLY sits, using the same front/back split the
+// court itself uses (zoneFor: upper half = P2/P3/P4 = front). Position, not
+// lineup index, because the coach fixes this by dragging and by the Swap
+// button, and both of those move x/y — not rotational order.
+//
+// Nothing here mutates anything. It reports; the UI offers.
+function rowOfPosition(pos) {
+  if (!pos) return null;
+  return FRONT_SLOTS.has(zoneFor(pos.x, pos.y)) ? 'front' : 'back';
+}
+function slotOfPosition(pos) {
+  return pos ? zoneFor(pos.x, pos.y) : null;
+}
+
+// Returns [{ pairIdx, wrong: [{pid, want, got, slot}], canSwap }] for every
+// labelled pair whose players aren't standing where they're labelled.
+// `canSwap` means both are on court and exchanging their two spots would
+// put each in its labelled row — the only case a one-tap fix is honest.
+function rowIntentIssues(plan, positions, onCourtIds) {
+  if (!plan) return [];
+  const out = [];
+  (plan.subs || []).forEach((pair, pairIdx) => {
+    const rows = pair?.rows;
+    if (!rows) return;
+    const pids = [pair.a, pair.b].filter(pid => pid && rows[pid]);
+    if (pids.length === 0) return;
+    const wrong = [];
+    for (const pid of pids) {
+      if (!onCourtIds.has(pid)) continue; // on the bench — nothing to check
+      const pos = positions[pid];
+      const got = rowOfPosition(pos);
+      if (got && got !== rows[pid]) {
+        wrong.push({ pid, want: rows[pid], got, slot: slotOfPosition(pos) });
+      }
+    }
+    if (wrong.length === 0) return;
+    // A swap fixes it only when both are on court and each is sitting in the
+    // row the other one wants.
+    const [a, b] = [pair.a, pair.b];
+    const bothOn = onCourtIds.has(a) && onCourtIds.has(b);
+    const canSwap = bothOn
+      && !!rows[a] && !!rows[b]
+      && rows[a] !== rows[b]
+      && rowOfPosition(positions[a]) === rows[b]
+      && rowOfPosition(positions[b]) === rows[a];
+    out.push({ pairIdx, wrong, canSwap });
+  });
+  return out;
 }
 
 // Roster substitution status — "can I still use this player for a sub?"
@@ -1147,6 +1227,19 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
   //   { fromRot, toRot, queue: [crossing], cursor }
   const [fbSwap, setFbSwap] = useState(null);
 
+  // Playground's single toolbar keeps only the constantly-used controls on
+  // the row; everything else lives behind this overflow menu.
+  const [overflowOpen, setOverflowOpen] = useState(false);
+  const overflowRef = useRef(null);
+  useEffect(() => {
+    if (!overflowOpen) return;
+    function onDown(e) {
+      if (!overflowRef.current?.contains(e.target)) setOverflowOpen(false);
+    }
+    document.addEventListener('pointerdown', onDown, true);
+    return () => document.removeEventListener('pointerdown', onDown, true);
+  }, [overflowOpen]);
+
   // Sub popup: { fromRot, toRot, pendingList: [...] }
   const [subPopup, setSubPopup] = useState(null);
 
@@ -1166,9 +1259,17 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
   // useLayoutEffect runs after DOM commit but before paint, so the first
   // paint already shows bubbles at the correct pixel position (no flash).
   const [courtSize, setCourtSize] = useState({ width: 0, height: 0 });
+  // Tracked as state rather than read off the ref, so the observer re-attaches
+  // if React ever swaps the court node (layout reflow, mode change) instead of
+  // silently watching a detached element.
+  const [courtNode, setCourtNode] = useState(null);
+  const attachCourt = useCallback((el) => {
+    courtRef.current = el;
+    setCourtNode(prev => (prev === el ? prev : el));
+  }, []);
+
   useLayoutEffect(() => {
-    if (loading) return;
-    const el = courtRef.current;
+    const el = courtNode;
     if (!el) return;
     const measure = () => {
       const r = el.getBoundingClientRect();
@@ -1181,8 +1282,34 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
     measure();
     const ro = new ResizeObserver(measure);
     ro.observe(el);
-    return () => ro.disconnect();
-  }, [loading]);
+
+    // Browser zoom and moving the window to a different-DPI display change
+    // devicePixelRatio. Those usually reflow the court too (so the observer
+    // already fires), but this catches the cases where they don't.
+    let mq = null;
+    const onDpr = () => { measure(); armDpr(); };
+    function armDpr() {
+      mq?.removeEventListener?.('change', onDpr);
+      mq = window.matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`);
+      mq.addEventListener?.('change', onDpr);
+    }
+    armDpr();
+    window.addEventListener('resize', measure);
+
+    return () => {
+      ro.disconnect();
+      window.removeEventListener('resize', measure);
+      mq?.removeEventListener?.('change', onDpr);
+    };
+  }, [courtNode]);
+
+  // Live bubble diameter, derived from the measured court. Everything that
+  // does bubble geometry — render, drag clamp, collision, commit — reads
+  // this instead of the old fixed constant.
+  const bubbleSize = useMemo(
+    () => bubbleSizeFor(courtSize.width, courtSize.height),
+    [courtSize.width, courtSize.height],
+  );
 
   // ── Roster ──
   const roster = useMemo(() => {
@@ -1655,6 +1782,9 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
       otherCenters,
       otherSlots,
       draggedSlot,
+      // Snapshot the live radius so every calculation in this drag agrees,
+      // even if a resize lands mid-gesture.
+      radius: bubbleSize / 2,
       tagBySlot,
       draggedName: nameIn(draggedPlayer, nameMode),
       draggedIsLibero: isLibero(draggedPlayer),
@@ -1698,19 +1828,20 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
       let y = ev.clientY - cr.top  - d.offsetY;
 
       // Clamp the bubble's edges inside the inner court rectangle.
+      const R = d.radius;
       const minLeft = COURT_INNER_PAD;
-      const maxLeft = cr.width  - 2 * BUBBLE_RADIUS - COURT_INNER_PAD;
+      const maxLeft = cr.width  - 2 * R - COURT_INNER_PAD;
       const minTop  = COURT_INNER_PAD;
-      const maxTop  = cr.height - 2 * BUBBLE_RADIUS - COURT_INNER_PAD;
+      const maxTop  = cr.height - 2 * R - COURT_INNER_PAD;
       x = Math.max(minLeft, Math.min(maxLeft, x));
       y = Math.max(minTop,  Math.min(maxTop, y));
 
-      let centerX = x + BUBBLE_RADIUS;
-      let centerY = y + BUBBLE_RADIUS;
+      let centerX = x + R;
+      let centerY = y + R;
 
       // Push-back collision — bubbles never overlap. Iterate a few passes
       // so multi-bubble pile-ups resolve cleanly.
-      const minDist = BUBBLE_RADIUS * 2;
+      const minDist = R * 2;
       for (let pass = 0; pass < 4; pass++) {
         let collided = false;
         for (const pid in d.otherCenters) {
@@ -1726,14 +1857,14 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
             centerX = oc.x + Math.cos(angle) * minDist;
             centerY = oc.y + Math.sin(angle) * minDist;
             // Keep inside court bounds.
-            centerX = Math.max(minLeft + BUBBLE_RADIUS, Math.min(maxLeft + BUBBLE_RADIUS, centerX));
-            centerY = Math.max(minTop  + BUBBLE_RADIUS, Math.min(maxTop  + BUBBLE_RADIUS, centerY));
+            centerX = Math.max(minLeft + R, Math.min(maxLeft + R, centerX));
+            centerY = Math.max(minTop  + R, Math.min(maxTop  + R, centerY));
           }
         }
         if (!collided) break;
       }
-      x = centerX - BUBBLE_RADIUS;
-      y = centerY - BUBBLE_RADIUS;
+      x = centerX - R;
+      y = centerY - R;
 
       // ── FIVB overlap-rule check (warning only — no snap-back) ──
       let violationMsg = null;
@@ -1794,7 +1925,7 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
           d.bubble.classList.add('is-violation');
           if (tooltipRef.current && tooltipTextRef.current) {
             tooltipTextRef.current.textContent = d.violationMsg;
-            tooltipRef.current.style.left = `${d.currentX + BUBBLE_RADIUS}px`;
+            tooltipRef.current.style.left = `${d.currentX + d.radius}px`;
             tooltipRef.current.style.top  = `${d.currentY - 38}px`;
             tooltipRef.current.style.opacity = '1';
           }
@@ -1851,8 +1982,8 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
       // Convert px (top-left) back to center % and commit. Single setState
       // per drag.
       const cr2 = courtRef.current.getBoundingClientRect();
-      const cx = d.currentX + BUBBLE_RADIUS;
-      const cy = d.currentY + BUBBLE_RADIUS;
+      const cx = d.currentX + d.radius;
+      const cy = d.currentY + d.radius;
       const newX = (cx / cr2.width)  * 100;
       const newY = (cy / cr2.height) * 100;
 
@@ -1872,7 +2003,7 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
     court.addEventListener('pointermove', move, { passive: false });
     court.addEventListener('pointerup', up);
     court.addEventListener('pointercancel', up);
-  }, [activePlan, effectiveLineup, currentPositions, activeRotation, playerById, nameMode]);
+  }, [activePlan, effectiveLineup, currentPositions, activeRotation, playerById, nameMode, bubbleSize]);
 
   // Cleanup on unmount.
   useEffect(() => () => {
@@ -2275,6 +2406,27 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
     patchActivePlan({ sub_log: [...(activePlan.sub_log || []), entry] });
     return true;
   }
+  // Clear the whole court — bubbles, libero pairings, subs, pairs.
+  function resetPlaygroundCourt() {
+    if (!activePlan) return;
+    if (!confirm('Clear all bubbles, libero pairings, and subs from this session?')) return;
+    patchActivePlan({
+      assigned_players: [null, null, null, null, null, null],
+      formations: {
+        1: { serve: {}, receive: {} }, 2: { serve: {}, receive: {} },
+        3: { serve: {}, receive: {} }, 4: { serve: {}, receive: {} },
+        5: { serve: {}, receive: {} }, 6: { serve: {}, receive: {} },
+      },
+      colors: {},
+      subs: [],
+      confirmed_subs: { 1: [], 2: [], 3: [], 4: [], 5: [], 6: [] },
+      libero_pairs: {},
+      sub_log: [],
+      fb_pairs: [],
+    });
+    setSubFlow(null);
+  }
+
   // Start a fresh set: the 12-substitution budget and every starter↔sub
   // lock reset. Front/Back pair configuration is a standing setup, not a
   // per-set consequence, so it survives.
@@ -2524,6 +2676,54 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
     return map;
   }, [activePlan, isPlayground, roster, playerById, nameMode]);
 
+  // Intended-row mismatches on labelled pairs. Flag only — nothing moves
+  // until the coach taps Swap or drags a bubble themselves.
+  const rowIssues = useMemo(
+    () => (isPlayground ? rowIntentIssues(activePlan, currentPositions, onCourtIds) : []),
+    [isPlayground, activePlan, currentPositions, onCourtIds],
+  );
+  const rowFlaggedPids = useMemo(() => {
+    const s = new Set();
+    for (const iss of rowIssues) for (const w of iss.wrong) s.add(w.pid);
+    return s;
+  }, [rowIssues]);
+
+  // Assign / flip / clear the front-back intent on a manual sub pair.
+  function setPairRows(pairIdx, frontPid) {
+    if (!activePlan) return;
+    const subs = [...(activePlan.subs || [])];
+    const pair = subs[pairIdx];
+    if (!pair) return;
+    if (!frontPid) {
+      const { rows, ...rest } = pair;   // eslint-disable-line no-unused-vars
+      subs[pairIdx] = rest;
+    } else {
+      const backPid = pairOpponent(pair, frontPid);
+      subs[pairIdx] = { ...pair, rows: { [frontPid]: 'front', [backPid]: 'back' } };
+    }
+    patchActivePlan({ subs });
+  }
+
+  // Exchange the two paired players' spots on the court. Positions only —
+  // assigned_players and sub_log are untouched, so rotational order and the
+  // set's substitution history survive intact.
+  function swapPairSpots(pairIdx) {
+    if (!activePlan) return;
+    const pair = (activePlan.subs || [])[pairIdx];
+    if (!pair) return;
+    const posA = currentPositions[pair.a];
+    const posB = currentPositions[pair.b];
+    if (!posA || !posB) return;
+    const formations = { ...(activePlan.formations || {}) };
+    const rd = { ...(formations[activeRotation] || { serve: {}, receive: {} }) };
+    const md = { ...(rd[activeMode] || {}) };
+    md[pair.a] = { ...posB };
+    md[pair.b] = { ...posA };
+    rd[activeMode] = md;
+    formations[activeRotation] = rd;
+    patchActivePlan({ formations });
+  }
+
   // The legend only appears once at least one player is off the default
   // state — an empty roster shouldn't carry a key to nothing.
   const showStatusLegend = useMemo(
@@ -2557,6 +2757,7 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
         if (applyPickerOpen) { setApplyPickerOpen(false); return; }
         if (presetMgrOpen) { setPresetMgrOpen(false); return; }
         if (presetEditing) { setPresetEditing(null); return; }
+        if (overflowOpen) { setOverflowOpen(false); return; }
         if (subPopup) { setSubPopup(null); return; }
         // Esc on a crossing prompt reads as "leave the lineup alone" — it
         // still advances the queue so the rotation completes.
@@ -2589,7 +2790,7 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
       window.removeEventListener('keydown', onKey);
       document.body.style.overflow = '';
     };
-  }, [onClose, benchDrag, selectedRosterId, pairPopup, subPopup, subFlow, fbSwap, cancelFbSwap, applyPickerOpen, presetMgrOpen, presetEditing, handleRotationClick]);
+  }, [onClose, benchDrag, selectedRosterId, pairPopup, subPopup, subFlow, fbSwap, cancelFbSwap, overflowOpen, applyPickerOpen, presetMgrOpen, presetEditing, handleRotationClick]);
 
   // The picked-out player is identified by array index, so a rotation change
   // or a plan switch would silently re-target the flow. Drop it instead.
@@ -2602,6 +2803,160 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
         className={`gpb-modal${isPlayground ? ' is-playground' : ''}`}
         onClick={e => e.stopPropagation()}
       >
+
+        {/* ── Playground: ONE slim toolbar ──
+            Name, rotations, serve/receive and the legality pill stay on the
+            row because they're touched constantly. Everything else — save,
+            name display, resets, notes, presets, roster toggle — is tucked
+            behind the ⋯ menu, so the three stacked bands collapse to one and
+            the reclaimed height goes to the court. */}
+        {isPlayground ? (
+          <div className="gpb-slimbar">
+            <span className="gpb-slim-eyebrow" title="Playground">⌒</span>
+
+            <PlaygroundHeaderEditor
+              name={(activePlan && activePlan.name) || playgroundSession.name || 'Untitled Session'}
+              onCommit={(name) => patchActivePlan({ name })}
+            />
+
+            <div className="gpb-slim-sep" aria-hidden="true" />
+
+            <div className="gpb-slim-rots" role="group" aria-label="Rotation">
+              {[1, 2, 3, 4, 5, 6].map(r => {
+                const f = activePlan?.formations?.[r];
+                const isConfigured = !!f && (
+                  Object.keys(f.serve || {}).length > 0 ||
+                  Object.keys(f.receive || {}).length > 0
+                );
+                return (
+                  <button
+                    key={r}
+                    type="button"
+                    className={[
+                      'gpb-slim-rot',
+                      r === activeRotation ? 'active' : '',
+                      isConfigured ? 'configured' : '',
+                    ].filter(Boolean).join(' ')}
+                    onClick={() => handleRotationClick(r)}
+                    title={`Rotation ${r}${isConfigured ? ' · set up' : ' · empty'} (press ${r})`}
+                  >{r}</button>
+                );
+              })}
+            </div>
+
+            <div className="gpb-slim-modes" role="group" aria-label="Phase">
+              <button
+                type="button"
+                className={`gpb-slim-mode${activeMode === 'serve' ? ' active' : ''}`}
+                onClick={() => setActiveMode('serve')}
+                title="Serve (press S)"
+              >Serve</button>
+              <button
+                type="button"
+                className={`gpb-slim-mode${activeMode === 'receive' ? ' active' : ''}`}
+                onClick={() => setActiveMode('receive')}
+                title="Serve Receive (press R)"
+              >Recv</button>
+            </div>
+
+            <span className={`gpb-slim-status ${allValid ? 'ok' : 'bad'}`}>
+              {allValid ? '✓ LEGAL' : '✗ ILLEGAL'}
+            </span>
+
+            <div className="gpb-slim-spacer" />
+
+            <div className="gpb-slim-more" ref={overflowRef}>
+              <button
+                type="button"
+                className={`gpb-slim-btn${overflowOpen ? ' is-on' : ''}`}
+                onClick={() => setOverflowOpen(o => !o)}
+                aria-expanded={overflowOpen}
+                aria-haspopup="menu"
+                title="More actions"
+              >⋯</button>
+
+              {overflowOpen && activePlan && (
+                <div className="gpb-slimmenu" role="menu">
+                  <button
+                    type="button" role="menuitem"
+                    className="gpb-slimmenu-item is-primary"
+                    onClick={() => { savePlaygroundNow(); setOverflowOpen(false); }}
+                    disabled={playgroundSaving}
+                  >{playgroundSaving ? 'Saving…' : '↓  Save session'}</button>
+
+                  <div className="gpb-slimmenu-sep" />
+
+                  <div className="gpb-slimmenu-row">
+                    <span className="gpb-slimmenu-label">Names</span>
+                    <div className="gpb-nametoggle" role="group" aria-label="Name display">
+                      <button
+                        type="button"
+                        className={`gpb-nametoggle-btn${nameMode === 'first' ? ' is-on' : ''}`}
+                        aria-pressed={nameMode === 'first'}
+                        onClick={() => setNameMode('first')}
+                      >First</button>
+                      <button
+                        type="button"
+                        className={`gpb-nametoggle-btn${nameMode === 'last' ? ' is-on' : ''}`}
+                        aria-pressed={nameMode === 'last'}
+                        onClick={() => setNameMode('last')}
+                      >Last</button>
+                    </div>
+                  </div>
+
+                  <div className="gpb-slimmenu-sep" />
+
+                  <button
+                    type="button" role="menuitem" className="gpb-slimmenu-item"
+                    onClick={() => { setApplyPickerOpen(true); setOverflowOpen(false); }}
+                    disabled={!!presetError?.schema}
+                    title={presetError?.schema ? 'Run formation_presets migration to enable' : undefined}
+                  >↓  Apply preset</button>
+                  <button
+                    type="button" role="menuitem" className="gpb-slimmenu-item"
+                    onClick={() => { setPresetMgrOpen(true); setOverflowOpen(false); }}
+                  >◊  Manage presets</button>
+
+                  <div className="gpb-slimmenu-sep" />
+
+                  <button
+                    type="button" role="menuitem" className="gpb-slimmenu-item"
+                    onClick={() => { setRosterCollapsed(c => !c); setOverflowOpen(false); }}
+                  >{rosterCollapsed ? '▶  Show roster' : '◀  Hide roster'}</button>
+                  <button
+                    type="button" role="menuitem" className="gpb-slimmenu-item"
+                    onClick={() => { resetCurrentFormation(); setOverflowOpen(false); }}
+                  >↺  Reset R{activeRotation} {activeMode === 'serve' ? 'serve' : 'receive'}</button>
+                  <button
+                    type="button" role="menuitem" className="gpb-slimmenu-item is-danger"
+                    onClick={() => { resetPlaygroundCourt(); setOverflowOpen(false); }}
+                  >↺  Reset whole court</button>
+
+                  <div className="gpb-slimmenu-sep" />
+
+                  <label className="gpb-slimmenu-notes">
+                    <span className="gpb-slimmenu-label">Notes</span>
+                    <textarea
+                      className="gpb-pg-notes"
+                      rows={3}
+                      placeholder="Why this look works, who serves first…"
+                      value={activePlan.notes || ''}
+                      onChange={e => patchActivePlan({ notes: e.target.value })}
+                      maxLength={280}
+                    />
+                  </label>
+                </div>
+              )}
+            </div>
+
+            <button
+              type="button"
+              className="gpb-slim-btn gpb-slim-close"
+              onClick={onClose}
+              aria-label="Close"
+            >×</button>
+          </div>
+        ) : (<>
 
         {/* HEADER */}
         <header className="gpb-header">
@@ -2632,10 +2987,10 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
           <button type="button" className="gpb-close" onClick={onClose} aria-label="Close">×</button>
         </header>
 
-        {/* Playground / Scheme toolbar. */}
-        {(isPlayground || isScheme) && activePlan && (
+        {/* Scheme toolbar (Playground's controls now live in the slim bar). */}
+        {isScheme && activePlan && (
           <div className="gpb-playground-toolbar">
-            {isScheme ? (
+            {isScheme && (
               <>
                 <button
                   type="button"
@@ -2653,69 +3008,6 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
                     Illegal overlap in R{schemeServeIssues.join(', R')}
                   </span>
                 )}
-              </>
-            ) : (
-              <>
-                <button
-                  type="button"
-                  className="gpb-pg-tool gpb-pg-save"
-                  onClick={savePlaygroundNow}
-                  disabled={playgroundSaving}
-                  title="Save this arrangement to your playground sessions"
-                >
-                  {playgroundSaving ? 'Saving…' : '↓ Save'}
-                </button>
-
-                {/* Global name display — flips every bubble, roster row and
-                    overlap message at once. */}
-                <div className="gpb-nametoggle" role="group" aria-label="Name display">
-                  <button
-                    type="button"
-                    className={`gpb-nametoggle-btn${nameMode === 'first' ? ' is-on' : ''}`}
-                    aria-pressed={nameMode === 'first'}
-                    onClick={() => setNameMode('first')}
-                    title="Show first names on every bubble"
-                  >First</button>
-                  <button
-                    type="button"
-                    className={`gpb-nametoggle-btn${nameMode === 'last' ? ' is-on' : ''}`}
-                    aria-pressed={nameMode === 'last'}
-                    onClick={() => setNameMode('last')}
-                    title="Show last names on every bubble"
-                  >Last</button>
-                </div>
-
-                <button
-                  type="button"
-                  className="gpb-pg-tool"
-                  onClick={() => {
-                    if (!confirm('Clear all bubbles, libero pairings, and subs from this session?')) return;
-                    patchActivePlan({
-                      assigned_players: [null,null,null,null,null,null],
-                      formations: {
-                        1: { serve: {}, receive: {} }, 2: { serve: {}, receive: {} },
-                        3: { serve: {}, receive: {} }, 4: { serve: {}, receive: {} },
-                        5: { serve: {}, receive: {} }, 6: { serve: {}, receive: {} },
-                      },
-                      colors: {},
-                      subs: [],
-                      confirmed_subs: { 1: [], 2: [], 3: [], 4: [], 5: [], 6: [] },
-                      libero_pairs: {},
-                      sub_log: [],
-                    });
-                  }}
-                  title="Clear the court and start over"
-                >
-                  ↺ Reset Court
-                </button>
-                <input
-                  type="text"
-                  className="gpb-pg-notes"
-                  placeholder="Notes about this look — e.g. why it works, who serves first…"
-                  value={activePlan.notes || ''}
-                  onChange={e => patchActivePlan({ notes: e.target.value })}
-                  maxLength={280}
-                />
               </>
             )}
           </div>
@@ -2866,6 +3158,7 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
             {rosterCollapsed ? '▶ Roster' : '◀ Hide'}
           </button>
         </div>
+        </>)}
 
         {/* WARNING BANNER */}
         {(warning || violations.length > 0) && (
@@ -2926,7 +3219,7 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
               const courtColumn = (
                 <div className="gpb-court-wrap">
                   <CourtSurface
-                    courtRef={courtRef}
+                    courtRef={attachCourt}
                     activePlan={activePlan}
                     activeRotation={activeRotation}
                     activeMode={activeMode}
@@ -2942,9 +3235,11 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
                     onBubbleDragStart={onBubbleDragStart}
                     assignedPlayers={effectiveLineup}
                     subOutPid={subFlow?.outPid || null}
+                    rowFlaggedPids={rowFlaggedPids}
                     hideHint={isPlayground}
                     courtWidth={courtSize.width}
                     courtHeight={courtSize.height}
+                    bubbleSize={bubbleSize}
                     tooltipRef={tooltipRef}
                     tooltipTextRef={tooltipTextRef}
                   />
@@ -3039,6 +3334,9 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
                       onPickIn={subMode === 'fb' ? createFrontBackPair : confirmSubFlow}
                       onUnpair={removePlaygroundPair}
                       onUnpairFb={removeFrontBackPair}
+                      rowIssues={rowIssues}
+                      onSetPairRows={setPairRows}
+                      onSwapPairSpots={swapPairSpots}
                     />
                   ) : (
                   <div className="gpb-pair-bar">
@@ -3237,6 +3535,7 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
                 player={benchDrag.player}
                 colorVars={benchDrag.colorVars}
                 slotLabel={benchDrag.slotLabel}
+                bubbleSize={bubbleSize}
               />
             ) : null}
           </DragOverlay>
@@ -3327,8 +3626,9 @@ function CourtSurface({
   courtRef, activePlan, activeRotation, activeMode,
   currentPositions, playerById, violationByPid,
   tipTarget, onCourtClick, selectedRosterId, benchDragActive, courtIsFull,
-  onRemovePlayer, onBubbleDragStart, assignedPlayers, subOutPid, hideHint,
-  courtWidth, courtHeight, tooltipRef, tooltipTextRef,
+  onRemovePlayer, onBubbleDragStart, assignedPlayers, subOutPid,
+  rowFlaggedPids, hideHint,
+  courtWidth, courtHeight, bubbleSize, tooltipRef, tooltipTextRef,
 }) {
   const { setNodeRef, isOver } = useDroppable({
     id: 'court-surface',
@@ -3355,8 +3655,9 @@ function CourtSurface({
         {!hideHint && <span className="gpb-court-hint">{hint}</span>}
       </div>
       <div
-        ref={(el) => { setNodeRef(el); courtRef.current = el; }}
+        ref={(el) => { setNodeRef(el); courtRef(el); }}
         onClick={onCourtClick}
+        style={{ '--gpb-bubble': `${bubbleSize || 88}px` }}
         className={[
           'gpb-court',
           benchDragActive ? 'is-dragging' : '',
@@ -3419,7 +3720,9 @@ function CourtSurface({
               slotLabel={slotLabel}
               courtWidth={courtWidth}
               courtHeight={courtHeight}
+              bubbleSize={bubbleSize}
               subbingOut={pid === subOutPid}
+              rowFlagged={!!rowFlaggedPids?.has(pid)}
               onDragStart={onBubbleDragStart}
               onRemove={onRemovePlayer}
             />
@@ -3519,13 +3822,18 @@ function PairLines({ subs, positions, playerById, courtWidth, courtHeight }) {
 // of sibling bubbles during a drag.
 const CourtBubble = memo(function CourtBubble({
   player, playerId, arrayIdx, position, plan, violation, slotLabel,
-  courtWidth, courtHeight, subbingOut, onDragStart, onRemove,
+  courtWidth, courtHeight, bubbleSize, subbingOut, rowFlagged, onDragStart, onRemove,
 }) {
   const dn = useDisplayName();
-  const halfBubble = BUBBLE_RADIUS;
-  // Bubble's TOP-LEFT in pixels from the court's top-left.
-  const px = (position.x / 100) * courtWidth  - halfBubble;
-  const py = (position.y / 100) * courtHeight - halfBubble;
+  const size = bubbleSize || BUBBLE_RADIUS * 2;
+  const halfBubble = size / 2;
+  // Bubble's TOP-LEFT in pixels from the court's top-left, clamped to the
+  // SAME bounds the drag pipeline enforces. A stored position from a bigger
+  // court (or a bigger bubble) can't push a bubble off the visible surface.
+  const maxLeft = Math.max(COURT_INNER_PAD, courtWidth  - size - COURT_INNER_PAD);
+  const maxTop  = Math.max(COURT_INNER_PAD, courtHeight - size - COURT_INNER_PAD);
+  const px = Math.min(maxLeft, Math.max(COURT_INNER_PAD, (position.x / 100) * courtWidth  - halfBubble));
+  const py = Math.min(maxTop,  Math.max(COURT_INNER_PAD, (position.y / 100) * courtHeight - halfBubble));
 
   function pointerDown(e) {
     if (e.button !== undefined && e.button !== 0) return;
@@ -3540,10 +3848,12 @@ const CourtBubble = memo(function CourtBubble({
         'gpb-bubble',
         violation ? 'is-violation' : '',
         subbingOut ? 'is-subbing-out' : '',
+        rowFlagged ? 'is-row-flag' : '',
       ].filter(Boolean).join(' ')}
       style={{
         left: `${px}px`,
         top:  `${py}px`,
+        '--gpb-bubble': `${size}px`,
         ...colorVarsFor(player, arrayIdx, plan),
       }}
       onPointerDown={pointerDown}
@@ -3565,10 +3875,13 @@ const CourtBubble = memo(function CourtBubble({
 });
 
 
-function BubblePreview({ player, colorVars, slotLabel }) {
+function BubblePreview({ player, colorVars, slotLabel, bubbleSize }) {
   const dn = useDisplayName();
   return (
-    <div className="gpb-bubble lifted" style={colorVars}>
+    <div
+      className="gpb-bubble lifted"
+      style={{ '--gpb-bubble': `${bubbleSize || 88}px`, ...colorVars }}
+    >
       {slotLabel && <div className="gpb-bubble-slot">{slotLabel}</div>}
       <div className="gpb-bubble-num">{player.jersey_number || '?'}</div>
       <div className="gpb-bubble-name">{dn(player)}</div>
@@ -3761,8 +4074,12 @@ function PlayerLine({ player, dir, note }) {
 function SubFlowPanel({
   subFlow, mode, onModeChange, candidates, pairs, fbPairs, playerById,
   effectiveLineup, activeRotation, onCancel, onPickIn, onUnpair, onUnpairFb,
+  rowIssues, onSetPairRows, onSwapPairSpots,
 }) {
+  const dn = useDisplayName();
   const isFb = mode === 'fb';
+  const issueByPair = {};
+  for (const iss of rowIssues || []) issueByPair[iss.pairIdx] = iss;
   const outPlayer = subFlow ? playerById[subFlow.outPid] : null;
   const outRow = subFlow
     ? rowLabelFor(subFlow.outPid, effectiveLineup, activeRotation, playerById)
@@ -3881,8 +4198,14 @@ function SubFlowPanel({
             const pIn  = playerById[inPid];
             const pOut = playerById[outPid];
             if (!pIn || !pOut) return null;
+            const rows = pair.rows || null;
+            const frontPid = rows
+              ? (rows[pair.a] === 'front' ? pair.a : pair.b)
+              : null;
+            const backPid = frontPid ? pairOpponent(pair, frontPid) : null;
+            const issue = issueByPair[i];
             return (
-              <div key={`${pair.a}::${pair.b}::${i}`} className="gpb-pairrow">
+              <div key={`${pair.a}::${pair.b}::${i}`} className={`gpb-pairrow${issue ? ' has-issue' : ''}`}>
                 <span className="gpb-pairrow-type is-sub">Sub</span>
                 <span className="gpb-pairrow-body">
                   <PlayerLine
@@ -3896,6 +4219,68 @@ function SubFlowPanel({
                     dir="out"
                     note={rowLabelFor(outPid, effectiveLineup, activeRotation, playerById)}
                   />
+
+                  {/* Intended rows. One control: who is the front-row half.
+                      ⇄ flips it, × clears the intent entirely. */}
+                  <span className="gpb-rowintent">
+                    {frontPid ? (
+                      <>
+                        <span className="gpb-rowintent-state">
+                          <strong>{dn(playerById[frontPid])}</strong> front
+                          {' · '}
+                          <strong>{dn(playerById[backPid])}</strong> back
+                        </span>
+                        <button
+                          type="button"
+                          className="gpb-rowintent-btn"
+                          onClick={() => onSetPairRows(i, backPid)}
+                          title="Flip which one is the front-row player"
+                        >⇄</button>
+                        <button
+                          type="button"
+                          className="gpb-rowintent-btn"
+                          onClick={() => onSetPairRows(i, null)}
+                          title="Clear the front/back intent"
+                        >×</button>
+                      </>
+                    ) : (
+                      <button
+                        type="button"
+                        className="gpb-rowintent-set"
+                        onClick={() => onSetPairRows(i, pair.a)}
+                        title="Label one player front row and the other back row"
+                      >+ Set rows</button>
+                    )}
+                  </span>
+
+                  {issue && (
+                    <span className="gpb-rowflag" role="alert">
+                      <span className="gpb-rowflag-head">
+                        <span className="gpb-rowflag-tag">ROW MISMATCH</span>
+                        {issue.canSwap && (
+                          <button
+                            type="button"
+                            className="gpb-rowflag-swap"
+                            onClick={() => onSwapPairSpots(i)}
+                            title="Exchange these two players' spots on the court"
+                          >Swap</button>
+                        )}
+                      </span>
+                      {issue.wrong.map(w => {
+                        const p = playerById[w.pid];
+                        if (!p) return null;
+                        return (
+                          <span key={w.pid} className="gpb-rowflag-line">
+                            <strong>{dn(p)}</strong> should be {w.want} row but is in
+                            {' '}{w.slot} ({w.got}).
+                          </span>
+                        );
+                      })}
+                      {!issue.canSwap && (
+                        <span className="gpb-rowflag-hint">Drag them to fix.</span>
+                      )}
+                    </span>
+                  )}
                 </span>
                 <button
                   type="button"

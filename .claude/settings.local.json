@@ -68,7 +68,9 @@
       "Bash(sed -n '/^\\\\.gpb-live-tip/,/^}/p' src/styles.css)",
       "Bash(sed -n '/^\\\\.gpb-slot-guide {/,/^}/p' src/styles.css)",
       "Bash(awk 'NR>6650 && /min-width|min-height/ {print NR\": \"$0}' src/styles.css)",
-      "Bash(awk -F: '$1>7020 && $1<7130')"
+      "Bash(awk -F: '$1>7020 && $1<7130')",
+      "PowerShell(npx vite build 2>&1 | Select-Object -Last 20)",
+      "PowerShell(npx vite --port 5173)"
     ]
   }
 }

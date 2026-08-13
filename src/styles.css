@@ -7371,6 +7371,28 @@ td.dash-stand-team .dash-stand-name {
   }
 }
 
+/* Libero marker on court. The bubble is already amber (LIBERO_DEFAULT), but
+   colour alone never carries a meaning here — the "L" chip under the bubble
+   is the signal, and it survives the roster's own colour-blind settings. */
+.gpb-bubble-libero {
+  position: absolute;
+  bottom: calc(var(--gpb-bubble, 88px) * -0.09);
+  left: 50%;
+  transform: translateX(-50%);
+  min-width: 18px;
+  padding: 1px 6px;
+  background: linear-gradient(135deg, #fbbf24, #b45309);
+  border: 1px solid rgba(0,0,0,0.45);
+  border-radius: 7px;
+  color: #1a1206;
+  font-size: 9.5px; font-weight: 900;
+  letter-spacing: 0.10em;
+  line-height: 1.35;
+  text-align: center;
+  pointer-events: none;
+  z-index: 2;
+}
+
 /* Rotational slot indicator chip above the bubble (P1, P2, …, P6). The
    value reflects the player's slot in the *current rotation*, derived from
    their array index and the active R1-based rotation cycle — so the same
@@ -8317,13 +8339,21 @@ td.dash-stand-team .dash-stand-name {
 }
 
 /* Player picker (nested popup) */
+/* "PICK A PLAYER" — opened from the libero panel, the Libero tab, and the
+   gameplan Pair Subs popup. It must be `fixed`, not `absolute`: the libero
+   surfaces live inside .gpb-col-subs, which scrolls (overflow-y: auto), so
+   an absolute overlay is clipped to that rail AND its z-index competes with
+   the court bubbles (5, and 30 while hovered) instead of clearing them.
+   Fixed + the same 11000 layer as .gpb-sub-overlay puts it over the whole
+   modal, which is also what makes its scrim swallow bubble pointer events. */
 .gpb-pair-picker-overlay {
-  position: absolute; inset: 0;
+  position: fixed; inset: 0;
   background: rgba(2, 6, 14, 0.6);
   backdrop-filter: blur(4px);
   -webkit-backdrop-filter: blur(4px);
   display: flex; align-items: center; justify-content: center;
-  z-index: 2;
+  padding: 20px;
+  z-index: 11000;
   animation: gpb-fade 0.12s ease-out;
 }
 .gpb-pair-picker {
@@ -8874,7 +8904,11 @@ td.dash-stand-team .dash-stand-name {
 .gpb-toolbar {
   position: sticky;
   top: 0;
-  z-index: 30;
+  /* Above a HOVERED bubble, not just a resting one. Bubbles rest at 5 but
+     lift to 30 on hover/focus, and the court renders after the toolbar — at
+     an equal 30 the bubble won the tie and punched through the open overflow
+     menu, which is scoped to this element's stacking context. */
+  z-index: 40;
   display: flex;
   align-items: center;
   flex-wrap: wrap;
@@ -9887,6 +9921,14 @@ td.dash-stand-team .dash-stand-name {
   line-height: 1.6;
   white-space: nowrap;
 }
+/* The libero's pill replaces their position pill — a session-designated
+   libero still reads "MB" in the roster, and that is the one thing the row
+   must not say about them once they're on the auto-swap. */
+.gpb-rolepill.is-libero {
+  color: #fbbf24;
+  background: rgba(251,191,36,0.14);
+  border-color: rgba(251,191,36,0.35);
+}
 .gpb-dirtag {
   flex: 0 0 auto;
   padding: 2px 6px;
@@ -10116,6 +10158,179 @@ td.dash-stand-team .dash-stand-name {
   border-color: rgba(34,211,238,0.45);
   box-shadow: 0 2px 10px rgba(34,211,238,0.14);
 }
+/* Libero — the third mode. It takes its own full-width row: the other two
+   labels are long enough that a 3-up grid shreds them in the narrow subs
+   column. */
+.gpb-subflow-mode.is-libero-tab {
+  grid-column: 1 / -1;
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+}
+.gpb-subflow-mode-count {
+  min-width: 16px; height: 16px;
+  padding: 0 4px;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: rgba(251,191,36,0.22);
+  border: 1px solid rgba(251,191,36,0.45);
+  border-radius: 8px;
+  color: #fbbf24;
+  font-size: 9.5px; font-weight: 800;
+  line-height: 1;
+}
+/* Libero mode tints the active tab amber — the same amber the libero bubble
+   and the roster badge already use, so the colour means exactly one thing. */
+.gpb-subflow.is-libero .gpb-subflow-mode.is-on {
+  background: linear-gradient(135deg, rgba(251,191,36,0.26), rgba(180,83,9,0.18));
+  border-color: rgba(251,191,36,0.50);
+  box-shadow: 0 2px 10px rgba(251,191,36,0.16);
+}
+.gpb-subflow.is-libero .gpb-subflow-mode.is-on .gpb-subflow-mode-count {
+  background: rgba(0,0,0,0.28);
+  border-color: rgba(255,255,255,0.30);
+  color: #fff;
+}
+
+/* ── Libero tab body ── */
+.gpb-liberotab-head {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 8px; margin-bottom: 7px;
+}
+.gpb-liberotab-label {
+  font-size: 10px; font-weight: 800; letter-spacing: 0.18em; color: #fbbf24;
+}
+.gpb-liberotab-add {
+  padding: 4px 9px;
+  font-size: 10.5px; font-weight: 700; letter-spacing: 0.04em;
+  background: rgba(251,191,36,0.10);
+  border: 1px solid rgba(251,191,36,0.32);
+  color: #fbbf24;
+  border-radius: 7px; cursor: pointer;
+  transition: all 0.12s ease;
+}
+.gpb-liberotab-add:hover:not(:disabled) { background: rgba(251,191,36,0.20); color: #fff; }
+.gpb-liberotab-add:disabled { opacity: 0.4; cursor: not-allowed; }
+.gpb-liberotab-empty {
+  font-size: 11px; line-height: 1.5; color: #8b949e;
+  padding: 8px 10px; margin-bottom: 8px;
+  background: rgba(255,255,255,0.03);
+  border: 1px dashed rgba(251,191,36,0.22);
+  border-radius: 9px;
+}
+.gpb-liberotab-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 9px; }
+.gpb-liberotab-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 6px 4px 8px;
+  max-width: 100%;
+  background: linear-gradient(135deg, rgba(251,191,36,0.16), rgba(180,83,9,0.10));
+  border: 1px solid rgba(251,191,36,0.34);
+  border-radius: 999px;
+}
+.gpb-liberotab-chip-num {
+  font-family: 'Space Mono', monospace;
+  font-size: 10.5px; font-weight: 800; color: #fbbf24;
+}
+.gpb-liberotab-chip-name {
+  font-size: 11.5px; font-weight: 700; color: #e6edf3;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.gpb-liberotab-chip-src {
+  font-size: 9px; font-weight: 800; letter-spacing: 0.10em; text-transform: uppercase;
+  color: #fbbf24; background: rgba(251,191,36,0.14);
+  border-radius: 6px; padding: 2px 5px;
+}
+.gpb-liberotab-chip-x {
+  width: 17px; height: 17px; flex-shrink: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: rgba(248,81,73,0.20);
+  border: 1px solid rgba(248,81,73,0.35);
+  color: #ff9d97; border-radius: 50%;
+  font-size: 12px; line-height: 1; cursor: pointer;
+}
+.gpb-liberotab-chip-x:hover { background: rgba(248,81,73,0.45); color: #fff; }
+/* The pairing panel is a self-contained card already; inside the tab it must
+   not also carry the sidebar's side margins. */
+.gpb-liberotab .gpb-libero-panel { margin: 0; }
+
+/* ── Front/Back role assignment ──
+   Shown once both players are picked. Neither option is preselected: the
+   coach assigns the roles, and an empty state is what says so. Cyan is the
+   Front/Back accent, matching that mode's tab and pair rows. */
+.gpb-fbroles {
+  margin-bottom: 9px;
+  padding: 9px 10px 10px;
+  background: linear-gradient(180deg, rgba(34,211,238,0.10), rgba(34,211,238,0.02));
+  border: 1px solid rgba(34,211,238,0.30);
+  border-radius: 10px;
+}
+.gpb-fbroles-head {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: 8px; margin-bottom: 8px;
+}
+.gpb-fbroles-eyebrow {
+  font-size: 10px; font-weight: 800; letter-spacing: 0.16em; color: #67e8f9;
+}
+.gpb-fbroles-hint { font-size: 10.5px; color: #8b949e; }
+.gpb-fbroles-opts { display: flex; flex-direction: column; gap: 6px; }
+.gpb-fbrole-opt {
+  display: flex; flex-direction: column; gap: 5px;
+  width: 100%;
+  padding: 8px 9px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.09);
+  border-radius: 9px;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  transition: all 0.12s ease;
+}
+.gpb-fbrole-opt:hover { border-color: rgba(34,211,238,0.40); background: rgba(34,211,238,0.06); }
+.gpb-fbrole-opt.is-on {
+  background: linear-gradient(135deg, rgba(34,211,238,0.20), rgba(14,165,233,0.10));
+  border-color: rgba(34,211,238,0.60);
+  box-shadow: 0 2px 10px rgba(34,211,238,0.16);
+}
+.gpb-fbrole-half {
+  display: flex; align-items: center; gap: 7px;
+  min-width: 0;
+}
+.gpb-fbroles-actions {
+  display: flex; gap: 6px; margin-top: 9px;
+}
+.gpb-fbroles-btn {
+  flex: 1;
+  padding: 7px 10px;
+  border-radius: 8px;
+  font-size: 11px; font-weight: 700;
+  letter-spacing: 0.06em; text-transform: uppercase;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.10);
+  color: #c9d1d9;
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+.gpb-fbroles-btn:hover { background: rgba(255,255,255,0.10); color: #fff; }
+.gpb-fbroles-btn.is-confirm {
+  background: linear-gradient(135deg, rgba(34,211,238,0.30), rgba(14,165,233,0.20));
+  border-color: rgba(34,211,238,0.50);
+  color: #fff;
+}
+.gpb-fbroles-btn.is-confirm:hover:not(:disabled) { box-shadow: 0 4px 16px rgba(34,211,238,0.30); }
+.gpb-fbroles-btn:disabled { opacity: 0.4; cursor: not-allowed; box-shadow: none; }
+
+/* Role editing on a confirmed pair — the roles are stored, never re-derived,
+   so this button is the only thing that changes them. */
+/* Own line inside the wrapping pair-row body, matching .gpb-rowintent. */
+.gpb-fbrole-edit { flex: 1 0 100%; display: flex; margin-top: 3px; }
+.gpb-fbrole-flip {
+  padding: 3px 8px;
+  font-size: 10px; font-weight: 700; letter-spacing: 0.04em;
+  background: rgba(34,211,238,0.10);
+  border: 1px solid rgba(34,211,238,0.30);
+  color: #67e8f9;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+.gpb-fbrole-flip:hover { background: rgba(34,211,238,0.22); color: #fff; }
 .gpb-subflow.is-fb.is-active {
   background: linear-gradient(180deg, rgba(34,211,238,0.07), rgba(34,211,238,0.015));
 }
@@ -10342,6 +10557,21 @@ td.dash-stand-team .dash-stand-name {
 [data-theme="light"] .gpb-subflow-title { color: #7e22ce; }
 [data-theme="light"] .gpb-subflow-cand { color: #0d1117; background: #fff; }
 [data-theme="light"] .gpb-subflow-cand-num { color: #57606a; }
+
+[data-theme="light"] .gpb-liberotab-label,
+[data-theme="light"] .gpb-liberotab-add,
+[data-theme="light"] .gpb-liberotab-chip-num,
+[data-theme="light"] .gpb-liberotab-chip-src,
+[data-theme="light"] .gpb-subflow-mode-count,
+[data-theme="light"] .gpb-rolepill.is-libero { color: #a16207; }
+[data-theme="light"] .gpb-liberotab-chip-name { color: #0d1117; }
+[data-theme="light"] .gpb-fbroles-eyebrow,
+[data-theme="light"] .gpb-fbrole-flip { color: #0369a1; }
+[data-theme="light"] .gpb-fbrole-opt { background: #fff; border-color: #e6e9ee; }
+[data-theme="light"] .gpb-fbroles-btn { color: #0d1117; background: rgba(15,23,42,0.04); border-color: rgba(15,23,42,0.12); }
+[data-theme="light"] .gpb-fbroles-btn.is-confirm { color: #0d1117; }
+[data-theme="light"] .gpb-liberotab-empty { color: #57606a; background: rgba(15,23,42,0.03); }
+[data-theme="light"] .gpb-subflow.is-libero .gpb-subflow-mode.is-on { color: #0d1117; }
 
 /* Light theme overrides */
 [data-theme="light"] .gpb-libero-panel {

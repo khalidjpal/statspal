@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../../supabase';
 import { validateStats, cleanStatRow, hasStats } from '../../utils/stats';
+import { insertPlayerStats } from '../../utils/statsSave';
 import { sortByJersey } from '../../utils/sort';
 import { useToast } from '../../contexts/ToastContext';
 
-const STAT_FIELDS = ['sets_played', 'kills', 'errors', 'attempts', 'assists', 'ball_handling_errors', 'aces', 'serve_errors', 'receives', 'digs', 'digging_errors', 'blocks', 'block_assists', 'blocking_errors'];
-const STAT_LABELS = { sets_played: 'SP', kills: 'K', errors: 'E', attempts: 'TA', assists: 'A', ball_handling_errors: 'BHE', aces: 'SA', serve_errors: 'SE', receives: 'R', digs: 'Digs', digging_errors: 'DE', blocks: 'BS', block_assists: 'BA', blocking_errors: 'BE' };
+const STAT_FIELDS = ['sets_played', 'kills', 'errors', 'attempts', 'assists', 'ball_handling_errors', 'aces', 'serve_errors', 'receives', 'pass_3', 'pass_2', 'pass_1', 'pass_0', 'digs', 'digging_errors', 'blocks', 'block_assists', 'blocking_errors'];
+const STAT_LABELS = { sets_played: 'SP', kills: 'K', errors: 'E', attempts: 'TA', assists: 'A', ball_handling_errors: 'BHE', aces: 'SA', serve_errors: 'SE', receives: 'R', pass_3: 'P3', pass_2: 'P2', pass_1: 'P1', pass_0: 'P0', digs: 'Digs', digging_errors: 'DE', blocks: 'BS', block_assists: 'BA', blocking_errors: 'BE' };
 
 // SP = 0 or blank → player is locked (no other stats allowed)
 function spLocked(playerStats) {
@@ -31,7 +32,7 @@ export default function ManualResultModal({ game, team, players, existingStats, 
       const existing = existingStats.find(s => s.player_id === p.id);
       init[p.id] = existing
         ? { ...existing }
-        : { kills: 0, aces: 0, digs: 0, assists: 0, blocks: 0, errors: 0, attempts: 0, sets_played: 0, block_assists: 0, serve_errors: 0, blocking_errors: 0, digging_errors: 0, ball_handling_errors: 0, receives: 0 };
+        : { kills: 0, aces: 0, digs: 0, assists: 0, blocks: 0, errors: 0, attempts: 0, sets_played: 0, block_assists: 0, serve_errors: 0, blocking_errors: 0, digging_errors: 0, ball_handling_errors: 0, receives: 0, pass_3: 0, pass_2: 0, pass_1: 0, pass_0: 0 };
     });
     return init;
   });
@@ -74,6 +75,7 @@ export default function ManualResultModal({ game, team, players, existingStats, 
             kills: 0, aces: 0, digs: 0, assists: 0, blocks: 0,
             errors: 0, attempts: 0, block_assists: 0, serve_errors: 0,
             blocking_errors: 0, digging_errors: 0, ball_handling_errors: 0, receives: 0,
+            pass_3: 0, pass_2: 0, pass_1: 0, pass_0: 0,
           },
         }));
       } else {
@@ -184,7 +186,7 @@ export default function ManualResultModal({ game, team, players, existingStats, 
       .filter(r => hasStats(r));
 
     if (rows.length > 0) {
-      const insRes = await supabase.from('player_game_stats').insert(rows);
+      const insRes = await insertPlayerStats(rows);
       if (insRes.error) {
         addToast('Failed to save stats: ' + insRes.error.message);
       } else {

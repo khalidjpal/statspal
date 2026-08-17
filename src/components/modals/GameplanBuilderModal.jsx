@@ -497,6 +497,63 @@ function detectFrontBackCrossings(plan, fromRot, toRot) {
   return out;
 }
 
+// ─── Batch review of queued crossings ──────────────────────────────────────
+//
+// One rotation click can carry several Front/Back pairs over the line at
+// once, and the coach reviews them together (see FrontBackSwapPopup). So
+// legality has to be judged the same way: CUMULATIVELY. Each included swap is
+// checked against the plan as it stands AFTER the ones above it — judge them
+// independently and a batch sails straight past the 12-per-set limit, because
+// every row thinks it's the only swap in flight.
+//
+// Rows the coach has toggled off are still checked (so the row can explain
+// itself) but never accumulate — switching a row off genuinely hands back the
+// budget its swap would have spent, and the rows below it react.
+//
+// Returns { rows: [{ item, index, selected, ok, reason }], entries: [...] },
+// where `entries` are sub_log entries for exactly the included legal rows, in
+// order. Nothing here mutates the plan — the caller decides.
+function evaluateFbBatch(plan, queue, selected, fromRot, toRot, playerById, nameMode) {
+  const rows = [];
+  const entries = [];
+  if (!plan || !queue) return { rows, entries };
+  const baseLog = plan.sub_log || [];
+  let sim = plan;
+  queue.forEach((item, index) => {
+    const isOn = !!selected?.[index];
+    const assigned = sim.assigned_players || [];
+    const liveAt = () => effectiveLineupAt(sim, fromRot)[item.atIdx] || assigned[item.atIdx];
+    let ok = false;
+    let reason = null;
+    if (!playerById?.[item.inPid] || !playerById?.[item.outPid]) {
+      reason = 'Player is no longer on the roster';
+    } else if (!assigned[item.atIdx]) {
+      reason = 'No starter in this slot';
+    } else {
+      // Same gate every single Playground sub goes through — 12-per-set,
+      // one locked partner per starter, no double-booked slots.
+      const check = setSubEligibility(sim, item.atIdx, item.inPid, playerById, nameMode);
+      if (!check.ok) reason = check.reason;
+      else if (liveAt() === item.inPid) reason = 'Already on court in this slot';
+      else ok = true;
+    }
+    rows.push({ item, index, selected: isOn, ok, reason });
+    if (isOn && ok) {
+      entries.push({
+        id: cryptoRandomId(),
+        kind: 'regular',
+        atIdx: item.atIdx,
+        atRot: toRot,
+        fromPid: liveAt(),
+        toPid: item.inPid,
+        ts: Date.now(),
+      });
+      sim = { ...plan, sub_log: [...baseLog, ...entries] };
+    }
+  });
+  return { rows, entries };
+}
+
 // ─── Effective lineup (regular subs + libero auto-swap) ──
 //
 // Returns the array of 6 player IDs that are CURRENTLY on the court at the
@@ -2224,36 +2281,70 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
     setSubFlow(null);
   }
 
-  // Confirm one queued crossing: perform the swap, then move to the next.
-  // Cancel just advances — the player already on court stays put, and the
-  // rotation still completes.
-  function confirmFbSwap() {
-    const item = fbSwap?.queue?.[fbSwap.cursor];
-    if (!item || !activePlan) { advanceFbSwap(); return; }
-    const entry = buildRegularSubEntry(item.atIdx, item.inPid, fbSwap.toRot);
-    if (!entry) {
-      addToast('That swap is not legal under FIVB rules — 6-sub limit or slot conflict', 'error');
-      advanceFbSwap();
-      return;
-    }
-    patchActivePlan({ sub_log: [...(activePlan.sub_log || []), entry] });
-    advanceFbSwap();
-  }
-  // Stable identity (functional setState only) so the Esc handler can depend
-  // on it without re-binding the listener every render.
-  const advanceFbSwap = useCallback(() => {
+  // ── Queued crossings: one batched review ──
+  //
+  // Every crossing a rotation raised is reviewed TOGETHER in a single popup —
+  // one row per swap, each with its own toggle — instead of a chain of
+  // prompts that made the coach answer the same question three times without
+  // ever seeing the whole picture. The evaluator below is the only judge of
+  // legality; the popup just renders what it says.
+  const fbBatch = useMemo(() => {
+    if (!fbSwap || !activePlan) return null;
+    return evaluateFbBatch(
+      activePlan, fbSwap.queue, fbSwap.selected,
+      fbSwap.fromRot, fbSwap.toRot, playerById, nameMode,
+    );
+  }, [fbSwap, activePlan, playerById, nameMode]);
+  // The same evaluation with every row switched on. Powers the "Confirm All"
+  // shortcut and its count without disturbing the coach's current toggles.
+  const fbBatchAll = useMemo(() => {
+    if (!fbSwap || !activePlan) return null;
+    return evaluateFbBatch(
+      activePlan, fbSwap.queue, fbSwap.queue.map(() => true),
+      fbSwap.fromRot, fbSwap.toRot, playerById, nameMode,
+    );
+  }, [fbSwap, activePlan, playerById, nameMode]);
+
+  function toggleFbSwapRow(index) {
     setFbSwap(curr => {
-      if (!curr) return null;
-      const nextCursor = curr.cursor + 1;
-      if (nextCursor >= curr.queue.length) {
-        // Queue drained — now let the rotation change land.
-        setActiveRotation(curr.toRot);
-        return null;
-      }
-      return { ...curr, cursor: nextCursor };
+      if (!curr) return curr;
+      const selected = curr.selected.slice();
+      selected[index] = !selected[index];
+      return { ...curr, selected };
     });
-  }, []);
-  const cancelFbSwap = advanceFbSwap;
+  }
+
+  // Land a reviewed batch. Every included legal swap goes in through ONE
+  // patchActivePlan — patchActivePlan snapshots `activePlan` from its closure,
+  // so one call per swap in the same tick would clobber the others — and then
+  // the rotation the coach asked for completes.
+  const applyFbBatch = useCallback((entries) => {
+    if (entries?.length && activePlan) {
+      patchActivePlan({ sub_log: [...(activePlan.sub_log || []), ...entries] });
+    }
+    setFbSwap(curr => {
+      if (curr) setActiveRotation(curr.toRot);
+      return null;
+    });
+  }, [activePlan, patchActivePlan]);
+
+  function confirmFbBatch(batch) {
+    if (!batch) return;
+    // A row the evaluator refused was already flagged in the popup, but say it
+    // once more on the way out so nothing is dropped silently.
+    const blocked = batch.rows.filter(r => r.selected && !r.ok);
+    if (blocked.length) {
+      addToast(
+        `${blocked.length} swap${blocked.length > 1 ? 's' : ''} skipped — ${blocked[0].reason}`,
+        'error',
+      );
+    }
+    applyFbBatch(batch.entries);
+  }
+
+  // Cancel / Esc / backdrop: make no swaps at all. The rotation still lands —
+  // dismissing a crossing means "leave the lineup alone", not "don't rotate".
+  const cancelFbSwap = useCallback(() => applyFbBatch([]), [applyFbBatch]);
 
   // Removing a confirmed pair line in Playground reads as "undo this
   // substitution", so it drops BOTH the pairing and the swaps it produced —
@@ -2711,7 +2802,14 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
     if (isPlayground) {
       const crossings = detectFrontBackCrossings(activePlan, activeRotation, targetRotation);
       if (crossings.length === 0) { setActiveRotation(targetRotation); return; }
-      setFbSwap({ fromRot: activeRotation, toRot: targetRotation, queue: crossings, cursor: 0 });
+      // All crossings ride in one popup, every row included by default — the
+      // coach switches off what they don't want rather than confirming each.
+      setFbSwap({
+        fromRot: activeRotation,
+        toRot: targetRotation,
+        queue: crossings,
+        selected: crossings.map(() => true),
+      });
       return;
     }
 
@@ -2920,8 +3018,8 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
         if (presetEditing) { setPresetEditing(null); return; }
         if (overflowOpen) { setOverflowOpen(false); return; }
         if (subPopup) { setSubPopup(null); return; }
-        // Esc on a crossing prompt reads as "leave the lineup alone" — it
-        // still advances the queue so the rotation completes.
+        // Esc on the crossing review reads as "leave the lineup alone" — it
+        // makes none of the batch's swaps, but the rotation still completes.
         if (fbSwap) { cancelFbSwap(); return; }
         if (pairPopup) { setPairPopup(null); return; }
         if (fbDraft) { setFbDraft(null); return; }
@@ -3742,14 +3840,18 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
           />
         )}
 
-        {/* Front/Back pair crossing confirmation (Playground) */}
-        {fbSwap && fbSwap.queue[fbSwap.cursor] && (
+        {/* Front/Back pair crossing confirmation (Playground) — all pending
+            swaps in ONE popup, one toggleable row each. */}
+        {fbSwap && fbBatch && fbBatch.rows.length > 0 && (
           <FrontBackSwapPopup
-            item={fbSwap.queue[fbSwap.cursor]}
+            rows={fbBatch.rows}
+            allRows={fbBatchAll?.rows || []}
             playerById={playerById}
-            queueIndex={fbSwap.cursor + 1}
-            queueTotal={fbSwap.queue.length}
-            onConfirm={confirmFbSwap}
+            fromRot={fbSwap.fromRot}
+            toRot={fbSwap.toRot}
+            onToggle={toggleFbSwapRow}
+            onConfirmSelected={() => confirmFbBatch(fbBatch)}
+            onConfirmAll={() => confirmFbBatch(fbBatchAll)}
             onCancel={cancelFbSwap}
           />
         )}
@@ -4656,46 +4758,124 @@ function LiberoTab({
 }
 
 // ─── FrontBackSwapPopup ────────────────────────────────────────────────────
-// Small, quick confirmation raised when a rotation carries a Front/Back
-// pair's slot across the front/back line. Deliberately compact — one
-// sentence, two buttons — so it doesn't feel like leaving the court view.
-function FrontBackSwapPopup({ item, playerById, queueIndex, queueTotal, onConfirm, onCancel }) {
-  if (!item) return null;
-  const pIn  = playerById[item.inPid];
-  const pOut = playerById[item.outPid];
-  if (!pIn || !pOut) return null;
-  const movedTo = item.toFront ? 'front row' : 'back row';
+// Raised when a rotation carries Front/Back pairs across the front/back line.
+//
+// EVERY crossing this rotation produced is listed here at once — one row per
+// swap, each with its own toggle, all included by default. The coach sees the
+// whole picture and answers once. A single crossing renders the same way, one
+// row, so the flow never changes shape.
+//
+// Rows the batch evaluator refused keep their place and say why rather than
+// vanishing; they simply don't count toward the confirm buttons, and the
+// legal rows around them still apply.
+function FrontBackSwapPopup({
+  rows, allRows, playerById, fromRot, toRot, onToggle,
+  onConfirmSelected, onConfirmAll, onCancel,
+}) {
+  if (!rows?.length) return null;
+  const total = rows.length;
+  const multi = total > 1;
+  const selectedCount = rows.filter(r => r.selected).length;
+  const applyCount = rows.filter(r => r.selected && r.ok).length;
+  const allCount = (allRows || []).filter(r => r.ok).length;
+  const blockedCount = rows.filter(r => r.selected && !r.ok).length;
+  const everySelected = selectedCount === total;
 
   return (
     <div className="gpb-fb-overlay" onClick={onCancel}>
-      <div className="gpb-fb-popup" onClick={e => e.stopPropagation()}>
+      <div className="gpb-fb-popup gpb-fbb-popup" onClick={e => e.stopPropagation()}>
         <div className="gpb-fb-eyebrow">
-          <span className="gpb-pairrow-type is-fb">Pair</span>
-          {queueTotal > 1 && <span className="gpb-fb-progress">{queueIndex} / {queueTotal}</span>}
+          <span className="gpb-pairrow-type is-fb">{multi ? 'Pairs' : 'Pair'}</span>
+          {multi && <span className="gpb-fb-progress">{selectedCount} / {total} selected</span>}
         </div>
 
-        {/* WHY — the rotation event that triggered this. */}
+        {/* WHY — the rotation event that raised all of these. */}
         <div className="gpb-fb-why">
-          Rotation moved this slot <strong>{item.fromSlot} → {item.toSlot}</strong>,
-          {' '}into the <strong>{movedTo}</strong>.
+          Rotation <strong>R{fromRot} → R{toRot}</strong> crossed{' '}
+          {multi ? <><strong>{total}</strong> pairs</> : 'this pair'} over the front/back line.
+          {multi ? ' Pick the swaps to make.' : ''}
         </div>
 
-        {/* WHO — same OUT/IN language and colour used across the sub UI. */}
-        <div className="gpb-fb-swap">
-          <div className="gpb-fb-row is-out">
-            <DirTag kind="out">GOING OUT</DirTag>
-            <PlayerLine player={pOut} dir="out" />
-          </div>
-          <div className="gpb-fb-arrow" aria-hidden="true">↓</div>
-          <div className="gpb-fb-row is-in">
-            <DirTag kind="in">COMING IN</DirTag>
-            <PlayerLine player={pIn} dir="in" />
-          </div>
+        {/* WHO — one row per swap, same OUT/IN vocabulary as the rest of the
+            sub UI, direction spelled out in words as well as colour. */}
+        <div className="gpb-fbb-list">
+          {rows.map(r => {
+            const { item } = r;
+            const pIn = playerById[item.inPid];
+            const pOut = playerById[item.outPid];
+            return (
+              <label
+                key={item.pairIdx}
+                className={`gpb-fbb-row${r.selected ? ' is-on' : ''}${r.ok ? '' : ' is-blocked'}`}
+              >
+                <input
+                  type="checkbox"
+                  className="gpb-fbb-check"
+                  checked={r.selected}
+                  onChange={() => onToggle(r.index)}
+                />
+                <span className="gpb-fbb-body">
+                  <span className="gpb-fbb-swap">
+                    {pIn
+                      ? <PlayerLine player={pIn} dir="in" />
+                      : <span className="gpb-fbb-missing">Unknown player</span>}
+                    <span className="gpb-fbb-conn">in for</span>
+                    {pOut
+                      ? <PlayerLine player={pOut} dir="out" />
+                      : <span className="gpb-fbb-missing">Unknown player</span>}
+                  </span>
+                  <span className="gpb-fbb-meta">
+                    <DirTag kind={item.toFront ? 'front' : 'back'}>
+                      {item.toFront ? 'TO FRONT' : 'TO BACK'}
+                    </DirTag>
+                    <span className="gpb-fbb-slot">{item.fromSlot} → {item.toSlot}</span>
+                  </span>
+                  {!r.ok && (
+                    <span className="gpb-fbb-flag">Can’t sub — {r.reason}</span>
+                  )}
+                </span>
+              </label>
+            );
+          })}
         </div>
 
-        <div className="gpb-fb-actions">
-          <button type="button" className="gpb-fb-btn gpb-fb-cancel" onClick={onCancel}>Cancel</button>
-          <button type="button" className="gpb-fb-btn gpb-fb-confirm" onClick={onConfirm}>Confirm swap</button>
+        {blockedCount > 0 && (
+          <div className="gpb-fbb-note">
+            {blockedCount} flagged {blockedCount > 1 ? 'swaps' : 'swap'} can’t be made
+            {applyCount > 0 ? ' — the rest still apply.' : '.'}
+          </div>
+        )}
+
+        <div className="gpb-fbb-actions">
+          <button
+            type="button"
+            className="gpb-fb-btn gpb-fb-confirm"
+            disabled={applyCount === 0}
+            onClick={onConfirmSelected}
+          >
+            {!multi
+              ? 'Confirm swap'
+              : everySelected
+                ? `Confirm All (${applyCount})`
+                : `Confirm Selected (${applyCount})`}
+          </button>
+          <div className="gpb-fbb-actions-row">
+            {/* Only worth its space when it would do something the primary
+                button wouldn't — with everything already on, it's the same. */}
+            {multi && !everySelected && (
+              <button
+                type="button"
+                className="gpb-fb-btn gpb-fbb-all"
+                disabled={allCount === 0}
+                onClick={onConfirmAll}
+              >
+                Confirm All ({allCount})
+              </button>
+            )}
+            <button type="button" className="gpb-fb-btn gpb-fb-cancel" onClick={onCancel}>
+              {multi ? 'Skip all' : 'Skip'}
+            </button>
+          </div>
         </div>
       </div>
     </div>

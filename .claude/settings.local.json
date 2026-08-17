@@ -70,7 +70,23 @@
       "Bash(awk 'NR>6650 && /min-width|min-height/ {print NR\": \"$0}' src/styles.css)",
       "Bash(awk -F: '$1>7020 && $1<7130')",
       "PowerShell(npx vite build 2>&1 | Select-Object -Last 20)",
-      "PowerShell(npx vite --port 5173)"
+      "PowerShell(npx vite --port 5173)",
+      "PowerShell(git push *)",
+      "PowerShell(npx vercel deploy --prod --yes)",
+      "Bash(xargs wc -l)",
+      "Bash(rm -rf .fbtest)",
+      "Bash(mkdir -p .fbtest)",
+      "Bash(cp __TRACKED_VAR__/mod.jsx .fbtest/mod.jsx)",
+      "Bash(cp __TRACKED_VAR__/run.mjs .fbtest/run.mjs)",
+      "PowerShell(npx eslint src/screens/LiveGame.jsx src/utils/stats.js src/utils/statsSave.js src/components/AveragesTab.jsx src/screens/GameSummary.jsx src/screens/GameDetailBody.jsx src/screens/PlayerDetail.jsx src/screens/PlayerHome.jsx src/screens/Export.jsx src/components/modals/ManualResultModal.jsx src/components/modals/GodStatsModal.jsx src/App.jsx)",
+      "PowerShell(Get-Content \"C:\\\\Users\\\\kpal\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-kpal-statspal\\\\1ac947d6-06f5-404b-94d2-2e10b324d015\\\\tasks\\\\bfv0slubu.output\" -Tail 10; @\\(\"C:\\\\Program Files\\\\Google\\\\Chrome\\\\Application\\\\chrome.exe\",\"C:\\\\Program Files \\(x86\\)\\\\Google\\\\Chrome\\\\Application\\\\chrome.exe\",\"$env:LOCALAPPDATA\\\\Google\\\\Chrome\\\\Application\\\\chrome.exe\",\"C:\\\\Program Files \\(x86\\)\\\\Microsoft\\\\Edge\\\\Application\\\\msedge.exe\"\\) | ForEach-Object { if \\(Test-Path $_\\) { \"FOUND: $_\" } })",
+      "PowerShell(Test-Path *)",
+      "PowerShell(Out-File *)",
+      "PowerShell(Set-Location C:\\\\Users\\\\kpal\\\\statspal; \\(Get-Content .env.local\\) | ForEach-Object { \\($_ -split '='\\)[0] })",
+      "PowerShell(Get-CimInstance *)",
+      "PowerShell(try { $r = Invoke-WebRequest -Uri \"http://localhost:5173/livegame-test.html\" -UseBasicParsing -TimeoutSec 10; \"status: $\\($r.StatusCode\\)\"; if \\($r.Content -match 'livegameHarness'\\) { \"harness entry present\" } } catch { \"ERR: $\\($_.Exception.Message\\)\" })",
+      "PowerShell(Set-Content *)",
+      "PowerShell(Set-Location C:\\\\Users\\\\kpal\\\\statspal; git status --short | Select-String -Pattern 'devtest|livegame-test'; \"harness removed: $\\(-not \\(Test-Path livegame-test.html\\) -and -not \\(Test-Path src\\\\devtest\\)\\)\"; git diff --stat -- src/screens/LiveGame.jsx src/styles.css)"
     ]
   }
 }

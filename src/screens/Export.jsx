@@ -1,5 +1,5 @@
 import { useData } from '../contexts/DataContext';
-import { hpct, n3, playerTotals } from '../utils/stats';
+import { hpct, n3, playerTotals, passAvg, pfmt } from '../utils/stats';
 import { sortedCompleted, sortByJersey } from '../utils/sort';
 
 export default function Export({ team, onBack }) {
@@ -9,7 +9,7 @@ export default function Export({ team, onBack }) {
   const teamGames = sortedCompleted(completedGames.filter(g => g.team_id === team.id));
 
   function buildCSV() {
-    const headers = ['Player', 'SP', 'K', 'E', 'TA', 'K%', 'A', 'BHE', 'SA', 'SE', 'R', 'Digs', 'DE', 'BS', 'BA', 'BE'];
+    const headers = ['Player', 'SP', 'K', 'E', 'TA', 'K%', 'A', 'BHE', 'SA', 'SE', 'Rec', 'Pass Avg', 'P3', 'P2', 'P1', 'P0', 'Digs', 'DE', 'BS', 'BA', 'BE'];
     const rows = teamPlayers.map(p => {
       const stats = playerGameStats.filter(s => s.player_id === p.id);
       const t = playerTotals(stats);
@@ -26,6 +26,11 @@ export default function Export({ team, onBack }) {
         t.aces,
         t.serve_errors,
         t.receives || 0,
+        passAvg(t) !== null ? pfmt(passAvg(t)) : '',
+        t.pass_3 || 0,
+        t.pass_2 || 0,
+        t.pass_1 || 0,
+        t.pass_0 || 0,
         t.digs,
         t.digging_errors || 0,
         t.blocks,

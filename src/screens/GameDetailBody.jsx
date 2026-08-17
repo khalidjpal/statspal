@@ -1,9 +1,9 @@
 import { useMemo, useState } from 'react';
 import { useData } from '../contexts/DataContext';
-import { hpct, n3, hcol, hlbl, playerTotals } from '../utils/stats';
+import { hpct, n3, hcol, hlbl, playerTotals, passAvg, passGraded, pfmt, pcol } from '../utils/stats';
 import PlayerBadge from '../components/PlayerBadge';
 
-const EMPTY = { kills: 0, aces: 0, digs: 0, assists: 0, blocks: 0, errors: 0, attempts: 0, sets_played: 0, block_assists: 0, serve_errors: 0, blocking_errors: 0, digging_errors: 0, ball_handling_errors: 0, receives: 0 };
+const EMPTY = { kills: 0, aces: 0, digs: 0, assists: 0, blocks: 0, errors: 0, attempts: 0, sets_played: 0, block_assists: 0, serve_errors: 0, blocking_errors: 0, digging_errors: 0, ball_handling_errors: 0, receives: 0, pass_3: 0, pass_2: 0, pass_1: 0, pass_0: 0 };
 const BAR_MIN = -0.05, BAR_MAX = 0.40;
 
 function barPos(h) {
@@ -72,6 +72,10 @@ export default function GameDetailBody({ player, game, team }) {
   const bhe  = stats.ball_handling_errors|| 0;
   const totalBlocks = bs + ba;
 
+  const pAvg   = passAvg(stats);
+  const pGrade = passGraded(stats);
+  const seasonPAvg = passAvg(season);
+
   const h        = hpct(k, e, ta);
   const effColor = hcol(k, e, ta);
   const effLabel = hlbl(k, e, ta);
@@ -103,6 +107,7 @@ export default function GameDetailBody({ player, game, team }) {
     { label: 'BS / Set',  game: ps(bs, sp),     season: ps(season.blocks, seasonSP),                        dir: cmp(bs/sp, season.blocks/seasonSP, true) },
     { label: 'BA / Set',  game: ps(ba, sp),     season: ps(season.block_assists, seasonSP),                 dir: cmp(ba/sp, season.block_assists/seasonSP, true) },
     { label: 'R / Set',   game: ps(r, sp),      season: ps(season.receives || 0, seasonSP),                 dir: cmp(r/sp, (season.receives||0)/seasonSP, true) },
+    { label: 'Pass Avg',  game: pfmt(pAvg),     season: pfmt(seasonPAvg),                                   dir: cmp(pAvg, seasonPAvg, true) },
     { label: 'BE / Set',  game: ps(be, sp),     season: ps(season.blocking_errors || 0, seasonSP),          dir: cmp(be/sp, (season.blocking_errors||0)/seasonSP, false) },
     { label: 'DE / Set',  game: ps(de, sp),     season: ps(season.digging_errors || 0, seasonSP),           dir: cmp(de/sp, (season.digging_errors||0)/seasonSP, false) },
     { label: 'BHE / Set', game: ps(bhe, sp),    season: ps(season.ball_handling_errors || 0, seasonSP),     dir: cmp(bhe/sp, (season.ball_handling_errors||0)/seasonSP, false) },
@@ -184,11 +189,20 @@ export default function GameDetailBody({ player, game, team }) {
       {/* ── Reception & Defense ── */}
       <div className="pgd-card pd-cat-card" style={{ borderLeftColor: '#2dd4bf' }}>
         <div className="pgd-section-label" style={{ color: '#2dd4bf' }}>Reception & Defense</div>
-        <div className="pd-cat-grid pd-cat-3">
-          <StatCell value={r}    label="R" />
-          <StatCell value={digs} label="Digs" />
-          <StatCell value={de}   label="DE" color={de > 0 ? '#f85149' : undefined} />
+        <div className="pd-cat-grid pd-cat-4">
+          <StatCell value={r}          label="Rec" />
+          <StatCell value={pfmt(pAvg)} label="Pass Avg" color={pcol(pAvg)} accent />
+          <StatCell value={digs}       label="Digs" />
+          <StatCell value={de}         label="DE" color={de > 0 ? '#f85149' : undefined} />
         </div>
+        {pGrade > 0 && (
+          <div className="pd-cat-grid pd-cat-4" style={{ marginTop: 6 }}>
+            <StatCell value={stats.pass_3 || 0} label="3s" muted />
+            <StatCell value={stats.pass_2 || 0} label="2s" muted />
+            <StatCell value={stats.pass_1 || 0} label="1s" muted />
+            <StatCell value={stats.pass_0 || 0} label="0s" muted />
+          </div>
+        )}
         <div className="pd-cat-grid pd-cat-2" style={{ marginTop: 6 }}>
           <StatCell value={digsPerSet} label="Digs / Set" muted />
         </div>

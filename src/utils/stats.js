@@ -77,6 +77,56 @@ export function n2(v) {
   return v != null ? v.toFixed(2) : '—';
 }
 
+// ─── Serve-receive passing grades ───────────────────────────────────────────
+// Every receive is graded 3 (perfect) / 2 (good) / 1 (poor) / 0 (aced).
+// `receives` stays the total count; these four counters are the breakdown.
+// A game tracked before graded passing existed has receives > 0 but no
+// breakdown, so passAvg() returns null there instead of a bogus 0.00.
+export const PASS_FIELDS = ['pass_3', 'pass_2', 'pass_1', 'pass_0'];
+
+// Number of graded receives (0s included — an ace against still counts)
+export function passGraded(s) {
+  if (!s) return 0;
+  return (s.pass_3 || 0) + (s.pass_2 || 0) + (s.pass_1 || 0) + (s.pass_0 || 0);
+}
+
+// Sum of rating values
+export function passPoints(s) {
+  if (!s) return 0;
+  return 3 * (s.pass_3 || 0) + 2 * (s.pass_2 || 0) + 1 * (s.pass_1 || 0);
+}
+
+// Passing average on the 0–3 scale, or null when nothing is graded
+export function passAvg(s) {
+  const n = passGraded(s);
+  return n > 0 ? passPoints(s) / n : null;
+}
+
+// Passing average as display string: "2.33" / "—"
+export function pfmt(v) {
+  return v == null ? '—' : v.toFixed(2);
+}
+
+// Passing average color scale
+export function pcol(v) {
+  if (v == null) return '#888';
+  if (v < 1.60) return '#C0392B';
+  if (v < 1.90) return '#E67E22';
+  if (v < 2.20) return '#27AE60';
+  if (v < 2.50) return '#1E8449';
+  return '#0F6E56';
+}
+
+// Passing average label
+export function plbl(v) {
+  if (v == null) return 'N/A';
+  if (v < 1.60) return 'Poor';
+  if (v < 1.90) return 'Below Avg';
+  if (v < 2.20) return 'Average';
+  if (v < 2.50) return 'Very Good';
+  return 'Excellent';
+}
+
 // Format hitting % with sign: "+.312" / "-.045" / "—"
 export function n3(v) {
   if (v == null) return '—';
@@ -87,7 +137,7 @@ export function n3(v) {
 }
 
 // Stat fields that belong in player_game_stats rows
-const STAT_FIELDS = ['kills', 'aces', 'digs', 'assists', 'blocks', 'errors', 'attempts', 'sets_played', 'block_assists', 'serve_errors', 'blocking_errors', 'digging_errors', 'ball_handling_errors', 'receives'];
+const STAT_FIELDS = ['kills', 'aces', 'digs', 'assists', 'blocks', 'errors', 'attempts', 'sets_played', 'block_assists', 'serve_errors', 'blocking_errors', 'digging_errors', 'ball_handling_errors', 'receives', 'pass_3', 'pass_2', 'pass_1', 'pass_0'];
 
 // Extract only valid stat fields from an object, coerce to integer, default 0.
 // Use this before inserting into player_game_stats to prevent DB row field leaks
@@ -107,7 +157,7 @@ export function hasStats(row) {
 
 // Compute totals for a single player across games
 export function playerTotals(statsRows) {
-  const t = { kills: 0, aces: 0, digs: 0, assists: 0, blocks: 0, errors: 0, attempts: 0, sets_played: 0, block_assists: 0, serve_errors: 0, blocking_errors: 0, digging_errors: 0, ball_handling_errors: 0, receives: 0 };
+  const t = { kills: 0, aces: 0, digs: 0, assists: 0, blocks: 0, errors: 0, attempts: 0, sets_played: 0, block_assists: 0, serve_errors: 0, blocking_errors: 0, digging_errors: 0, ball_handling_errors: 0, receives: 0, pass_3: 0, pass_2: 0, pass_1: 0, pass_0: 0 };
   for (const r of statsRows) {
     t.kills += r.kills || 0;
     t.aces += r.aces || 0;
@@ -123,6 +173,10 @@ export function playerTotals(statsRows) {
     t.digging_errors += r.digging_errors || 0;
     t.ball_handling_errors += r.ball_handling_errors || 0;
     t.receives += r.receives || 0;
+    t.pass_3 += r.pass_3 || 0;
+    t.pass_2 += r.pass_2 || 0;
+    t.pass_1 += r.pass_1 || 0;
+    t.pass_0 += r.pass_0 || 0;
   }
   return t;
 }

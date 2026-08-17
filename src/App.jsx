@@ -5,6 +5,7 @@ import { useToast } from './contexts/ToastContext';
 import { supabase } from './supabase';
 import { completeSession } from './utils/liveSession';
 import { cleanStatRow, hasStats } from './utils/stats';
+import { insertPlayerStats } from './utils/statsSave';
 import Login from './screens/Login';
 import TeamPicker from './screens/TeamPicker';
 import TeamLaunch from './screens/TeamLaunch';
@@ -308,7 +309,7 @@ export default function App() {
       console.log('[handleEndMatch] Saving', rows.length, 'player stat rows');
 
       if (rows.length > 0) {
-        const statsRes = await supabase.from('player_game_stats').insert(rows);
+        const statsRes = await insertPlayerStats(rows);
         if (statsRes.error) {
           addToast('Failed to save player stats: ' + statsRes.error.message);
           console.error('[handleEndMatch] Stats insert FAILED:', statsRes.error.message);

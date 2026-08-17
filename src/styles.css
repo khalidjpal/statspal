@@ -1551,6 +1551,33 @@ input[type=number] {
 @media(hover:hover){.lv-ab:hover{filter:brightness(1.15);}}
 .lv-ab-ok{background:#0a1e0e;color:#3fb950;border-color:rgba(63,185,80,0.32);}
 .lv-ab-err{background:#1e0a0a;color:#f85149;border-color:rgba(248,81,73,0.32);}
+/* ── Graded receive: one segmented control, four grades (1 · 2 · 3 · 0) ──
+   Deliberately violet→amber, NOT the green-positive / red-error palette the
+   surrounding stat tiles use, so the cluster reads as its own unit. */
+.lv-recgrp{
+  flex:3.1;min-width:0;display:flex;flex-direction:column;
+  gap:clamp(1px,0.15dvh,2px);padding:clamp(1px,0.2dvh,3px) 3px 3px;
+  border:1.5px solid rgba(167,139,250,0.34);border-radius:10px;
+  background:rgba(139,92,246,0.10);
+}
+.lv-recgrp-lbl{
+  flex:0 0 auto;text-align:center;line-height:1.1;
+  font-size:clamp(6px,0.62vw,8px);font-weight:700;letter-spacing:0.16em;
+  text-transform:uppercase;color:#a78bfa;
+}
+.lv-recgrp-btns{flex:1;display:flex;gap:1px;min-height:0;}
+/* Buttons sit flush inside the group frame — the 1px gap is the divider. */
+.lv-recgrp .lv-ab{flex:1;border:none;border-radius:0;}
+.lv-recgrp .lv-ab:first-child{border-radius:7px 0 0 7px;}
+.lv-recgrp .lv-ab:last-child{border-radius:0 7px 7px 0;}
+/* Badges tuck inside the segment so they never collide with the RECEIVE label. */
+.lv-recgrp .lv-ab-badge{top:2px;right:2px;width:16px;height:16px;font-size:9px;}
+.lv-ab-r3{background:#241040;color:#d8b4fe;}   /* best  — brightest violet */
+.lv-ab-r2{background:#1b1235;color:#a78bfa;}
+.lv-ab-r1{background:#16142a;color:#8b86b8;}   /* dull violet */
+.lv-ab-r0{background:#2a1a05;color:#f5a524;}   /* worst — amber, not red */
+.lv-ab-fl-pass{filter:brightness(1.9);transform:scale(1.04)!important;box-shadow:0 0 18px rgba(167,139,250,0.5);}
+.lv-ab-fl-amber{filter:brightness(1.9);transform:scale(1.04)!important;box-shadow:0 0 18px rgba(245,165,36,0.5);}
 .lv-ab-fl-ok{filter:brightness(2.3);transform:scale(1.04)!important;box-shadow:0 0 18px rgba(63,185,80,0.45);}
 .lv-ab-fl-err{filter:brightness(2.3);transform:scale(1.04)!important;box-shadow:0 0 18px rgba(248,81,73,0.45);}
 .lv-ab-a{font-size:clamp(13px,2.4vw,22px);font-weight:800;line-height:1;font-family:var(--mono);}
@@ -1567,6 +1594,8 @@ input[type=number] {
   animation:lv-badge-pop 0.2s ease-out;
 }
 .lv-ab-badge-err{background:#ef4444;}
+.lv-ab-badge-pass{background:#8b5cf6;}
+.lv-ab-badge-amber{background:#f5a524;color:#231703;}
 @keyframes lv-badge-pop{from{transform:scale(0);opacity:0;}to{transform:scale(1);opacity:1;}}
 
 /* ─── Set toggle segmented control ─── */
@@ -1606,6 +1635,10 @@ input[type=number] {
 /* ─── Responsive ─── */
 @media(min-width:768px){.lv-left{flex:0 0 20%;}.lv-ab{border-radius:10px;}}
 @media(max-width:374px){.lv-left{flex:0 0 24%;}.lv-plr-name{font-size:10px;}}
+/* Six buttons share the DEFENSE row — drop the rating word on narrow screens,
+   the 3/2/1/0 digit carries the meaning on its own. */
+@media(max-width:520px){.lv-ab-rate .lv-ab-l{font-size:6px;letter-spacing:0;}}
+@media(max-width:400px){.lv-ab-rate .lv-ab-l{display:none;}}
 /* Compact mode for short viewports (small laptops) */
 @media(max-height:700px){
   .lv-top{flex:0 0 116px!important;max-height:116px!important;height:116px!important;}
@@ -10392,33 +10425,87 @@ td.dash-stand-team .dash-stand-name {
   font-family: 'Space Mono', monospace;
   font-size: 11px;
 }
-/* WHO — two clearly separated rows, same OUT/IN vocabulary as the panel. */
-.gpb-fb-swap {
+/* WHO — every pending crossing at once, one toggleable row each. Rows are
+   scannable top-to-bottom: checkbox, "IN in for OUT", then where the slot is
+   headed. A refused row keeps its place and says why instead of vanishing. */
+.gpb-fbb-popup { max-width: 420px; }
+.gpb-fbb-list {
   margin-top: 12px;
   display: flex; flex-direction: column;
-  gap: 2px;
+  gap: 6px;
+  max-height: min(46vh, 340px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 2px;
 }
-.gpb-fb-row {
-  display: flex; align-items: center; gap: 8px;
+.gpb-fbb-row {
+  display: flex; align-items: flex-start; gap: 10px;
   padding: 9px 10px;
-  border-radius: 8px;
-  border: 1px solid transparent;
+  border-radius: 9px;
+  border: 1px solid rgba(255,255,255,0.10);
+  background: rgba(255,255,255,0.03);
+  cursor: pointer;
+  transition: background 0.13s ease, border-color 0.13s ease, opacity 0.13s ease;
 }
-.gpb-fb-row.is-out {
-  background: rgba(248,81,73,0.09);
-  border-color: rgba(248,81,73,0.24);
+.gpb-fbb-row.is-on {
+  background: rgba(34,211,238,0.08);
+  border-color: rgba(34,211,238,0.32);
 }
-.gpb-fb-row.is-in {
-  background: rgba(63,185,80,0.09);
-  border-color: rgba(63,185,80,0.26);
+.gpb-fbb-row.is-blocked {
+  background: rgba(248,81,73,0.08);
+  border-color: rgba(248,81,73,0.30);
 }
-.gpb-fb-arrow {
-  text-align: center;
-  font-size: 12px;
-  line-height: 1;
+/* Switched off reads as "not happening" — dimmed, but still fully legible. */
+.gpb-fbb-row:not(.is-on) { opacity: 0.55; }
+.gpb-fbb-check {
+  width: 17px; height: 17px;
+  margin: 2px 0 0;
+  flex: none;
+  accent-color: #22d3ee;
+  cursor: pointer;
+}
+.gpb-fbb-row.is-blocked .gpb-fbb-check { accent-color: #f85149; }
+.gpb-fbb-body {
+  display: flex; flex-direction: column;
+  gap: 5px;
+  min-width: 0; flex: 1;
+}
+.gpb-fbb-swap { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+.gpb-fbb-conn {
+  font-size: 10px; font-weight: 700;
+  letter-spacing: 0.08em; text-transform: uppercase;
   color: #6e7681;
-  padding: 1px 0;
 }
+.gpb-fbb-missing { font-size: 11.5px; color: #8b949e; font-style: italic; }
+.gpb-fbb-meta { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
+.gpb-fbb-slot {
+  font-family: 'Space Mono', monospace;
+  font-size: 10px;
+  color: #8b949e;
+  letter-spacing: 0.04em;
+}
+.gpb-fbb-flag {
+  font-size: 10.5px; line-height: 1.4;
+  font-weight: 600;
+  color: #ff9b95;
+}
+.gpb-fbb-note {
+  margin-top: 10px;
+  font-size: 10.5px; line-height: 1.45;
+  color: #ff9b95;
+}
+.gpb-fbb-actions {
+  display: flex; flex-direction: column;
+  gap: 8px;
+  margin-top: 14px;
+}
+.gpb-fbb-actions-row { display: flex; gap: 8px; }
+.gpb-fbb-all {
+  background: rgba(34,211,238,0.10);
+  border: 1px solid rgba(34,211,238,0.38);
+  color: #67e8f9;
+}
+.gpb-fbb-all:hover { background: rgba(34,211,238,0.18); }
 .gpb-fb-actions {
   display: flex; gap: 8px;
   margin-top: 16px;
@@ -10447,11 +10534,19 @@ td.dash-stand-team .dash-stand-name {
   box-shadow: 0 4px 16px rgba(34,211,238,0.28);
 }
 .gpb-fb-confirm:hover { transform: translateY(-1px); box-shadow: 0 6px 22px rgba(34,211,238,0.45); }
+.gpb-fb-btn:disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
 
 @media (max-width: 860px) {
   .gpb-subflow-modes { grid-template-columns: 1fr; }
   .gpb-subflow-mode { padding: 8px 6px; }
-  .gpb-fb-popup { max-width: 100%; }
+  .gpb-fb-popup, .gpb-fbb-popup { max-width: 100%; }
+  /* Phones: the list gets the room, the buttons stay reachable. */
+  .gpb-fbb-list { max-height: min(40vh, 300px); }
   /* Stack each pair row's two players so names never truncate on a phone. */
   .gpb-pairrow-body { flex-direction: column; align-items: flex-start; gap: 3px; }
   .gpb-pairrow-arrow { padding-left: 2px; }
@@ -10468,6 +10563,14 @@ td.dash-stand-team .dash-stand-name {
 }
 [data-theme="light"] .gpb-fb-why { color: #57606a; }
 [data-theme="light"] .gpb-fb-why strong { color: #0d1117; }
+[data-theme="light"] .gpb-fbb-row { background: rgba(15,23,42,0.03); border-color: rgba(15,23,42,0.12); }
+[data-theme="light"] .gpb-fbb-row.is-on { background: rgba(14,165,233,0.10); border-color: rgba(14,165,233,0.38); }
+[data-theme="light"] .gpb-fbb-row.is-blocked { background: rgba(207,34,46,0.07); border-color: rgba(207,34,46,0.30); }
+[data-theme="light"] .gpb-fbb-check { accent-color: #0284c7; }
+[data-theme="light"] .gpb-fbb-row.is-blocked .gpb-fbb-check { accent-color: #cf222e; }
+[data-theme="light"] .gpb-fbb-flag,
+[data-theme="light"] .gpb-fbb-note { color: #a40e26; }
+[data-theme="light"] .gpb-fbb-all { background: rgba(14,165,233,0.10); border-color: rgba(14,165,233,0.40); color: #0b6f8f; }
 [data-theme="light"] .gpb-subflow-mode.is-on { color: #0d1117; }
 [data-theme="light"] .gpb-playerline-name { color: #0d1117; }
 [data-theme="light"] .gpb-playerline.is-out .gpb-playerline-name { color: #a40e26; }

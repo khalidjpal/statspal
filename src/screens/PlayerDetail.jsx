@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useData } from '../contexts/DataContext';
 import { useAuth } from '../contexts/AuthContext';
-import { hpct, n3, hcol, hlbl, playerTotals } from '../utils/stats';
+import { hpct, n3, hcol, hlbl, playerTotals, passAvg, passGraded, pfmt, pcol } from '../utils/stats';
 import { sortedCompleted } from '../utils/sort';
 import PlayerBadge from '../components/PlayerBadge';
 import ManualResultModal from '../components/modals/ManualResultModal';
@@ -157,11 +157,20 @@ export default function PlayerDetail({ player, team, onBack, onSelectGame, asMod
       {/* ── Reception & Defense ── */}
       <div className="pgd-card pd-cat-card" style={{ borderLeftColor: '#2dd4bf' }}>
         <div className="pgd-section-label" style={{ color: '#2dd4bf' }}>Reception & Defense</div>
-        <div className="pd-cat-grid pd-cat-3">
-          <StatCell value={totals.receives || 0}       label="R" />
+        <div className="pd-cat-grid pd-cat-4">
+          <StatCell value={totals.receives || 0}       label="Rec" />
+          <StatCell value={pfmt(passAvg(totals))}      label="Pass Avg" color={pcol(passAvg(totals))} accent />
           <StatCell value={totals.digs}                label="Digs" />
           <StatCell value={totals.digging_errors || 0} label="DE" color={totals.digging_errors > 0 ? '#f85149' : undefined} />
         </div>
+        {passGraded(totals) > 0 && (
+          <div className="pd-cat-grid pd-cat-4" style={{ marginTop: 6 }}>
+            <StatCell value={totals.pass_3 || 0} label="3s" muted />
+            <StatCell value={totals.pass_2 || 0} label="2s" muted />
+            <StatCell value={totals.pass_1 || 0} label="1s" muted />
+            <StatCell value={totals.pass_0 || 0} label="0s" muted />
+          </div>
+        )}
         <div className="pd-cat-grid pd-cat-2" style={{ marginTop: 6 }}>
           <StatCell value={digsPerSet} label="Digs / Set" muted />
         </div>

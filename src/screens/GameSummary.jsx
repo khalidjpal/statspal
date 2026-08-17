@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useData } from '../contexts/DataContext';
 import { useAuth } from '../contexts/AuthContext';
-import { hpct, n3, hcol, playerTotals } from '../utils/stats';
+import { hpct, n3, hcol, playerTotals, passAvg, pfmt, pcol } from '../utils/stats';
 import { sortByJersey } from '../utils/sort';
 import PlayerBadge from '../components/PlayerBadge';
 import ManualResultModal from '../components/modals/ManualResultModal';
@@ -38,7 +38,7 @@ export default function GameSummary({ game, team, onBack, onSelectPlayer, asModa
 
   function getPlayerStats(playerId) {
     return gameStats.find(s => s.player_id === playerId) || {
-      kills: 0, aces: 0, digs: 0, assists: 0, blocks: 0, errors: 0, attempts: 0, sets_played: 0, block_assists: 0, serve_errors: 0, blocking_errors: 0, digging_errors: 0, ball_handling_errors: 0, receives: 0,
+      kills: 0, aces: 0, digs: 0, assists: 0, blocks: 0, errors: 0, attempts: 0, sets_played: 0, block_assists: 0, serve_errors: 0, blocking_errors: 0, digging_errors: 0, ball_handling_errors: 0, receives: 0, pass_3: 0, pass_2: 0, pass_1: 0, pass_0: 0,
     };
   }
 
@@ -75,7 +75,8 @@ export default function GameSummary({ game, team, onBack, onSelectPlayer, asModa
               { label: 'BHE',  value: totals.ball_handling_errors || 0 },
               { label: 'SA',   value: totals.aces },
               { label: 'SE',   value: totals.serve_errors },
-              { label: 'R',    value: totals.receives || 0 },
+              { label: 'Rec',  value: totals.receives || 0 },
+              { label: 'Pass', value: pfmt(passAvg(totals)), color: pcol(passAvg(totals)) },
               { label: 'Digs', value: totals.digs },
               { label: 'DE',   value: totals.digging_errors || 0 },
               { label: 'BS',   value: totals.blocks },
@@ -124,7 +125,8 @@ export default function GameSummary({ game, team, onBack, onSelectPlayer, asModa
                   <th style={{ padding: '10px 4px', fontWeight: 600 }}>BHE</th>
                   <th style={{ padding: '10px 4px', fontWeight: 600 }}>SA</th>
                   <th style={{ padding: '10px 4px', fontWeight: 600 }}>SE</th>
-                  <th style={{ padding: '10px 4px', fontWeight: 600 }}>R</th>
+                  <th style={{ padding: '10px 4px', fontWeight: 600 }}>Rec</th>
+                  <th style={{ padding: '10px 4px', fontWeight: 600 }}>Pass</th>
                   <th style={{ padding: '10px 4px', fontWeight: 600 }}>Digs</th>
                   <th style={{ padding: '10px 4px', fontWeight: 600 }}>DE</th>
                   <th style={{ padding: '10px 4px', fontWeight: 600 }}>BS</th>
@@ -158,6 +160,7 @@ export default function GameSummary({ game, team, onBack, onSelectPlayer, asModa
                       <td style={{ textAlign: 'center', padding: '8px 4px' }}>{s.aces}</td>
                       <td style={{ textAlign: 'center', padding: '8px 4px', color: s.serve_errors > 0 ? '#dc2626' : 'var(--text)' }}>{s.serve_errors || 0}</td>
                       <td style={{ textAlign: 'center', padding: '8px 4px' }}>{s.receives || 0}</td>
+                      <td style={{ textAlign: 'center', padding: '8px 4px', color: pcol(passAvg(s)), fontWeight: 600 }}>{pfmt(passAvg(s))}</td>
                       <td style={{ textAlign: 'center', padding: '8px 4px' }}>{s.digs}</td>
                       <td style={{ textAlign: 'center', padding: '8px 4px', color: (s.digging_errors||0) > 0 ? '#dc2626' : 'var(--text)' }}>{s.digging_errors || 0}</td>
                       <td style={{ textAlign: 'center', padding: '8px 4px' }}>{s.blocks}</td>

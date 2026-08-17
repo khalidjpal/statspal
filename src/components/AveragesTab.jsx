@@ -1,6 +1,6 @@
 import { useMemo, useState, useRef, useEffect } from 'react';
 import { useData } from '../contexts/DataContext';
-import { hpct, n3, hcol } from '../utils/stats';
+import { hpct, n3, hcol, passAvg, pfmt, pcol } from '../utils/stats';
 import { sortByJersey, sortedCompleted } from '../utils/sort';
 import PlayerBadge from './PlayerBadge';
 
@@ -122,7 +122,13 @@ export default function AveragesTab({ players, playerGameStats, completedGames, 
     const be   = stats.reduce((a, s) => a + (s.blocking_errors     || 0), 0);
     const de   = stats.reduce((a, s) => a + (s.digging_errors      || 0), 0);
     const bhe  = stats.reduce((a, s) => a + (s.ball_handling_errors|| 0), 0);
-    return { sp, k, e, att, ast, sa, se, digs, bs, ba, r, be, de, bhe, h: hpct(k, e, att) };
+    const pass = passAvg({
+      pass_3: stats.reduce((a, s) => a + (s.pass_3 || 0), 0),
+      pass_2: stats.reduce((a, s) => a + (s.pass_2 || 0), 0),
+      pass_1: stats.reduce((a, s) => a + (s.pass_1 || 0), 0),
+      pass_0: stats.reduce((a, s) => a + (s.pass_0 || 0), 0),
+    });
+    return { sp, k, e, att, ast, sa, se, digs, bs, ba, r, be, de, bhe, pass, h: hpct(k, e, att) };
   }
 
   // Build sorted player+stats pairs — recalculates whenever filter or sort changes
@@ -146,6 +152,16 @@ export default function AveragesTab({ players, playerGameStats, completedGames, 
         if (ha === null) return 1;
         if (hb === null) return -1;
         return sortDir === 'desc' ? hb - ha : ha - hb;
+      }
+
+      // Pass Avg: ungraded rows to the bottom regardless of direction
+      if (sortCol === 'pass') {
+        const pa = aa ? aa.pass : null;
+        const pb = ab ? ab.pass : null;
+        if (pa === null && pb === null) return 0;
+        if (pa === null) return 1;
+        if (pb === null) return -1;
+        return sortDir === 'desc' ? pb - pa : pa - pb;
       }
 
       // Players with no stats at all → always bottom
@@ -279,7 +295,8 @@ export default function AveragesTab({ players, playerGameStats, completedGames, 
                   <SortTh col="bhe"  {...sortProps}>BHE</SortTh>
                   <SortTh col="sa"   {...sortProps}>SA</SortTh>
                   <SortTh col="se"   {...sortProps}>SE</SortTh>
-                  <SortTh col="r"    {...sortProps}>R</SortTh>
+                  <SortTh col="r"    {...sortProps}>Rec</SortTh>
+                  <SortTh col="pass" {...sortProps}>Pass</SortTh>
                   <SortTh col="digs" {...sortProps}>Digs</SortTh>
                   <SortTh col="de"   {...sortProps}>DE</SortTh>
                   <SortTh col="bs"   {...sortProps}>BS</SortTh>
@@ -323,6 +340,7 @@ export default function AveragesTab({ players, playerGameStats, completedGames, 
                       <td style={{ textAlign: 'center', padding: '8px 4px', color: 'var(--text)' }}>{a ? a.sa : dash}</td>
                       <td style={{ textAlign: 'center', padding: '8px 4px', color: a && a.se > 0 ? '#dc2626' : 'var(--text)' }}>{a ? a.se : dash}</td>
                       <td style={{ textAlign: 'center', padding: '8px 4px', color: 'var(--text)' }}>{a ? a.r : dash}</td>
+                      <td style={{ textAlign: 'center', padding: '8px 4px', color: a && a.pass != null ? pcol(a.pass) : 'var(--text-muted)', fontWeight: 600 }}>{a ? pfmt(a.pass) : dash}</td>
                       <td style={{ textAlign: 'center', padding: '8px 4px', color: 'var(--text)' }}>{a ? a.digs : dash}</td>
                       <td style={{ textAlign: 'center', padding: '8px 4px', color: a && a.de > 0 ? '#dc2626' : 'var(--text)' }}>{a ? a.de : dash}</td>
                       <td style={{ textAlign: 'center', padding: '8px 4px', color: 'var(--text)' }}>{a ? a.bs : dash}</td>

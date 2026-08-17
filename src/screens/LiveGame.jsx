@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { hpct, n3, hcol } from '../utils/stats';
+import { hpct, n3, hcol, passAvg, pfmt, pcol } from '../utils/stats';
 import { saveSession, abandonSession } from '../utils/liveSession';
 import { sortByJersey } from '../utils/sort';
 
@@ -13,9 +13,19 @@ const CATEGORIES = [
     { key:'ace',          abbr:'SA',  label:'Ace',     stat:'aces',                              err:false },
     { key:'serve_error',  abbr:'SE',  label:'Srv Err', stat:'serve_errors',                      err:true  },
   ]},
+  // Every receive is graded: one press logs the receive AND its pass rating.
+  // `also` is the rating counter; `stat` stays receives so the R total is
+  // unchanged no matter which grade is pressed.
+  // The four grades render as one segmented RECEIVE control (ascending 1·2·3,
+  // then 0/aced) so they read as a single stat with four grades, not four tiles.
   { label: 'DEFENSE', actions: [
     { key:'dig',          abbr:'D',   label:'Dig',     stat:'digs',                              err:false },
-    { key:'receive',      abbr:'R',   label:'Receive', stat:'receives',                          err:false },
+    { key:'receive_grp', group:'RECEIVE', actions: [
+      { key:'pass_1',     abbr:'1',   label:'Poor',    stat:'receives', also:'pass_1', tone:'r1', hist:'Pass 1 (Poor)',    err:false },
+      { key:'pass_2',     abbr:'2',   label:'Good',    stat:'receives', also:'pass_2', tone:'r2', hist:'Pass 2 (Good)',    err:false },
+      { key:'pass_3',     abbr:'3',   label:'Perfect', stat:'receives', also:'pass_3', tone:'r3', hist:'Pass 3 (Perfect)', err:false },
+      { key:'pass_0',     abbr:'0',   label:'Aced',    stat:'receives', also:'pass_0', tone:'r0', hist:'Pass 0 (Aced)',    err:false },
+    ]},
     { key:'dig_error',    abbr:'DE',  label:'Dig Err', stat:'digging_errors',                    err:true  },
   ]},
   { label: 'BLOCKING', actions: [
@@ -29,7 +39,7 @@ const CATEGORIES = [
   ]},
 ];
 
-const EMPTY_SET_STATS = () => ({ kills:0, aces:0, digs:0, assists:0, blocks:0, errors:0, attempts:0, block_assists:0, serve_errors:0, blocking_errors:0, digging_errors:0, ball_handling_errors:0, receives:0 });
+const EMPTY_SET_STATS = () => ({ kills:0, aces:0, digs:0, assists:0, blocks:0, errors:0, attempts:0, block_assists:0, serve_errors:0, blocking_errors:0, digging_errors:0, ball_handling_errors:0, receives:0, pass_3:0, pass_2:0, pass_1:0, pass_0:0 });
 
 function initStats(rs, roster) {
   if (rs?.player_stats && Object.keys(rs.player_stats).length > 0) {
@@ -46,7 +56,7 @@ function initStats(rs, roster) {
   const o = {};
   roster.forEach(p => {
     o[p.id] = {
-      overall: { kills:0, aces:0, digs:0, assists:0, blocks:0, errors:0, attempts:0, sets_played:0, block_assists:0, serve_errors:0, blocking_errors:0, digging_errors:0, ball_handling_errors:0, receives:0 },
+      overall: { kills:0, aces:0, digs:0, assists:0, blocks:0, errors:0, attempts:0, sets_played:0, block_assists:0, serve_errors:0, blocking_errors:0, digging_errors:0, ball_handling_errors:0, receives:0, pass_3:0, pass_2:0, pass_1:0, pass_0:0 },
       sets: {},
     };
   });
@@ -63,12 +73,17 @@ function MiniStats({ s }) {
     [s.receives,'R'],[s.blocking_errors,'BE'],[s.digging_errors,'DE'],[s.ball_handling_errors,'BHE'],
   ];
   const nonZero = pairs.filter(([v])=>v>0);
+  const pa = passAvg(s);
   if (nonZero.length === 0 && !s.attempts) return <span className="lv-ms-empty">—</span>;
   const items = [];
   nonZero.forEach(([v,a],i) => {
     if (i > 0) items.push(<span key={'d'+i} className="lv-ms-dot">·</span>);
     items.push(<span key={i} className="lv-ms-p"><b>{v}</b><span className="lv-ms-a">{a}</span></span>);
   });
+  if (pa !== null) {
+    items.push(<span key="pd" className="lv-ms-dot">·</span>);
+    items.push(<span key="pa" className="lv-ms-p"><b style={{color:pcol(pa)}}>{pfmt(pa)}</b><span className="lv-ms-a">P</span></span>);
+  }
   if (s.attempts > 0) {
     items.push(<span key="hd" className="lv-ms-dot">·</span>);
     items.push(<span key="hp" className="lv-ms-p"><b style={{color:hcol(s.kills,s.errors,s.attempts)}}>{n3(hp)}</b></span>);
@@ -79,8 +94,11 @@ function MiniStats({ s }) {
 // Full stat row with dot separators, always show all
 function FullStats({ s }) {
   const hp = hpct(s.kills, s.errors, s.attempts);
+  const pa = passAvg(s);
   const all = [
+    // Rec/Pass sit right after K% so they survive the ellipsis on phone widths.
     [s.kills,'K'],[s.errors,'E'],[s.attempts,'TA'],['_hp','K%'],
+    [s.receives||0,'Rec'],['_pa','Pass'],
     [s.assists,'A'],[s.aces,'SA'],[s.serve_errors,'SE'],
     [s.digs,'D'],[s.blocks,'BS'],[s.block_assists,'BA'],
   ];
@@ -89,6 +107,7 @@ function FullStats({ s }) {
       {all.map(([v,a],i) => {
         const dot = i > 0 ? <span className="lv-fs-dot">·</span> : null;
         if (v === '_hp') return <span key={i}>{dot}<span className="lv-fs-p"><b style={{color:s.attempts>0?hcol(s.kills,s.errors,s.attempts):'#484f58'}}>{s.attempts>0?n3(hp):'—'}</b><span className="lv-fs-a">{a}</span></span></span>;
+        if (v === '_pa') return <span key={i}>{dot}<span className="lv-fs-p"><b style={{color:pa!==null?pcol(pa):'#484f58'}}>{pfmt(pa)}</b><span className="lv-fs-a">{a}</span></span></span>;
         return <span key={i}>{dot}<span className="lv-fs-p"><b>{v}</b><span className="lv-fs-a">{a}</span></span></span>;
       })}
     </span>
@@ -178,8 +197,9 @@ export default function LiveGame({ team, gameInfo, onEndMatch, onAbandon, resume
       setNum: currentSet,
       actionKey: action.key,
       actionAbbr: action.abbr,
-      actionLabel: action.label,
+      actionLabel: action.hist || action.label,
       actionStat: action.stat,
+      actionAlso: action.also || null,
       actionAutoAtt: !!action.autoAtt,
       actionErr: !!action.err,
       prevOverall: { ...ps.overall },
@@ -189,16 +209,18 @@ export default function LiveGame({ team, gameInfo, onEndMatch, onAbandon, resume
       const cur = prev[selectedPlayer];
       const newOverall = { ...cur.overall };
       newOverall[action.stat] = (newOverall[action.stat] || 0) + 1;
+      if (action.also) newOverall[action.also] = (newOverall[action.also] || 0) + 1;
       if (action.autoAtt) newOverall.attempts = (newOverall.attempts || 0) + 1;
       const newSet = { ...(cur.sets[currentSet] || EMPTY_SET_STATS()) };
       newSet[action.stat] = (newSet[action.stat] || 0) + 1;
+      if (action.also) newSet[action.also] = (newSet[action.also] || 0) + 1;
       if (action.autoAtt) newSet.attempts = (newSet.attempts || 0) + 1;
       return {
         ...prev,
         [selectedPlayer]: { ...cur, overall: newOverall, sets: { ...cur.sets, [currentSet]: newSet } },
       };
     });
-    setLastAction(`${player?.name?.split(' ')[0] || '?'} → ${action.label}`);
+    setLastAction(`${player?.name?.split(' ')[0] || '?'} → ${action.hist || action.label}`);
     setFlashId(action.key);
     setFlashKey(k => k + 1);
   }
@@ -234,10 +256,12 @@ export default function LiveGame({ team, gameInfo, onEndMatch, onAbandon, resume
       if (!cur) return prev;
       const newOverall = { ...cur.overall };
       newOverall[entry.actionStat] = Math.max(0, (newOverall[entry.actionStat] || 0) - 1);
+      if (entry.actionAlso) newOverall[entry.actionAlso] = Math.max(0, (newOverall[entry.actionAlso] || 0) - 1);
       if (entry.actionAutoAtt) newOverall.attempts = Math.max(0, (newOverall.attempts || 0) - 1);
       const curSet = cur.sets[entry.setNum] || EMPTY_SET_STATS();
       const newSet = { ...curSet };
       newSet[entry.actionStat] = Math.max(0, (newSet[entry.actionStat] || 0) - 1);
+      if (entry.actionAlso) newSet[entry.actionAlso] = Math.max(0, (newSet[entry.actionAlso] || 0) - 1);
       if (entry.actionAutoAtt) newSet.attempts = Math.max(0, (newSet.attempts || 0) - 1);
       return { ...prev, [entry.playerId]: { ...cur, overall: newOverall, sets: { ...cur.sets, [entry.setNum]: newSet } } };
     });
@@ -331,8 +355,17 @@ export default function LiveGame({ team, gameInfo, onEndMatch, onAbandon, resume
                     <div key={cat.label} className="lv-btns-cat">
                       <div className="lv-btns-cat-label">{cat.label}</div>
                       <div className="lv-btns-row">
-                        {cat.actions.map(a => (
-                          <ActBtn key={a.key} a={a} err={a.err} fid={flashId} fk={flashKey} onClick={()=>recordAction(a)} count={selStats[a.stat]||0} />
+                        {cat.actions.map(a => a.group ? (
+                          <div key={a.key} className="lv-recgrp">
+                            <div className="lv-recgrp-lbl">{a.group}</div>
+                            <div className="lv-recgrp-btns">
+                              {a.actions.map(g => (
+                                <ActBtn key={g.key} a={g} err={g.err} fid={flashId} fk={flashKey} onClick={()=>recordAction(g)} count={selStats[g.also || g.stat]||0} />
+                              ))}
+                            </div>
+                          </div>
+                        ) : (
+                          <ActBtn key={a.key} a={a} err={a.err} fid={flashId} fk={flashKey} onClick={()=>recordAction(a)} count={selStats[a.also || a.stat]||0} />
                         ))}
                       </div>
                     </div>
@@ -355,12 +388,13 @@ export default function LiveGame({ team, gameInfo, onEndMatch, onAbandon, resume
           </div>
           <table className="lv-st">
             <thead>
-              <tr><th className="lv-st-l">#</th><th className="lv-st-l">Name</th><th>K</th><th>E</th><th>TA</th><th>K%</th><th>A</th><th>BHE</th><th>SA</th><th>SE</th><th>R</th><th>D</th><th>DE</th><th>BS</th><th>BA</th><th>BE</th></tr>
+              <tr><th className="lv-st-l">#</th><th className="lv-st-l">Name</th><th>K</th><th>E</th><th>TA</th><th>K%</th><th>A</th><th>BHE</th><th>SA</th><th>SE</th><th>Rec</th><th>Pass</th><th>D</th><th>DE</th><th>BS</th><th>BA</th><th>BE</th></tr>
             </thead>
             <tbody>
               {sortedRoster.map(p => {
                 const s = getViewStats(p.id);
                 const hp = hpct(s.kills, s.errors, s.attempts);
+                const pa = passAvg(s);
                 return (
                   <tr key={p.id}>
                     <td className="lv-st-l" style={{color:'#484f58'}}>{p.jersey_number||'—'}</td>
@@ -374,6 +408,7 @@ export default function LiveGame({ team, gameInfo, onEndMatch, onAbandon, resume
                     <td>{s.aces}</td>
                     <td style={{color:s.serve_errors>0?'#f85149':'inherit'}}>{s.serve_errors}</td>
                     <td>{s.receives||0}</td>
+                    <td style={{color:pa!==null?pcol(pa):'#484f58',fontWeight:700}}>{pfmt(pa)}</td>
                     <td>{s.digs}</td>
                     <td style={{color:(s.digging_errors||0)>0?'#f85149':'inherit'}}>{s.digging_errors||0}</td>
                     <td>{s.blocks}</td>
@@ -463,12 +498,20 @@ export default function LiveGame({ team, gameInfo, onEndMatch, onAbandon, resume
 }
 
 function ActBtn({ a, err, fid, fk, onClick, count = 0 }) {
-  const [fl,setFl]=useState(false); const pk=useRef(fk);
-  useEffect(()=>{if(fk!==pk.current&&fid===a.key){setFl(true);const t=setTimeout(()=>setFl(false),150);pk.current=fk;return()=>clearTimeout(t);}pk.current=fk;},[fk,fid,a.key]);
-  const flClass = fl ? (err ? 'lv-ab-fl-err' : 'lv-ab-fl-ok') : '';
+  const [fl,setFl]=useState(false); const pk=useRef(fk); const tm=useRef(null);
+  // The un-flash timer is held in a ref, not cleaned up on dep changes: pressing
+  // another button within 150ms used to cancel this one's reset and leave it lit.
+  useEffect(()=>{if(fk!==pk.current&&fid===a.key){setFl(true);if(tm.current)clearTimeout(tm.current);tm.current=setTimeout(()=>setFl(false),150);}pk.current=fk;},[fk,fid,a.key]);
+  useEffect(()=>()=>{if(tm.current)clearTimeout(tm.current);},[]);
+  const tone = a.tone || (err ? 'err' : 'ok');
+  const isRate = !!a.tone;                       // graded receive → violet/amber, never green/red
+  const flClass = fl
+    ? (isRate ? (tone === 'r0' ? 'lv-ab-fl-amber' : 'lv-ab-fl-pass') : (err ? 'lv-ab-fl-err' : 'lv-ab-fl-ok'))
+    : '';
+  const badgeClass = isRate ? (tone === 'r0' ? 'lv-ab-badge-amber' : 'lv-ab-badge-pass') : (err ? 'lv-ab-badge-err' : '');
   return (
-    <button className={`lv-ab ${err?'lv-ab-err':'lv-ab-ok'} ${flClass}`} onClick={onClick}>
-      {count > 0 && <span className={`lv-ab-badge ${err?'lv-ab-badge-err':''}`}>{count}</span>}
+    <button className={`lv-ab lv-ab-${tone} ${isRate?'lv-ab-rate':''} ${flClass}`} onClick={onClick}>
+      {count > 0 && <span className={`lv-ab-badge ${badgeClass}`}>{count}</span>}
       <span className="lv-ab-a">{a.abbr}</span>
       <span className="lv-ab-l">{a.label}</span>
     </button>

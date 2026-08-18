@@ -186,6 +186,38 @@ export function teamTotals(allStats) {
   return playerTotals(allStats);
 }
 
+// Aggregate a set of player_game_stats rows into the display shape used by the
+// stats tables (short keys, plus derived hitting % and passing average).
+// Returns null when there are no rows, which callers render as "—".
+//
+// Works over ANY set of rows — one game, a tournament, or a whole season — and
+// is the single source of truth for the season averages, tournament roll-up and
+// team totals. Rate stats are computed from the summed counters (pass_3/2/1/0
+// and attempts are added up first, divided once at the end), so combining games
+// is correctly weighted and never an average-of-averages.
+export function aggregatePlayerStats(statsRows) {
+  if (!statsRows || statsRows.length === 0) return null;
+  const t = playerTotals(statsRows);
+  return {
+    sp:   t.sets_played,
+    k:    t.kills,
+    e:    t.errors,
+    att:  t.attempts,
+    ast:  t.assists,
+    sa:   t.aces,
+    se:   t.serve_errors,
+    digs: t.digs,
+    bs:   t.blocks,
+    ba:   t.block_assists,
+    r:    t.receives,
+    be:   t.blocking_errors,
+    de:   t.digging_errors,
+    bhe:  t.ball_handling_errors,
+    pass: passAvg(t),
+    h:    hpct(t.kills, t.errors, t.attempts),
+  };
+}
+
 // Compute team record from completed games
 export function teamRecord(games) {
   let w = 0, l = 0;

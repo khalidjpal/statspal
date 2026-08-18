@@ -13,6 +13,13 @@
 --   libero_auto     boolean — global auto-swap toggle (default true)
 --   sub_log         jsonb  — chronological regular-sub history for undo + counter
 --
+-- v4 — front/back pairs + set tracking:
+--   fb_pairs        jsonb  — [{ front: pid, back: pid }] Front Row / Back Row pairs
+--   set_number      integer — which set the 12-substitution budget is tracking
+--
+-- fb_pairs is NOT a rename of libero_pairs — the two coexist and are shaped
+-- differently. See the note above the fb_pairs column below.
+--
 -- Apply once in the Supabase SQL editor (or re-run safely — every statement
 -- is idempotent).
 
@@ -38,6 +45,21 @@ create table if not exists game_plans (
   libero_auto boolean not null default true,
   sub_log jsonb not null default '[]'::jsonb,
 
+  -- v4 — Front Row / Back Row pairs. A LIST of { front, back } player-id
+  -- pairs sharing one lineup slot: whichever member belongs in the row that
+  -- slot currently occupies is on court, and the coach CONFIRMS every
+  -- crossing before it fires.
+  --
+  -- Distinct from libero_pairs, which is a MAP of liberoPid -> [mbPid, mbPid]
+  -- and swaps SILENTLY whenever a covered middle rotates to the back row.
+  -- Different shape, different trigger, different rules — both are written on
+  -- every save and both need their own column.
+  fb_pairs jsonb not null default '[]'::jsonb,
+
+  -- v4 — which set the 12-substitution budget is currently tracking.
+  -- "New Set" clears subs/sub_log and increments this.
+  set_number integer not null default 1,
+
   rotation_index integer not null default 1,
   position integer not null default 0,
   created_at timestamptz default now(),
@@ -54,12 +76,23 @@ alter table game_plans add column if not exists confirmed_subs   jsonb   not nul
 alter table game_plans add column if not exists libero_pairs     jsonb   not null default '{}'::jsonb;
 alter table game_plans add column if not exists libero_auto      boolean not null default true;
 alter table game_plans add column if not exists sub_log          jsonb   not null default '[]'::jsonb;
+alter table game_plans add column if not exists fb_pairs         jsonb   not null default '[]'::jsonb;
+alter table game_plans add column if not exists set_number       integer not null default 1;
+
+-- Backfill any rows that predate the columns so the client never reads null
+-- where it expects a list / a number.
+update game_plans set fb_pairs   = '[]'::jsonb where fb_pairs   is null;
+update game_plans set set_number = 1           where set_number is null;
 
 create index if not exists idx_game_plans_schedule_game on game_plans(schedule_game_id);
 create index if not exists idx_game_plans_team          on game_plans(team_id);
 
--- RLS — allow the app's authenticated role to read/write its own team's plans.
--- Adjust the policies below if your project uses a different role model.
+-- RLS.
+--
+-- The app signs in against its own `accounts` table using the Supabase ANON
+-- key, so PostgREST sees the `anon` role — not `authenticated`. Both policies
+-- are created: the authenticated one for parity with the other tables, the
+-- anon one because that is the role the client actually presents.
 alter table game_plans enable row level security;
 
 drop policy if exists "game_plans_all_authenticated" on game_plans;
@@ -70,8 +103,27 @@ create policy "game_plans_all_authenticated"
   using (true)
   with check (true);
 
--- Verification query — run this after the migration and confirm all
--- expected columns appear.
+drop policy if exists "game_plans_all_anon" on game_plans;
+create policy "game_plans_all_anon"
+  on game_plans
+  for all
+  to anon
+  using (true)
+  with check (true);
+
+-- PostgREST caches the table schema. Supabase normally reloads it via an event
+-- trigger after DDL, but that can lag — and a stale cache reports a column that
+-- genuinely exists as "Could not find the 'x' column ... in the schema cache".
+-- This forces the reload immediately.
+notify pgrst, 'reload schema';
+
+-- Verification query — run this after the migration and confirm all 20
+-- expected columns appear (the client writes every one of them on save):
+--   id, team_id, schedule_game_id, name, lineup, positions, assigned_players,
+--   formations, colors, subs, confirmed_subs, fb_pairs, set_number,
+--   libero_pairs, libero_auto, sub_log, rotation_index, position,
+--   created_at, updated_at
+--
 --   select column_name, data_type
 --   from information_schema.columns
 --   where table_name = 'game_plans'

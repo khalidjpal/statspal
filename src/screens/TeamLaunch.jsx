@@ -9,6 +9,7 @@ import ScheduleWidget from '../components/dashboard/ScheduleWidget';
 import CalendarWidget from '../components/dashboard/CalendarWidget';
 import RosterPositionWidget from '../components/dashboard/RosterPositionWidget';
 import Fab from '../components/dashboard/Fab';
+import TournamentHost from '../components/TournamentHost';
 
 export default function TeamLaunch({
   team,
@@ -18,12 +19,17 @@ export default function TeamLaunch({
   onLaunchStatsPal,
   onLaunchRotationPal,
   onOpenTeamDetails,
+  onStartLive,
+  onSelectGame,
 }) {
   const { currentUser, logout } = useAuth();
   const {
-    completedGames, schedule, players,
+    completedGames, schedule, players, tournaments,
     leagueTeams, leagueResults, refresh,
   } = useData();
+
+  // Tournament opened from the calendar or the schedule widget.
+  const [openTournament, setOpenTournament] = useState(null);
 
   const color = team?.color || '#58a6ff';
 
@@ -39,6 +45,7 @@ export default function TeamLaunch({
 
   if (!team) return null;
 
+  const isCoachOrAdmin = currentUser?.role === 'admin' || currentUser?.role === 'coach';
   const teamStyle = { '--tc': color };
 
   return (
@@ -116,16 +123,19 @@ export default function TeamLaunch({
             schedule={schedule}
             completedGames={completedGames}
             onOpenInRotationPal={onLaunchRotationPal}
+            onOpenTournament={setOpenTournament}
           />
           <CalendarWidget
             key={team.id}
             team={team}
             schedule={schedule}
             completedGames={completedGames}
+            tournaments={tournaments}
             events={events}
             onEventsChanged={reloadEvents}
             onOpenStatsPal={onLaunchStatsPal}
             onOpenRotationPal={onLaunchRotationPal}
+            onOpenTournament={setOpenTournament}
           />
           <RosterPositionWidget
             team={team}
@@ -133,6 +143,16 @@ export default function TeamLaunch({
           />
         </section>
       </main>
+
+      <TournamentHost
+        tournament={openTournament}
+        team={team}
+        isAdmin={isCoachOrAdmin}
+        onClose={() => setOpenTournament(null)}
+        onStartLive={onStartLive}
+        onSelectGame={onSelectGame}
+        refresh={refresh}
+      />
     </div>
   );
 }

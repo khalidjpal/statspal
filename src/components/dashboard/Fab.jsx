@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import AddGameModal from '../modals/AddGameModal';
+import AddTournamentModal from '../modals/AddTournamentModal';
 import AddResultModal from '../modals/AddResultModal';
 import AddLeagueTeamModal from '../modals/AddLeagueTeamModal';
 import AddCalendarEventModal from '../modals/AddCalendarEventModal';
@@ -12,6 +13,13 @@ const OPTIONS = [
     label: 'Add Game',
     desc: 'Schedule an upcoming match',
     accent: '#58a6ff',
+  },
+  {
+    key: 'tournament',
+    icon: '🏆',
+    label: 'Add Tournament',
+    desc: 'Group a day of games under one event',
+    accent: '#f0a500',
   },
   {
     key: 'practice',
@@ -156,6 +164,13 @@ export default function Fab({ team, leagueTeams, onRefresh, onEventsChanged }) {
         <AddGameModal
           teamId={team.id}
           leagueTeams={myLeagueTeams}
+          onClose={closeModal}
+          onSaved={handleSavedSupabase}
+        />
+      )}
+      {activeModal === 'tournament' && (
+        <AddTournamentModal
+          team={team}
           onClose={closeModal}
           onSaved={handleSavedSupabase}
         />

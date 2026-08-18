@@ -47,7 +47,7 @@ const lastTeamKey = (userId) => `vp-last-team:${userId}`;
 
 export default function App() {
   const { currentUser } = useAuth();
-  const { teams, refresh } = useData();
+  const { teams, tournaments, refresh } = useData();
   const { addToast } = useToast();
 
   const [screen, setScreen] = useState(SCREENS.LOGIN);
@@ -56,6 +56,8 @@ export default function App() {
   const [selectedPlayer, setSelectedPlayer] = useState(null);
   const [gameInfo, setGameInfo] = useState(null);
   const [scheduledGameForLive, setScheduledGameForLive] = useState(null);
+  // Tournament the game being set up / tracked belongs to, if any.
+  const [activeTournament, setActiveTournament] = useState(null);
   const [resumeSession, setResumeSession] = useState(null);
   const [autoRouted, setAutoRouted] = useState(false);
   const [initialDataLoaded, setInitialDataLoaded] = useState(false);
@@ -66,6 +68,11 @@ export default function App() {
   const [activeEntry, setActiveEntry] = useState(null);
 
   const nav = useCallback((s) => setScreen(s), []);
+
+  const findTournament = useCallback(
+    (id) => (id ? (tournaments || []).find(t => t.id === id) || null : null),
+    [tournaments]
+  );
 
   const isAdmin = currentUser?.role === 'admin';
   const userTeamIds = currentUser?.teamIds || [];
@@ -187,12 +194,16 @@ export default function App() {
   function handlePreGame(team) {
     setSelectedTeam(team);
     setScheduledGameForLive(null);
+    setActiveTournament(null);
     nav(SCREENS.PRE_GAME);
   }
 
-  // Start live tracking from a specific scheduled game
+  // Start live tracking from a specific scheduled game. A tournament game
+  // carries its tournament down to PreGame so the shared roster is used and the
+  // coach isn't prompted for a lineup again.
   function handleStartLive(scheduledGame) {
     setScheduledGameForLive(scheduledGame);
+    setActiveTournament(findTournament(scheduledGame?.tournament_id));
     nav(SCREENS.PRE_GAME);
   }
 
@@ -202,9 +213,26 @@ export default function App() {
     nav(SCREENS.LIVE_GAME);
   }
 
-  function handleResumeGame(session) {
+  async function handleResumeGame(session) {
     // Reconstruct gameInfo from saved session
     const lineup = session.lineup || [];
+
+    // live_game_sessions has no tournament columns — recover the link from the
+    // schedule row instead. It's still there mid-game (handleEndMatch only
+    // deletes it once the match is saved), so this is always resolvable for a
+    // tournament game.
+    let tournamentId = null;
+    let tournamentGameNo = null;
+    if (session.schedule_game_id) {
+      const { data: row } = await supabase
+        .from('schedule')
+        .select('tournament_id, tournament_game_no')
+        .eq('id', session.schedule_game_id)
+        .maybeSingle();
+      tournamentId = row?.tournament_id || null;
+      tournamentGameNo = row?.tournament_game_no ?? null;
+    }
+
     setGameInfo({
       opponent: session.opponent,
       location: session.location || 'Home',
@@ -214,7 +242,10 @@ export default function App() {
       bestOf: session.game_format || 3,
       roster: lineup,
       scheduledGameId: session.schedule_game_id || null,
+      tournamentId,
+      tournamentGameNo,
     });
+    setActiveTournament(findTournament(tournamentId));
     setResumeSession(session);
     nav(SCREENS.LIVE_GAME);
   }
@@ -223,6 +254,7 @@ export default function App() {
     setGameInfo(null);
     setResumeSession(null);
     setScheduledGameForLive(null);
+    setActiveTournament(null);
     nav(SCREENS.TEAM_DASHBOARD);
     addToast('Game abandoned. No stats were saved.', 'success');
     await refresh();
@@ -270,11 +302,18 @@ export default function App() {
       set_scores: matchResult.sets,
       is_league: gameInfo.isLeague || false,
       league_team_id: gameInfo.leagueTeamId || null,
+      // Keeps the game inside its tournament across the schedule →
+      // completed_games hand-off. Null for a standalone game.
+      tournament_id: gameInfo.tournamentId || null,
+      tournament_game_no: gameInfo.tournamentGameNo ?? null,
     };
 
     let res = await supabase.from('completed_games').insert(fullPayload).select().single();
     if (res.error) {
       console.warn('[handleEndMatch] Full game insert failed:', res.error.message);
+      if (gameInfo.tournamentId) {
+        console.warn('[handleEndMatch] Retrying without tournament columns — the game will be saved as standalone. Run scripts/tournaments_migration.sql.');
+      }
       // Fallback without optional columns
       res = await supabase.from('completed_games').insert({
         team_id: selectedTeam.id,
@@ -352,6 +391,7 @@ export default function App() {
     setGameInfo(null);
     setScheduledGameForLive(null);
     setResumeSession(null);
+    setActiveTournament(null);
   }
 
   function handleTeamDetails(team) {
@@ -393,6 +433,8 @@ export default function App() {
           onLaunchStatsPal={() => launchStatsPalForTeam(selectedTeam)}
           onLaunchRotationPal={() => launchRotationPalForTeam(selectedTeam)}
           onOpenTeamDetails={() => launchTeamDetailsForTeam(selectedTeam)}
+          onStartLive={handleStartLive}
+          onSelectGame={handleSelectGame}
         />
       );
 
@@ -432,6 +474,7 @@ export default function App() {
         <PreGame
           team={selectedTeam}
           scheduledGame={scheduledGameForLive}
+          tournament={activeTournament}
           onBack={() => nav(SCREENS.TEAM_DASHBOARD)}
           onStartGame={handleStartGame}
           onResumeGame={handleResumeGame}

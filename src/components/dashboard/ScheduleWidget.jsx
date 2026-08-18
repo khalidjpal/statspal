@@ -1,5 +1,7 @@
 import { useMemo, useRef, useLayoutEffect } from 'react';
-import { IconCalendar, IconArrowRight } from '../Icons';
+import { IconCalendar, IconArrowRight, IconTrophy } from '../Icons';
+import { useData } from '../../contexts/DataContext';
+import { tournamentGames, tournamentRecord, tournamentDateLabel } from '../../utils/tournaments';
 
 function formatDateParts(dateStr) {
   const d = new Date(dateStr + 'T00:00:00');
@@ -11,13 +13,39 @@ function formatDateParts(dateStr) {
 }
 
 export default function ScheduleWidget({
-  team, schedule, completedGames, onOpenInRotationPal,
+  team, schedule, completedGames, onOpenInRotationPal, onOpenTournament,
 }) {
   const today = new Date().toISOString().slice(0, 10);
+  const { tournaments } = useData();
 
   const { past, upcoming } = useMemo(() => {
-    const teamSchedule = schedule.filter(g => g.team_id === team.id);
-    const teamCompleted = completedGames.filter(g => g.team_id === team.id);
+    const teamTournaments = (tournaments || []).filter(t => t.team_id === team.id);
+    const tournamentIds = new Set(teamTournaments.map(t => t.id));
+    const inTournament = g => !!g.tournament_id && tournamentIds.has(g.tournament_id);
+
+    // A tournament shows as ONE row here — four loose "TBD" rows would drown
+    // out the rest of the schedule in a widget this size. The full breakdown
+    // lives on the tournament card in StatsPal.
+    const teamSchedule = schedule.filter(g => g.team_id === team.id && !inTournament(g));
+    const teamCompleted = completedGames.filter(g => g.team_id === team.id && !inTournament(g));
+
+    const tournamentItems = teamTournaments.map(t => {
+      const games = tournamentGames(t.id, schedule, completedGames);
+      const { w, l } = tournamentRecord(games);
+      const isPast = String(t.end_date || t.start_date || '') < today;
+      return {
+        id: `t-${t.id}`,
+        raw: t,
+        game_date: t.start_date,
+        opponent: t.name,
+        location: t.location || tournamentDateLabel(t),
+        kind: 'tournament',
+        isPast,
+        gameCount: games.length,
+        played: games.filter(g => g._kind === 'completed').length,
+        w, l,
+      };
+    });
 
     const completedItems = teamCompleted.map(g => ({
       id: `c-${g.id}`,
@@ -42,25 +70,30 @@ export default function ScheduleWidget({
       }));
     // Past: oldest at top, most recent just above the upcoming divider so the
     // user lands on something close to "now" when we auto-scroll to it.
-    const past = [...completedItems, ...pastUnplayed]
-      .sort((a, b) => a.game_date.localeCompare(b.game_date));
+    const past = [...completedItems, ...pastUnplayed, ...tournamentItems.filter(t => t.isPast)]
+      .sort((a, b) => String(a.game_date || '').localeCompare(String(b.game_date || '')));
 
-    const upcoming = teamSchedule
-      .filter(g => g.game_date >= today)
-      .map(g => ({
-        id: `s-${g.id}`,
-        raw: g,
-        game_date: g.game_date,
-        opponent: g.opponent,
-        location: g.location,
-        kind: g.game_date === today ? 'today' : 'upcoming',
-      }))
-      .sort((a, b) => a.game_date.localeCompare(b.game_date));
+    const upcoming = [
+      ...teamSchedule
+        .filter(g => g.game_date >= today)
+        .map(g => ({
+          id: `s-${g.id}`,
+          raw: g,
+          game_date: g.game_date,
+          opponent: g.opponent,
+          location: g.location,
+          kind: g.game_date === today ? 'today' : 'upcoming',
+        })),
+      ...tournamentItems.filter(t => !t.isPast),
+    ].sort((a, b) => String(a.game_date || '').localeCompare(String(b.game_date || '')));
 
     return { past, upcoming };
-  }, [team.id, schedule, completedGames, today]);
+  }, [team.id, schedule, completedGames, tournaments, today]);
 
   const empty = past.length === 0 && upcoming.length === 0;
+  // Tournament rows stand for several games each, so count their games.
+  const gameCount = [...past, ...upcoming]
+    .reduce((n, item) => n + (item.kind === 'tournament' ? item.gameCount : 1), 0);
   const scrollRef = useRef(null);
   const nextRef = useRef(null);
 
@@ -86,7 +119,7 @@ export default function ScheduleWidget({
     <div className="dash-widget dash-widget-schedule">
       <header className="dash-widget-head">
         <span className="dash-widget-title"><IconCalendar size={13} /> Schedule</span>
-        <span className="dash-widget-meta">{past.length + upcoming.length} games</span>
+        <span className="dash-widget-meta">{gameCount} games</span>
       </header>
 
       <div ref={scrollRef} className="dash-widget-body dash-sched-scroll">
@@ -100,7 +133,13 @@ export default function ScheduleWidget({
             {past.length > 0 && (
               <div className="dash-sched-section">
                 <div className="dash-sched-section-title">PAST · {past.length}</div>
-                {past.map(g => <Row key={g.id} game={g} onOpen={onOpenInRotationPal} />)}
+                {past.map(g => (
+                  <Row
+                    key={g.id}
+                    game={g}
+                    onOpen={g.kind === 'tournament' ? onOpenTournament : onOpenInRotationPal}
+                  />
+                ))}
               </div>
             )}
 
@@ -114,7 +153,7 @@ export default function ScheduleWidget({
                   <Row
                     key={g.id}
                     game={g}
-                    onOpen={onOpenInRotationPal}
+                    onOpen={g.kind === 'tournament' ? onOpenTournament : onOpenInRotationPal}
                     highlight={i === 0}
                   />
                 ))}
@@ -129,6 +168,43 @@ export default function ScheduleWidget({
 
 function Row({ game, onOpen, highlight }) {
   const { month, day, dow } = formatDateParts(game.game_date);
+
+  // A tournament collapses to a single summary row that opens the tournament
+  // view — there's no single game to hand to RotationPal from here.
+  if (game.kind === 'tournament') {
+    return (
+      <button
+        type="button"
+        className={`dash-sched-row dash-sched-tourn${game.isPast ? ' dash-sched-past' : ''}`}
+        onClick={() => onOpen && onOpen(game.raw)}
+        title={`Open ${game.opponent}`}
+      >
+        <div className="dash-sched-date">
+          <span className="dash-sched-month">{month}</span>
+          <span className="dash-sched-day">{day}</span>
+          <span className="dash-sched-dow">{dow}</span>
+        </div>
+        <div className="dash-sched-mid">
+          <div className="dash-sched-opp dash-sched-opp-trn">
+            <IconTrophy size={12} />{game.opponent}
+          </div>
+          <div className="dash-sched-loc">
+            {game.gameCount} {game.gameCount === 1 ? 'game' : 'games'}
+            {game.location && ` · ${game.location}`}
+          </div>
+        </div>
+        <div className="dash-sched-right">
+          {game.played > 0 ? (
+            <span className="dash-sched-score">{game.w}–{game.l}</span>
+          ) : (
+            <span className="dash-sched-pill">TOURNAMENT</span>
+          )}
+          <span className="dash-sched-open" aria-hidden="true"><IconArrowRight size={12} /></span>
+        </div>
+      </button>
+    );
+  }
+
   const isToday = game.kind === 'today';
   const isPast = game.kind === 'completed' || game.kind === 'past-noresult';
   const hasResult = game.kind === 'completed' && game.result;

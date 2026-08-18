@@ -1,12 +1,14 @@
 import { useMemo, useState } from 'react';
-import { IconCalendar } from '../Icons';
+import { IconCalendar, IconTrophy } from '../Icons';
 import { removeEvent } from '../../utils/teamEvents';
+import { tournamentDays, dayPosition, tournamentGames, tournamentDateLabel, isTBD } from '../../utils/tournaments';
 import PastGameDetailPopup from './PastGameDetailPopup';
 
 // Each variant maps to a `.dash-cal-bar-${variant}` CSS class and also feeds
 // the legend + detail-popup tag label. Game variants are derived from the
 // completed/scheduled state.
 const TYPES = {
+  'tournament':    { label: 'Tournament', dot: '#f0a500' },
   'game':          { label: 'Upcoming',  dot: '#58a6ff' },
   'game-win':      { label: 'Win',       dot: '#3fb950' },
   'game-loss':     { label: 'Loss',      dot: '#f85149' },
@@ -15,10 +17,12 @@ const TYPES = {
   'event':         { label: 'Event',     dot: '#f0a500' },
 };
 // Order shown in the legend.
-const LEGEND_ORDER = ['game', 'game-win', 'game-loss', 'game-noresult', 'practice', 'event'];
+const LEGEND_ORDER = ['tournament', 'game', 'game-win', 'game-loss', 'game-noresult', 'practice', 'event'];
 
 const DOW = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
-const MAX_BARS = 2;
+// A tournament day carries the event bar plus its games, so leave room for the
+// span bar on top of the usual two.
+const MAX_BARS = 3;
 
 function ymd(date) {
   const y = date.getFullYear();
@@ -78,8 +82,8 @@ function eventTitle(e) {
 }
 
 export default function CalendarWidget({
-  team, schedule, completedGames, events,
-  onEventsChanged, onOpenStatsPal, onOpenRotationPal,
+  team, schedule, completedGames, events, tournaments = [],
+  onEventsChanged, onOpenStatsPal, onOpenRotationPal, onOpenTournament,
 }) {
   const today = new Date();
   const [cursor, setCursor] = useState({ year: today.getFullYear(), month: today.getMonth() });
@@ -93,6 +97,38 @@ export default function CalendarWidget({
     };
     const todayStr = ymd(new Date());
 
+    const teamTournaments = (tournaments || []).filter(t => t.team_id === team.id);
+    const tournamentById = new Map(teamTournaments.map(t => [t.id, t]));
+
+    // Tournament span: one bar on EVERY day the event covers, so a Sep 12–13
+    // tournament reads as a block rather than a single dot on the 12th.
+    for (const t of teamTournaments) {
+      const games = tournamentGames(t.id, schedule, completedGames);
+      for (const date of tournamentDays(t)) {
+        push(date, {
+          id: `trn-${t.id}-${date}`,
+          type: 'tournament',
+          title: t.name,
+          date,
+          tournament: t,
+          span: dayPosition(t, date),
+          gameCount: games.length,
+          location: t.location || '',
+          readonly: true,
+        });
+      }
+    }
+
+    // A tournament game keeps its own bar on its own day — "Game 3 · TBD"
+    // rather than a bare "vs TBD" — so a day's games stay visible under the
+    // tournament span.
+    const gameTitle = (g) => {
+      const t = g.tournament_id ? tournamentById.get(g.tournament_id) : null;
+      if (!t) return `vs ${g.opponent}`;
+      const no = g.tournament_game_no ? `G${g.tournament_game_no}` : 'Game';
+      return isTBD(g.opponent) ? `${no} · TBD` : `${no} · vs ${g.opponent}`;
+    };
+
     // Scheduled games: blue if today/upcoming, gray if the date has passed
     // without a result being entered.
     for (const g of schedule) {
@@ -101,11 +137,13 @@ export default function CalendarWidget({
       push(g.game_date, {
         id: `sched-${g.id}`,
         type: variant,
-        title: `vs ${g.opponent}`,
+        title: gameTitle(g),
         opponent: g.opponent,
         location: g.location || '',
         date: g.game_date,
         readonly: true,
+        tournament: g.tournament_id ? tournamentById.get(g.tournament_id) || null : null,
+        tournamentGameNo: g.tournament_game_no || null,
       });
     }
     // Completed games: green for W, red for L, gray when no result was saved.
@@ -118,7 +156,7 @@ export default function CalendarWidget({
       push(g.game_date, {
         id: `done-${g.id}`,
         type: variant,
-        title: `vs ${g.opponent}`,
+        title: gameTitle(g),
         opponent: g.opponent,
         location: g.location || '',
         date: g.game_date,
@@ -127,12 +165,20 @@ export default function CalendarWidget({
         away_sets: g.away_sets,
         readonly: true,
         completed: true,
+        tournament: g.tournament_id ? tournamentById.get(g.tournament_id) || null : null,
+        tournamentGameNo: g.tournament_game_no || null,
       });
     }
     for (const e of events) push(e.date, e);
 
+    // Tournament spans sort first so they stay visible when a busy day
+    // overflows into "+N more".
+    for (const date of Object.keys(map)) {
+      map[date].sort((a, b) => (a.type === 'tournament' ? 0 : 1) - (b.type === 'tournament' ? 0 : 1));
+    }
+
     return map;
-  }, [team.id, schedule, completedGames, events]);
+  }, [team.id, schedule, completedGames, events, tournaments]);
 
   const monthLabel = new Date(cursor.year, cursor.month, 1)
     .toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
@@ -160,6 +206,17 @@ export default function CalendarWidget({
     removeEvent(team.id, activeEvent.id);
     setActiveEvent(null);
     onEventsChanged && onEventsChanged();
+  }
+
+  // A tournament bar goes straight to the tournament view rather than a
+  // read-only detail popup — same destination as clicking it in the schedule.
+  function pickEvent(e) {
+    if (e.type === 'tournament' && onOpenTournament) {
+      setActiveEvent(null);
+      onOpenTournament(e.tournament);
+      return;
+    }
+    setActiveEvent(e);
   }
 
   return (
@@ -200,10 +257,20 @@ export default function CalendarWidget({
                     <button
                       key={e.id}
                       type="button"
-                      className={`dash-cal-bar dash-cal-bar-${e.type}`}
-                      onClick={() => setActiveEvent(e)}
-                      title={eventTitle(e)}
+                      className={[
+                        'dash-cal-bar',
+                        `dash-cal-bar-${e.type}`,
+                        e.span ? `dash-cal-span dash-cal-span-${e.span}` : '',
+                        e.tournament && e.type !== 'tournament' ? 'dash-cal-bar-inturn' : '',
+                      ].filter(Boolean).join(' ')}
+                      onClick={() => pickEvent(e)}
+                      title={e.type === 'tournament'
+                        ? `${e.title} · ${tournamentDateLabel(e.tournament)} · ${e.gameCount} ${e.gameCount === 1 ? 'game' : 'games'}`
+                        : eventTitle(e)}
                     >
+                      {e.type === 'tournament' && (
+                        <IconTrophy size={10} className="dash-cal-bar-trophy" />
+                      )}
                       {eventTitle(e)}
                     </button>
                   ))}
@@ -244,6 +311,9 @@ export default function CalendarWidget({
             event={activeEvent}
             onClose={() => setActiveEvent(null)}
             onRemove={handleRemove}
+            onOpenTournament={onOpenTournament && activeEvent.tournament
+              ? () => { const t = activeEvent.tournament; setActiveEvent(null); onOpenTournament(t); }
+              : null}
           />
         )
       )}
@@ -252,14 +322,14 @@ export default function CalendarWidget({
           date={activeEvent.date}
           list={activeEvent.list}
           onClose={() => setActiveEvent(null)}
-          onPick={ev => setActiveEvent(ev)}
+          onPick={pickEvent}
         />
       )}
     </div>
   );
 }
 
-function EventDetailPopup({ event, onClose, onRemove }) {
+function EventDetailPopup({ event, onClose, onRemove, onOpenTournament }) {
   const t = TYPES[event.type] || TYPES.event;
   const d = parseYMD(event.date);
   const dateLabel = d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
@@ -270,6 +340,15 @@ function EventDetailPopup({ event, onClose, onRemove }) {
         <div className={`dash-cal-detail-tag dash-cal-bar-${event.type}`}>{t.label}</div>
         <h2 className="dash-cal-detail-title">{event.title}</h2>
         <div className="dash-cal-detail-date">{dateLabel}</div>
+
+        {event.tournament && (
+          <button type="button" className="dash-cal-detail-trnlink" onClick={onOpenTournament}>
+            <IconTrophy size={14} />
+            {event.tournament.name}
+            {event.tournamentGameNo ? ` · Game ${event.tournamentGameNo}` : ''}
+            <span className="dash-cal-detail-trnlink-go">Open tournament ›</span>
+          </button>
+        )}
 
         <div className="dash-cal-detail-grid">
           {(event.startTime || event.endTime) && (

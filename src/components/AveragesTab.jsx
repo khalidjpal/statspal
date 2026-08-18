@@ -1,6 +1,6 @@
 import { useMemo, useState, useRef, useEffect } from 'react';
 import { useData } from '../contexts/DataContext';
-import { hpct, n3, hcol, passAvg, pfmt, pcol } from '../utils/stats';
+import { n3, hcol, pfmt, pcol, aggregatePlayerStats } from '../utils/stats';
 import { sortByJersey, sortedCompleted } from '../utils/sort';
 import PlayerBadge from './PlayerBadge';
 
@@ -105,30 +105,10 @@ export default function AveragesTab({ players, playerGameStats, completedGames, 
     }
   }
 
+  // Shared with the tournament roll-up (TournamentStatsModal) so season and
+  // tournament numbers are computed by the exact same code.
   function getPlayerStats(player) {
-    const stats = scopedStats.filter(s => s.player_id === player.id);
-    if (stats.length === 0) return null;
-    const sp   = stats.reduce((a, s) => a + (s.sets_played         || 0), 0);
-    const k    = stats.reduce((a, s) => a + (s.kills               || 0), 0);
-    const e    = stats.reduce((a, s) => a + (s.errors              || 0), 0);
-    const att  = stats.reduce((a, s) => a + (s.attempts            || 0), 0);
-    const ast  = stats.reduce((a, s) => a + (s.assists             || 0), 0);
-    const sa   = stats.reduce((a, s) => a + (s.aces                || 0), 0);
-    const se   = stats.reduce((a, s) => a + (s.serve_errors        || 0), 0);
-    const digs = stats.reduce((a, s) => a + (s.digs                || 0), 0);
-    const bs   = stats.reduce((a, s) => a + (s.blocks              || 0), 0);
-    const ba   = stats.reduce((a, s) => a + (s.block_assists       || 0), 0);
-    const r    = stats.reduce((a, s) => a + (s.receives            || 0), 0);
-    const be   = stats.reduce((a, s) => a + (s.blocking_errors     || 0), 0);
-    const de   = stats.reduce((a, s) => a + (s.digging_errors      || 0), 0);
-    const bhe  = stats.reduce((a, s) => a + (s.ball_handling_errors|| 0), 0);
-    const pass = passAvg({
-      pass_3: stats.reduce((a, s) => a + (s.pass_3 || 0), 0),
-      pass_2: stats.reduce((a, s) => a + (s.pass_2 || 0), 0),
-      pass_1: stats.reduce((a, s) => a + (s.pass_1 || 0), 0),
-      pass_0: stats.reduce((a, s) => a + (s.pass_0 || 0), 0),
-    });
-    return { sp, k, e, att, ast, sa, se, digs, bs, ba, r, be, de, bhe, pass, h: hpct(k, e, att) };
+    return aggregatePlayerStats(scopedStats.filter(s => s.player_id === player.id));
   }
 
   // Build sorted player+stats pairs — recalculates whenever filter or sort changes

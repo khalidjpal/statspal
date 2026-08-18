@@ -7,7 +7,18 @@ import {
   mapStatsPalRoster,
 } from './teams'
 import { readSecondaryMap, setSecondary as setPlayerSecondary } from '../../utils/playerSecondary'
+import { isTBD } from '../../utils/tournaments'
 import { useData } from '../../contexts/DataContext'
+
+// ── Feature flag: Schemes ───────────────────────────────────────────────────
+// Hides the "Schemes" card on the RotationPal home. Set back to `true` to
+// restore it — that is the ONLY change needed.
+//
+// Nothing about the feature is removed: SchemesLibraryModal, the scheme-mode
+// gameplan builder, formation_presets persistence, and every saved scheme are
+// untouched. Saved schemes also stay reachable while this is off, via the
+// gameplan builder's "Apply Preset" picker and its ⋯ → "Manage presets".
+const SHOW_SCHEMES = false
 import PlayerManagementModal from '../../components/modals/PlayerManagementModal'
 import GameplanBuilderModal, {
   PresetManager,
@@ -294,6 +305,7 @@ export default function RotationPalApp({
   statsPalPlayers = [],
   statsPalSchedule = [],
   statsPalCompletedGames = [],
+  statsPalTournaments = [],
   entryMode = 'linked',
   onHome,
   onLogout,
@@ -448,6 +460,7 @@ export default function RotationPalApp({
         tick={tick}
         team={team}
         statsPalSchedule={teamSchedule}
+        statsPalTournaments={statsPalTournaments}
         isStandalone={isStandalone}
         onBack={() => setNav({ screen: 'teamHome', teamId: team.id })}
         onOpenGame={(gid) => setNav({ screen: 'game', teamId: team.id, gameId: gid })}
@@ -682,15 +695,24 @@ function TeamHomeView({
   // completed_games row yet. Date does NOT decide upcoming — presence of a
   // score does. RotationPal is visual-only and never writes scores, so this
   // stays a pure read of the shared source of truth.
+  //
+  // Matching a played game to a scheduled one by opponent+date breaks inside a
+  // tournament: several games share one date and may all still be named "TBD",
+  // so finishing one would hide every other TBD game that day. Tournament games
+  // carry a unique (tournament, game number) pair — key on that instead, and
+  // leave standalone games on the original opponent+date key.
+  const doneKey = (g) => g.tournament_id && g.tournament_game_no
+    ? `t:${g.tournament_id}__${g.tournament_game_no}`
+    : `${(g.opponent || '').toLowerCase()}__${g.game_date}`
   const upcomingGames = useMemo(() => {
     const sched = (statsPalSchedule || []).filter(g => g.team_id === team.id)
     const done = new Set(
       (statsPalCompletedGames || [])
         .filter(g => g.team_id === team.id)
-        .map(g => `${(g.opponent || '').toLowerCase()}__${g.game_date}`)
+        .map(doneKey)
     )
     return sched
-      .filter(g => !done.has(`${(g.opponent || '').toLowerCase()}__${g.game_date}`))
+      .filter(g => !done.has(doneKey(g)))
       .slice()
       .sort((a, b) => String(a.game_date).localeCompare(String(b.game_date)))
   }, [statsPalSchedule, statsPalCompletedGames, team.id])
@@ -749,7 +771,7 @@ function TeamHomeView({
       />
 
       <main className="rp-dash-main">
-        <div className="rp-dash-grid">
+        <div className={`rp-dash-grid${SHOW_SCHEMES ? '' : ' rp-dash-grid-2up'}`}>
           <button
             type="button"
             className="rp-dash-card rp-dash-card-gameplan"
@@ -762,17 +784,20 @@ function TeamHomeView({
             <span className="rp-dash-card-sub">Build a plan for an upcoming game.</span>
           </button>
 
-          <button
-            type="button"
-            className="rp-dash-card rp-dash-card-schemes"
-            onClick={() => setSchemesOpen(true)}
-          >
-            <span className="rp-dash-card-icon" aria-hidden="true">
-              <IconRotate size={26} />
-            </span>
-            <span className="rp-dash-card-title">Schemes</span>
-            <span className="rp-dash-card-sub">Save reusable systems — 5-1, 6-2, 4-2.</span>
-          </button>
+          {/* Hidden behind SHOW_SCHEMES (top of file) — not removed. */}
+          {SHOW_SCHEMES && (
+            <button
+              type="button"
+              className="rp-dash-card rp-dash-card-schemes"
+              onClick={() => setSchemesOpen(true)}
+            >
+              <span className="rp-dash-card-icon" aria-hidden="true">
+                <IconRotate size={26} />
+              </span>
+              <span className="rp-dash-card-title">Schemes</span>
+              <span className="rp-dash-card-sub">Save reusable systems — 5-1, 6-2, 4-2.</span>
+            </button>
+          )}
 
           <button
             type="button"
@@ -1275,7 +1300,11 @@ function StandaloneRosterView({ session, onLogout, onHome, team, onBack }) {
 // ============================================================
 // Schedule
 // ============================================================
-function ScheduleView({ session, onLogout, onHome, team, onBack, onOpenGame, onChanged, tick, statsPalSchedule = [], isStandalone = false, onCreateGameplan, onLoadGameplan }) {
+function ScheduleView({ session, onLogout, onHome, team, onBack, onOpenGame, onChanged, tick, statsPalSchedule = [], statsPalTournaments = [], isStandalone = false, onCreateGameplan, onLoadGameplan }) {
+  // Tournament a schedule entry belongs to, for the badge on its row.
+  const tournamentOf = (entry) => entry?.tournament_id
+    ? (statsPalTournaments || []).find(t => t.id === entry.tournament_id) || null
+    : null
   const [showAdd, setShowAdd] = useState(false)
   const [opponent, setOpponent] = useState('')
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10))
@@ -1381,8 +1410,16 @@ function ScheduleView({ session, onLogout, onHome, team, onBack, onOpenGame, onC
                   <div className="game-row" onClick={() => handleOpenScheduleEntry(entry)}>
                     <div className="game-date">{displayDate}</div>
                     <div className="game-main">
-                      <div className="game-opponent">vs {entry.opponent}</div>
-                      {entry.location && <div className="game-meta">{entry.location}</div>}
+                      <div className="game-opponent">
+                        {entry.tournament_game_no ? `Game ${entry.tournament_game_no} · ` : ''}
+                        {isTBD(entry.opponent) ? 'TBD' : `vs ${entry.opponent}`}
+                      </div>
+                      <div className="game-meta">
+                        {tournamentOf(entry) && (
+                          <span className="rp-trn-badge">{tournamentOf(entry).name}</span>
+                        )}
+                        {entry.location}
+                      </div>
                     </div>
                     <div className={`game-status ${st.className}`}>{st.label}</div>
                     <div className="game-actions" onClick={e => e.stopPropagation()}>

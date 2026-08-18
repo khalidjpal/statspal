@@ -4,15 +4,20 @@ import { useVolleyballPal } from '../contexts/VolleyballPalContext';
 import { sortedUpcoming, sortByJersey } from '../utils/sort';
 import PlayerBadge from '../components/PlayerBadge';
 import { getActiveSession } from '../utils/liveSession';
+import { tournamentRoster, isTBD } from '../utils/tournaments';
 import { IconLink } from '../components/Icons';
 
 const STEPS = ['setup', 'format', 'lineup'];
 
-export default function PreGame({ team, scheduledGame, onBack, onStartGame, onResumeGame }) {
+export default function PreGame({ team, scheduledGame, tournament, onBack, onStartGame, onResumeGame }) {
   const { players, schedule, refresh } = useData();
   const { activeSession: rpSession } = useVolleyballPal();
   const [step, setStep] = useState('setup');
-  const [opponent, setOpponent] = useState(scheduledGame?.opponent || '');
+  // A quick-added tournament game has the "TBD" placeholder rather than a real
+  // opponent — start the field empty so the coach just types the name.
+  const [opponent, setOpponent] = useState(
+    isTBD(scheduledGame?.opponent) ? '' : (scheduledGame?.opponent || '')
+  );
   const [location, setLocation] = useState(scheduledGame?.location || 'Home');
   const [gameDate, setGameDate] = useState(scheduledGame?.game_date || new Date().toISOString().slice(0, 10));
   const [isLeague, setIsLeague] = useState(scheduledGame?.is_league || false);
@@ -38,12 +43,23 @@ export default function PreGame({ team, scheduledGame, onBack, onStartGame, onRe
     return () => { cancelled = true; };
   }, [team.id]);
 
-  const teamPlayers = sortByJersey(players.filter(p => p.team_id === team.id));
-  const upcoming = sortedUpcoming(schedule.filter(s => s.team_id === team.id));
+  const allTeamPlayers = sortByJersey(players.filter(p => p.team_id === team.id));
+
+  // In a tournament the roster is picked once at the event level and every game
+  // uses it — the coach is never prompted per game.
+  const teamPlayers = tournament
+    ? tournamentRoster(tournament, allTeamPlayers)
+    : allTeamPlayers;
+
+  // Standalone games only: auto-fill from the next upcoming game. A tournament
+  // game already knows its own details, and its siblings are irrelevant.
+  const upcoming = sortedUpcoming(
+    schedule.filter(s => s.team_id === team.id && !s.tournament_id)
+  );
 
   // Auto-fill from scheduled game or next upcoming
   useEffect(() => {
-    if (!scheduledGame && upcoming.length > 0 && !opponent) {
+    if (!scheduledGame && !tournament && upcoming.length > 0 && !opponent) {
       setOpponent(upcoming[0].opponent);
       setLocation(upcoming[0].location || 'Home');
       setGameDate(upcoming[0].game_date);
@@ -52,7 +68,7 @@ export default function PreGame({ team, scheduledGame, onBack, onStartGame, onRe
     }
   }, [upcoming.length]);
 
-  // Default: all players selected
+  // Default: everyone in scope selected (the tournament roster, or the team).
   useEffect(() => {
     if (teamPlayers.length > 0 && selectedPlayers.length === 0) {
       setSelectedPlayers(teamPlayers.map(p => p.id));
@@ -87,6 +103,10 @@ export default function PreGame({ team, scheduledGame, onBack, onStartGame, onRe
       bestOf,
       roster,
       scheduledGameId: scheduledGame?.id || (upcoming.length > 0 && upcoming[0].opponent === opponent.trim() ? upcoming[0].id : null),
+      // Carried into the completed_games row by handleEndMatch so the game
+      // stays in its tournament once it's played.
+      tournamentId: tournament?.id || null,
+      tournamentGameNo: scheduledGame?.tournament_game_no ?? null,
     });
   }
 
@@ -108,6 +128,12 @@ export default function PreGame({ team, scheduledGame, onBack, onStartGame, onRe
         <h1 style={{ fontSize: 22, fontWeight: 700, marginTop: 8 }}>
           {step === 'setup' ? 'Game Setup' : step === 'format' ? 'Match Format' : 'Set Lineup'}
         </h1>
+        {tournament && (
+          <div className="vp-pregame-tourn">
+            {tournament.name}
+            {scheduledGame?.tournament_game_no ? ` · Game ${scheduledGame.tournament_game_no}` : ''}
+          </div>
+        )}
       </div>
 
       <div style={{ padding: '16px 20px', maxWidth: 600, margin: '0 auto' }}>
@@ -213,6 +239,12 @@ export default function PreGame({ team, scheduledGame, onBack, onStartGame, onRe
             <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 8, color: 'var(--text)' }}>
               Active Roster ({selectedPlayers.length}/{teamPlayers.length})
             </h3>
+            {tournament && (
+              <div className="vp-pregame-roster-note">
+                Using the <strong>{tournament.name}</strong> roster — already set for every game
+                in this tournament.
+              </div>
+            )}
             {teamPlayers.map(p => {
               const selected = selectedPlayers.includes(p.id);
               return (

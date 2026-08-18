@@ -29,15 +29,27 @@ export async function resetGame({ game, teamId }) {
   // 4. Any stale in-progress live session for this team
   await supabase.from('live_game_sessions').delete().eq('team_id', teamId);
 
-  // 5. Re-create the schedule entry so it appears as upcoming again
-  const insSched = await supabase.from('schedule').insert({
+  // 5. Re-create the schedule entry so it appears as upcoming again.
+  //    Tournament fields come along so a reset tournament game returns to its
+  //    tournament card rather than escaping to the standalone timeline.
+  const base = {
     team_id: teamId,
     opponent: game.opponent,
     game_date: game.game_date,
     location: game.location || null,
     is_league: !!game.is_league,
     league_team_id: game.league_team_id || null,
+  };
+  let insSched = await supabase.from('schedule').insert({
+    ...base,
+    tournament_id: game.tournament_id || null,
+    tournament_game_no: game.tournament_game_no ?? null,
   });
+  if (insSched.error) {
+    // Pre-migration database — still restore the game, just unlinked.
+    console.warn('[resetGame] Insert with tournament fields failed, retrying without:', insSched.error.message);
+    insSched = await supabase.from('schedule').insert(base);
+  }
   if (insSched.error) return { error: insSched.error };
 
   return { error: null };

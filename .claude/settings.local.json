@@ -86,7 +86,8 @@
       "PowerShell(Get-CimInstance *)",
       "PowerShell(try { $r = Invoke-WebRequest -Uri \"http://localhost:5173/livegame-test.html\" -UseBasicParsing -TimeoutSec 10; \"status: $\\($r.StatusCode\\)\"; if \\($r.Content -match 'livegameHarness'\\) { \"harness entry present\" } } catch { \"ERR: $\\($_.Exception.Message\\)\" })",
       "PowerShell(Set-Content *)",
-      "PowerShell(Set-Location C:\\\\Users\\\\kpal\\\\statspal; git status --short | Select-String -Pattern 'devtest|livegame-test'; \"harness removed: $\\(-not \\(Test-Path livegame-test.html\\) -and -not \\(Test-Path src\\\\devtest\\)\\)\"; git diff --stat -- src/screens/LiveGame.jsx src/styles.css)"
+      "PowerShell(Set-Location C:\\\\Users\\\\kpal\\\\statspal; git status --short | Select-String -Pattern 'devtest|livegame-test'; \"harness removed: $\\(-not \\(Test-Path livegame-test.html\\) -and -not \\(Test-Path src\\\\devtest\\)\\)\"; git diff --stat -- src/screens/LiveGame.jsx src/styles.css)",
+      "WebFetch(domain:statspal.vercel.app)"
     ]
   }
 }

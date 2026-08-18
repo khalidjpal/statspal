@@ -138,3 +138,45 @@ export function IconPlay({ size = 16, className }) {
     </svg>
   );
 }
+
+export function IconTrophy({ size = 16, className }) {
+  return (
+    <svg {...base(size)} className={className} aria-hidden="true">
+      <path d="M7 4h10v6a5 5 0 0 1-10 0z" />
+      <path d="M7 6H4v2a3 3 0 0 0 3 3" />
+      <path d="M17 6h3v2a3 3 0 0 1-3 3" />
+      <path d="M12 15v4" />
+      <path d="M9 21h6" />
+    </svg>
+  );
+}
+
+export function IconPencil({ size = 14, className }) {
+  return (
+    <svg {...base(size)} className={className} aria-hidden="true">
+      <path d="M12 20h9" />
+      <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z" />
+    </svg>
+  );
+}
+
+export function IconTrash({ size = 14, className }) {
+  return (
+    <svg {...base(size)} className={className} aria-hidden="true">
+      <path d="M3 6h18" />
+      <path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2" />
+      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
+      <path d="M10 11v6" />
+      <path d="M14 11v6" />
+    </svg>
+  );
+}
+
+export function IconPlus({ size = 14, className }) {
+  return (
+    <svg {...base(size)} className={className} aria-hidden="true">
+      <path d="M12 5v14" />
+      <path d="M5 12h14" />
+    </svg>
+  );
+}

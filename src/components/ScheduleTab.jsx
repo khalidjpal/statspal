@@ -6,6 +6,9 @@ import { getActiveSession } from '../utils/liveSession';
 import AddGameModal from './modals/AddGameModal';
 import ManualResultModal from './modals/ManualResultModal';
 import GameplanBuilderModal from './modals/GameplanBuilderModal';
+import TournamentCard from './TournamentCard';
+import TournamentHost from './TournamentHost';
+import { tournamentGames } from '../utils/tournaments';
 import { resetGame } from '../utils/resetGame';
 import { useToast } from '../contexts/ToastContext';
 
@@ -36,13 +39,16 @@ function daysUntilLabel(dateStr, today) {
 }
 
 export default function ScheduleTab({ team, schedule, completedGames, players, playerGameStats, leagueTeams, isAdmin, onSelectGame, onStartLive, onResumeGame, refresh }) {
-  const { leagueResults, players: allPlayers } = useData();
+  const { leagueResults, players: allPlayers, tournaments } = useData();
   const [showAdd, setShowAdd]     = useState(false);
   const [manualGame, setManualGame] = useState(null);
   const [resetTarget, setResetTarget] = useState(null);
   const [resetting, setResetting] = useState(false);
   const [activeSession, setActiveSession] = useState(null);
   const [planGame, setPlanGame] = useState(null);
+  // Tournament opened from a card header — everything else about a tournament
+  // lives inside TournamentHost.
+  const [openTournament, setOpenTournament] = useState(null);
   const { addToast } = useToast();
 
   async function confirmReset() {
@@ -63,8 +69,42 @@ export default function ScheduleTab({ team, schedule, completedGames, players, p
   const nextGameRef  = useRef(null);
 
   const today = getToday();
-  const teamSchedule  = schedule.filter(g => g.team_id === team.id);
-  const teamCompleted = completedGames.filter(g => g.team_id === team.id);
+  const teamScheduleAll  = useMemo(() => schedule.filter(g => g.team_id === team.id), [schedule, team.id]);
+  const teamCompletedAll = useMemo(() => completedGames.filter(g => g.team_id === team.id), [completedGames, team.id]);
+
+  // Tournaments own their games. Everything below the partition works on
+  // STANDALONE games only, so the existing timeline / next-game behaviour is
+  // byte-for-byte what it was; tournament games render inside their card.
+  const teamTournaments = useMemo(
+    () => [...(tournaments || [])]
+      .filter(t => t.team_id === team.id)
+      .sort((a, b) => String(a.start_date || '').localeCompare(String(b.start_date || ''))),
+    [tournaments, team.id]
+  );
+  // A tournament_id pointing at a deleted/foreign tournament falls through to
+  // the standalone timeline rather than vanishing from the UI.
+  const tournamentIds = useMemo(() => new Set(teamTournaments.map(t => t.id)), [teamTournaments]);
+
+  const teamSchedule  = useMemo(
+    () => teamScheduleAll.filter(g => !g.tournament_id || !tournamentIds.has(g.tournament_id)),
+    [teamScheduleAll, tournamentIds]
+  );
+  const teamCompleted = useMemo(
+    () => teamCompletedAll.filter(g => !g.tournament_id || !tournamentIds.has(g.tournament_id)),
+    [teamCompletedAll, tournamentIds]
+  );
+
+  // Tournament cards, keyed by the date they sit at in the timeline.
+  const tournamentCards = useMemo(
+    () => teamTournaments.map(t => ({
+      _kind: 'tournament',
+      id: `t-${t.id}`,
+      tournament: t,
+      game_date: t.start_date,
+      games: tournamentGames(t.id, teamScheduleAll, teamCompletedAll),
+    })),
+    [teamTournaments, teamScheduleAll, teamCompletedAll]
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -83,18 +123,20 @@ export default function ScheduleTab({ team, schedule, completedGames, players, p
   const myLeagueTeams    = (leagueTeams || []).filter(lt => lt.team_id === team.id);
   const ourLeagueTeam    = myLeagueTeams.find(lt => lt.is_us);
 
-  // Season record
+  // Season record — over ALL games including tournament games; a tournament win
+  // is a win.
   const { wins, losses, leagueWins, leagueLosses } = useMemo(() => {
     let w = 0, l = 0, lw = 0, ll = 0;
-    for (const g of teamCompleted) {
+    for (const g of teamCompletedAll) {
       if (g.result === 'W') w++; else if (g.result === 'L') l++;
       if (g.is_league) { if (g.result === 'W') lw++; else if (g.result === 'L') ll++; }
     }
     return { wins: w, losses: l, leagueWins: lw, leagueLosses: ll };
-  }, [teamCompleted]);
+  }, [teamCompletedAll]);
 
   const hasLeague = leagueWins + leagueLosses > 0;
-  const gamesLeft = upcoming.length + pastUnplayed.length;
+  // Remaining counts unplayed tournament games too.
+  const gamesLeft = teamScheduleAll.length;
   const nextGame  = upcoming[0] || null;
   const restUpcoming = upcoming.slice(1);
 
@@ -160,14 +202,32 @@ export default function ScheduleTab({ team, schedule, completedGames, players, p
     return { oppTeam, oppW, oppL, last5, streakLen, streakType, ourWins, ourLosses, lastMeeting, firstMeeting: h2hGames.length === 0 };
   }, [nextGame, leagueResults, myLeagueTeams, ourLeagueTeam, team.id]);
 
-  // Past timeline: completed games + past unplayed, oldest first so most recent sits directly above next game card
+  // A tournament is "past" once its last day has gone by; until then it belongs
+  // with the upcoming games so the coach can keep adding to it.
+  const isPastTournament = c => String(c.tournament.end_date || c.tournament.start_date || '') < today;
+
+  // Past timeline: completed games + past unplayed + finished tournaments,
+  // oldest first so the most recent sits directly above the next game card.
   const pastTimeline = useMemo(() => {
     const items = [
       ...completed.map(g => ({ ...g, _kind: 'completed' })),
       ...pastUnplayed.map(g => ({ ...g, _kind: 'needsResult' })),
+      ...tournamentCards.filter(isPastTournament),
     ];
-    return items.sort((a, b) => a.game_date.localeCompare(b.game_date));
-  }, [completed, pastUnplayed]);
+    return items.sort((a, b) => String(a.game_date || '').localeCompare(String(b.game_date || '')));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [completed, pastUnplayed, tournamentCards, today]);
+
+  // Everything after the NEXT GAME card: remaining upcoming standalone games
+  // and current/upcoming tournaments, interleaved by date.
+  const upcomingTimeline = useMemo(() => {
+    const items = [
+      ...restUpcoming.map(g => ({ ...g, _kind: 'upcoming' })),
+      ...tournamentCards.filter(c => !isPastTournament(c)),
+    ];
+    return items.sort((a, b) => String(a.game_date || '').localeCompare(String(b.game_date || '')));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [restUpcoming, tournamentCards, today]);
 
   // Instantly position the timeline before the browser paints.
   // useLayoutEffect is synchronous — scrollTop is already set when the user first sees
@@ -205,6 +265,22 @@ export default function ScheduleTab({ team, schedule, completedGames, players, p
       await refresh();
       setManualGame(newGame);
     }
+  }
+
+  function renderTournament(card) {
+    return (
+      <TournamentCard
+        key={card.id}
+        tournament={card.tournament}
+        games={card.games}
+        isAdmin={isAdmin}
+        activeSession={activeSession}
+        onOpen={setOpenTournament}
+        onSelectGame={onSelectGame}
+        onStartLive={g => onStartLive && onStartLive(g)}
+        refresh={refresh}
+      />
+    );
   }
 
   return (
@@ -253,8 +329,9 @@ export default function ScheduleTab({ team, schedule, completedGames, players, p
           </button>
         )}
 
-        {/* Completed games + needs-result — most recent first */}
+        {/* Completed games + needs-result + finished tournaments */}
         {pastTimeline.map(g => {
+          if (g._kind === 'tournament') return renderTournament(g);
           const { month, day, dow } = formatDateParts(g.game_date);
           const needsResult = g._kind === 'needsResult';
           return (
@@ -318,7 +395,7 @@ export default function ScheduleTab({ team, schedule, completedGames, players, p
                 {isAdmin && (
                   <div className="sch-nc-actions">
                     <button className="sch-gameplan-btn" onClick={() => setPlanGame(nextGame)}>
-                      📋 Gameplan
+                      Gameplan
                     </button>
                     <button className="sch-start-btn" onClick={() => onStartLive && onStartLive(nextGame)}>
                       Start Live Scoring
@@ -378,14 +455,15 @@ export default function ScheduleTab({ team, schedule, completedGames, players, p
         )}
 
         {/* Divider if only upcoming with no next game card */}
-        {!nextGame && upcoming.length > 0 && (
+        {!nextGame && upcomingTimeline.length > 0 && (
           <div className="sch-tl-divider">
             <span className="sch-tl-divider-label">UPCOMING</span>
           </div>
         )}
 
-        {/* Rest of upcoming (after next game) */}
-        {restUpcoming.map(g => {
+        {/* Rest of upcoming (after next game) + current/upcoming tournaments */}
+        {upcomingTimeline.map(g => {
+          if (g._kind === 'tournament') return renderTournament(g);
           const { month, day, dow } = formatDateParts(g.game_date);
           const isT = g.game_date === today;
           return (
@@ -407,7 +485,7 @@ export default function ScheduleTab({ team, schedule, completedGames, players, p
                 {isAdmin && (
                   <>
                     <button className="sch-gameplan-btn sch-gameplan-btn-sm" onClick={() => setPlanGame(g)}>
-                      📋 Gameplan
+                      Gameplan
                     </button>
                     <button className="sch-up-live-btn" onClick={() => onStartLive && onStartLive(g)}>
                       {isT ? 'Start Live' : 'Live'}
@@ -420,7 +498,7 @@ export default function ScheduleTab({ team, schedule, completedGames, players, p
         })}
 
         {/* Empty state */}
-        {pastTimeline.length === 0 && upcoming.length === 0 && (
+        {pastTimeline.length === 0 && upcomingTimeline.length === 0 && !nextGame && (
           <div className="empty-state" style={{ padding: '32px 16px' }}>No games scheduled</div>
         )}
 
@@ -443,6 +521,16 @@ export default function ScheduleTab({ team, schedule, completedGames, players, p
           onSaved={() => { setShowAdd(false); refresh(); }}
         />
       )}
+
+      <TournamentHost
+        tournament={openTournament}
+        team={team}
+        isAdmin={isAdmin}
+        onClose={() => setOpenTournament(null)}
+        onStartLive={g => onStartLive && onStartLive(g)}
+        onSelectGame={onSelectGame}
+        refresh={refresh}
+      />
 
       {resetTarget && (
         <div className="modal-overlay" onClick={() => !resetting && setResetTarget(null)}>

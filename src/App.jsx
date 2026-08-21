@@ -47,7 +47,7 @@ const lastTeamKey = (userId) => `vp-last-team:${userId}`;
 
 export default function App() {
   const { currentUser } = useAuth();
-  const { teams, tournaments, refresh } = useData();
+  const { teams, activeTeams, tournaments, refresh } = useData();
   const { addToast } = useToast();
 
   const [screen, setScreen] = useState(SCREENS.LOGIN);
@@ -76,9 +76,11 @@ export default function App() {
 
   const isAdmin = currentUser?.role === 'admin';
   const userTeamIds = currentUser?.teamIds || [];
+  // Archived teams are invisible to normal navigation for every role, admin
+  // included — God Mode is the only way back to one.
   const candidateTeams = isAdmin
-    ? teams
-    : teams.filter(t => userTeamIds.includes(t.id));
+    ? activeTeams
+    : activeTeams.filter(t => userTeamIds.includes(t.id));
 
   function launchStatsPalForTeam(team) {
     setSelectedTeam(team);
@@ -154,6 +156,20 @@ export default function App() {
       setScreen(SCREENS.TEAM_PICKER);
     }
     setAutoRouted(true);
+  }
+
+  // A team archived from God Mode disappears from under whoever was standing on
+  // it: drop the selection and the remembered team, and fall back to the picker
+  // (which shows the empty state if this user has no other team). God Mode is
+  // exempt — that is where the archiving just happened, and it keeps its own
+  // separate team selection so an archived team can still be inspected there.
+  const selectedTeamRow = selectedTeam ? teams.find(t => t.id === selectedTeam.id) : null;
+  if (selectedTeam && selectedTeamRow?.archived && screen !== SCREENS.GOD_MODE) {
+    setSelectedTeam(null);
+    if (currentUser?.id) {
+      try { localStorage.removeItem(lastTeamKey(currentUser.id)); } catch { /* localStorage unavailable — nothing to clear */ }
+    }
+    setScreen(SCREENS.TEAM_PICKER);
   }
 
   // Route guard: players cannot access live tracking screens

@@ -16,8 +16,13 @@ import { useData } from '../../contexts/DataContext'
 //
 // Nothing about the feature is removed: SchemesLibraryModal, the scheme-mode
 // gameplan builder, formation_presets persistence, and every saved scheme are
-// untouched. Saved schemes also stay reachable while this is off, via the
-// gameplan builder's "Apply Preset" picker and its ⋯ → "Manage presets".
+// untouched.
+//
+// NOTE: the gameplan builder's "Apply Preset" / "Presets" buttons — which used
+// to be the back door to saved schemes while this flag was off — were replaced
+// by "Import from Playground". So with SHOW_SCHEMES false, saved schemes have
+// no entry point in the UI at all; flip this to true to bring the card, and
+// with it the scheme editor, back.
 const SHOW_SCHEMES = false
 import PlayerManagementModal from '../../components/modals/PlayerManagementModal'
 import GameplanBuilderModal, {

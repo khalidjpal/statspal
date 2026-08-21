@@ -6,12 +6,14 @@ import { hpct, n3, hcol, teamRecord } from '../utils/stats';
 import { sortByJersey, sortedCompleted } from '../utils/sort';
 import { levelsFor } from '../utils/schoolType';
 import PlayerBadge from '../components/PlayerBadge';
-import { IconUsers, IconCalendar, IconChart, IconClipboard, IconArrowRight, IconArrowLeft } from '../components/Icons';
+import { IconUsers, IconCalendar, IconChart, IconClipboard, IconArrowRight, IconArrowLeft, IconArchive, IconUndo } from '../components/Icons';
 import GodStatsModal from '../components/modals/GodStatsModal';
 import AddPlayerModal from '../components/modals/AddPlayerModal';
 import EditPlayerModal from '../components/modals/EditPlayerModal';
 import ManualResultModal from '../components/modals/ManualResultModal';
 import EditLeagueResultModal from '../components/modals/EditLeagueResultModal';
+import DeleteTeamModal from '../components/modals/DeleteTeamModal';
+import { isArchived, setTeamArchived, deleteTeamPermanently, teamDataCounts } from '../utils/teamArchive';
 
 const SPORT = 'Volleyball';
 
@@ -33,12 +35,18 @@ function teamInitials(name) {
 
 export default function GodMode({ onBack }) {
   const data = useData();
-  const { teams, refresh } = data;
+  const { teams, activeTeams, archivedTeams, refresh } = data;
   const { addToast } = useToast();
 
   const [selectedTeamId, setSelectedTeamId] = useState(null);
   const [systemView, setSystemView] = useState(null); // 'accounts' | 'league' | null
   const [section, setSection] = useState('roster');
+  // Which half of the team list the picker is showing. Archived teams live
+  // ONLY here — nothing outside God Mode lists them.
+  const [teamTab, setTeamTab] = useState('active');   // 'active' | 'archived'
+  const [pendingDelete, setPendingDelete] = useState(null);
+  const [deleting, setDeleting] = useState(false);
+  const [busyTeamId, setBusyTeamId] = useState(null);
 
   useEffect(() => { refresh(); }, [refresh]);
 
@@ -52,6 +60,43 @@ export default function GodMode({ onBack }) {
     if (r.error) addToast('Failed to add team: ' + r.error.message);
     else addToast('Team added', 'success');
     setNewTeam('');
+    await refresh();
+  }
+
+  // ── Archive / restore / destroy ─────────────────────────
+  // All three are God Mode only, and all three end in a refresh() so the team
+  // picker, the hub, RotationPal and these tabs agree immediately.
+  async function archiveTeam(team) {
+    // Reversible, but it pulls the team out from under every coach and player
+    // on it, so it still asks first.
+    if (!confirm(`Archive ${team.name}?\n\nIt disappears from the team picker and every other normal view. All of its players, games and stats are kept, and you can restore it from the Archived tab.`)) return;
+    setBusyTeamId(team.id);
+    const { error } = await setTeamArchived(team.id, true);
+    setBusyTeamId(null);
+    if (error) { addToast('Could not archive: ' + error.message); return; }
+    addToast(`${team.name} archived — its data is untouched`, 'success');
+    await refresh();
+  }
+
+  async function restoreTeam(team) {
+    setBusyTeamId(team.id);
+    const { error } = await setTeamArchived(team.id, false);
+    setBusyTeamId(null);
+    if (error) { addToast('Could not restore: ' + error.message); return; }
+    addToast(`${team.name} restored`, 'success');
+    await refresh();
+  }
+
+  async function confirmDelete() {
+    if (!pendingDelete) return;
+    setDeleting(true);
+    const { error } = await deleteTeamPermanently(pendingDelete);
+    setDeleting(false);
+    if (error) { addToast('Delete failed: ' + error.message); return; }
+    const name = pendingDelete.name;
+    setPendingDelete(null);
+    if (selectedTeamId === pendingDelete.id) setSelectedTeamId(null);
+    addToast(`${name} and all its data were deleted`, 'success');
     await refresh();
   }
 
@@ -86,19 +131,61 @@ export default function GodMode({ onBack }) {
             <button onClick={addTeam} className="god-btn-primary">+ Add Team</button>
           </div>
 
-          {teams.length === 0 ? (
-            <div className="god-empty">No teams yet. Add one above.</div>
+          <div className="god-tabs" role="tablist">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={teamTab === 'active'}
+              className={`god-tab${teamTab === 'active' ? ' active' : ''}`}
+              onClick={() => setTeamTab('active')}
+            >
+              <span className="god-tab-icon"><IconUsers size={13} /></span>
+              Active
+              <span className="god-tab-count">{activeTeams.length}</span>
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={teamTab === 'archived'}
+              className={`god-tab god-tab-archive${teamTab === 'archived' ? ' active' : ''}`}
+              onClick={() => setTeamTab('archived')}
+            >
+              <span className="god-tab-icon"><IconArchive size={13} /></span>
+              Archived
+              <span className="god-tab-count">{archivedTeams.length}</span>
+            </button>
+          </div>
+
+          {teamTab === 'active' ? (
+            activeTeams.length === 0 ? (
+              <div className="god-empty">
+                {teams.length === 0
+                  ? 'No teams yet. Add one above.'
+                  : 'Every team is archived. Open the Archived tab to restore one.'}
+              </div>
+            ) : (
+              <div className="god-team-grid">
+                {activeTeams.map(t => (
+                  <TeamCard
+                    key={t.id}
+                    team={t}
+                    data={data}
+                    busy={busyTeamId === t.id}
+                    onSelect={() => { setSelectedTeamId(t.id); setSection('roster'); }}
+                    onArchive={() => archiveTeam(t)}
+                  />
+                ))}
+              </div>
+            )
           ) : (
-            <div className="god-team-grid">
-              {teams.map(t => (
-                <TeamCard
-                  key={t.id}
-                  team={t}
-                  data={data}
-                  onSelect={() => { setSelectedTeamId(t.id); setSection('roster'); }}
-                />
-              ))}
-            </div>
+            <ArchivedTeams
+              teams={archivedTeams}
+              data={data}
+              busyTeamId={busyTeamId}
+              onView={t => { setSelectedTeamId(t.id); setSection('roster'); }}
+              onRestore={restoreTeam}
+              onDelete={t => setPendingDelete(t)}
+            />
           )}
 
           <div className="god-system-bar">
@@ -110,6 +197,16 @@ export default function GodMode({ onBack }) {
             </button>
           </div>
         </div>
+
+        {pendingDelete && (
+          <DeleteTeamModal
+            team={pendingDelete}
+            counts={teamDataCounts(pendingDelete, data)}
+            busy={deleting}
+            onCancel={() => setPendingDelete(null)}
+            onConfirm={confirmDelete}
+          />
+        )}
       </div>
     );
   }
@@ -124,6 +221,26 @@ export default function GodMode({ onBack }) {
         subtitle={[SPORT, selectedTeam.season].filter(Boolean).join(' · ')}
         accentColor={selectedTeam.color}
       />
+
+      {/* Viewing an archived team. Everything below is the ordinary workspace —
+          the data is all still there — so the banner is what tells you the rest
+          of the app can't see this team right now. */}
+      {isArchived(selectedTeam) && (
+        <div className="god-arch-banner">
+          <span className="god-arch-banner-icon"><IconArchive size={14} /></span>
+          <div className="god-arch-banner-text">
+            <strong>This team is archived.</strong> Its data is intact and readable here,
+            but it is hidden from the team picker and every other normal view.
+          </div>
+          <button
+            className="god-btn-secondary"
+            onClick={() => restoreTeam(selectedTeam)}
+            disabled={busyTeamId === selectedTeam.id}
+          >
+            <IconUndo size={12} /> Restore
+          </button>
+        </div>
+      )}
 
       <div className="god-workspace">
         <aside className="god-sidebar">
@@ -147,7 +264,16 @@ export default function GodMode({ onBack }) {
           {section === 'schedule' && <ScheduleSection team={selectedTeam} data={data} addToast={addToast} />}
           {section === 'stats'    && <StatsSection    team={selectedTeam} data={data} addToast={addToast} />}
           {section === 'coaches'  && <CoachesSection  team={selectedTeam} data={data} addToast={addToast} />}
-          {section === 'info'     && <TeamInfoSection team={selectedTeam} data={data} addToast={addToast} />}
+          {section === 'info'     && (
+            <TeamInfoSection
+              team={selectedTeam}
+              data={data}
+              addToast={addToast}
+              busy={busyTeamId === selectedTeam.id}
+              onArchive={() => archiveTeam(selectedTeam)}
+              onRestore={() => restoreTeam(selectedTeam)}
+            />
+          )}
         </main>
       </div>
     </div>
@@ -180,7 +306,7 @@ function GodHeader({ onBack, backLabel = 'Back', title, subtitle, accentColor })
 // ──────────────────────────────────────────────────────────
 // Team card on the landing
 // ──────────────────────────────────────────────────────────
-function TeamCard({ team, data, onSelect }) {
+function TeamCard({ team, data, onSelect, onArchive, busy }) {
   const { players, completedGames, schedule, accounts, coachAssignments } = data;
   const playerCount = players.filter(p => p.team_id === team.id).length;
   const gameCount = completedGames.filter(g => g.team_id === team.id).length
@@ -195,10 +321,31 @@ function TeamCard({ team, data, onSelect }) {
   const coachNames = accounts.filter(a => coachIds.has(a.id)).map(a => a.name || a.username);
   const color = team.color || '#bc8cff';
 
+  // The card is a plain container, not a button: it now holds a second control
+  // (Archive), and a button inside a button is invalid. A stretched hit layer
+  // underneath keeps the whole-card click — and its keyboard focus — intact.
   return (
-    <button type="button" className="god-team-card" style={{ '--god-tc': color }} onClick={onSelect}>
+    <div className="god-team-card" style={{ '--god-tc': color }}>
+      <button
+        type="button"
+        className="god-team-card-hit"
+        onClick={onSelect}
+        aria-label={`Manage ${team.name}`}
+      />
       <div className="god-team-card-glow" aria-hidden="true" />
       <div className="god-team-card-grid" aria-hidden="true" />
+      {onArchive && (
+        <button
+          type="button"
+          className="god-team-card-archive"
+          onClick={onArchive}
+          disabled={busy}
+          title={`Archive ${team.name} — hides it everywhere, keeps all its data`}
+        >
+          <IconArchive size={12} />
+          {busy ? 'Archiving…' : 'Archive'}
+        </button>
+      )}
       <div className="god-team-card-inner">
         <div className="god-team-card-top">
           <span className="god-team-card-sport">{SPORT}</span>
@@ -248,7 +395,62 @@ function TeamCard({ team, data, onSelect }) {
           </span>
         </div>
       </div>
-    </button>
+    </div>
+  );
+}
+
+// ──────────────────────────────────────────────────────────
+// Archived teams — God Mode only
+//
+// Deliberately NOT the big card grid: archived teams are a filing cabinet, not
+// a place you work, so they read as a compact list with their three actions
+// spelled out. Nothing anywhere else in the app renders this list.
+// ──────────────────────────────────────────────────────────
+function ArchivedTeams({ teams, data, busyTeamId, onView, onRestore, onDelete }) {
+  if (teams.length === 0) {
+    return (
+      <div className="god-empty">
+        No archived teams. Archiving a team hides it from the picker and every
+        other normal view while keeping all of its data — you can restore it
+        from here at any time.
+      </div>
+    );
+  }
+
+  return (
+    <div className="god-arch-list">
+      {teams.map(t => {
+        const counts = teamDataCounts(t, data);
+        const color = t.color || '#bc8cff';
+        const busy = busyTeamId === t.id;
+        const meta = [t.season, t.gender, t.level].filter(Boolean).join(' · ');
+        return (
+          <div key={t.id} className="god-arch-row" style={{ '--god-tc': color }}>
+            <span className="god-arch-logo" style={{ background: color }}>{teamInitials(t.name)}</span>
+
+            <div className="god-arch-id">
+              <div className="god-arch-name">{t.name}</div>
+              <div className="god-arch-meta">
+                {meta && <span>{meta}</span>}
+                <span>{counts.players} {counts.players === 1 ? 'player' : 'players'}</span>
+                <span>{counts.games} played</span>
+                <span>{counts.stats} stat rows</span>
+              </div>
+            </div>
+
+            <div className="god-arch-actions">
+              <button className="god-btn-secondary" onClick={() => onView(t)}>View</button>
+              <button className="god-btn-secondary" onClick={() => onRestore(t)} disabled={busy}>
+                {busy ? 'Working…' : 'Restore'}
+              </button>
+              <button className="god-btn-danger" onClick={() => onDelete(t)} disabled={busy}>
+                Delete
+              </button>
+            </div>
+          </div>
+        );
+      })}
+    </div>
   );
 }
 
@@ -604,7 +806,7 @@ function CoachesSection({ team, data, addToast }) {
 // ──────────────────────────────────────────────────────────
 // Team Info — name, sport (read-only), season, level, etc.
 // ──────────────────────────────────────────────────────────
-function TeamInfoSection({ team, data, addToast }) {
+function TeamInfoSection({ team, data, addToast, busy, onArchive, onRestore }) {
   const { refresh } = data;
 
   const [name, setName] = useState(team.name || '');
@@ -652,13 +854,7 @@ function TeamInfoSection({ team, data, addToast }) {
     await refresh();
   }
 
-  async function deleteTeam() {
-    if (!confirm(`Delete ${team.name}? This is permanent and removes all players, games, and stats.`)) return;
-    const r = await supabase.from('teams').delete().eq('id', team.id);
-    if (r.error) { addToast('Failed: ' + r.error.message); return; }
-    addToast('Team deleted', 'success');
-    await refresh();
-  }
+  const archived = isArchived(team);
 
   return (
     <SectionShell title="Team Info">
@@ -703,7 +899,33 @@ function TeamInfoSection({ team, data, addToast }) {
         <button className="god-btn-primary" disabled={saving} onClick={save}>
           {saving ? 'Saving…' : 'Save Changes'}
         </button>
-        <button className="god-btn-danger god-btn-danger-block" onClick={deleteTeam}>Delete Team</button>
+      </div>
+
+      {/* Removing a team is archiving, not deleting: the flag is reversible and
+          nothing is lost. Permanent deletion lives one step further away, on
+          the Archived tab, behind a type-the-name confirmation. */}
+      <div className="god-arch-zone">
+        {archived ? (
+          <>
+            <div className="god-arch-zone-text">
+              <strong>Archived.</strong> Hidden from the picker and every normal view; all data kept.
+            </div>
+            <button className="god-btn-secondary" onClick={onRestore} disabled={busy}>
+              <IconUndo size={12} /> Restore team
+            </button>
+          </>
+        ) : (
+          <>
+            <div className="god-arch-zone-text">
+              <strong>Archive this team.</strong> It disappears from the team picker, the hub and
+              RotationPal, but keeps every player, game and stat. Restore it any time from the
+              Archived tab — which is also the only place it can be permanently deleted.
+            </div>
+            <button className="god-btn-danger" onClick={onArchive} disabled={busy}>
+              <IconArchive size={12} /> {busy ? 'Archiving…' : 'Archive team'}
+            </button>
+          </>
+        )}
       </div>
     </SectionShell>
   );
@@ -771,7 +993,9 @@ function SystemPanel({ view, onChangeView, onBack, data, addToast }) {
 }
 
 function AccountsAdmin({ data, addToast }) {
-  const { accounts, teams, coachAssignments, refresh } = data;
+  // activeTeams for the assignment dropdown (you don't put a coach on an
+  // archived team), full `teams` for showing what an account is already on.
+  const { accounts, teams, activeTeams, coachAssignments, refresh } = data;
 
   const [name, setName] = useState('');
   const [user, setUser] = useState('');
@@ -827,7 +1051,7 @@ function AccountsAdmin({ data, addToast }) {
           <Field label="Team">
             <select className="god-quickadd-input" value={teamId} onChange={e => setTeamId(e.target.value)}>
               <option value="">No team</option>
-              {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+              {activeTeams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
             </select>
           </Field>
         )}
@@ -872,12 +1096,12 @@ function AccountsAdmin({ data, addToast }) {
 }
 
 function LeagueAdmin({ data, addToast }) {
-  const { teams, leagueTeams, leagueResults, refresh } = data;
+  const { activeTeams, leagueTeams, leagueResults, refresh } = data;
   const [editing, setEditing] = useState(null);
 
   return (
     <SectionShell title="League Results" count={leagueResults.length}>
-      {teams.map(t => {
+      {activeTeams.map(t => {
         const teamLeagueTeams = leagueTeams.filter(lt => lt.team_id === t.id);
         const teamResults = leagueResults.filter(lr => lr.team_id === t.id)
           .slice().sort((a, b) => (a.game_date || '').localeCompare(b.game_date || ''));
@@ -918,7 +1142,7 @@ function LeagueAdmin({ data, addToast }) {
           </div>
         );
       })}
-      {teams.filter(t => leagueTeams.some(lt => lt.team_id === t.id)).length === 0 && (
+      {activeTeams.filter(t => leagueTeams.some(lt => lt.team_id === t.id)).length === 0 && (
         <div className="god-empty-row">No league teams configured.</div>
       )}
 

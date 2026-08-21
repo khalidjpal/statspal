@@ -30,7 +30,7 @@ function getStreak(games) {
 
 export default function Hub({ onSelectTeam, onGodMode, onHome }) {
   const { currentUser, logout } = useAuth();
-  const { teams, completedGames, schedule, leagueTeams, refresh, loading } = useData();
+  const { activeTeams, completedGames, schedule, leagueTeams, refresh, loading } = useData();
   const { activeSession } = useVolleyballPal();
   const [showCreateTeam, setShowCreateTeam] = useState(false);
   const [showAccounts, setShowAccounts] = useState(false);
@@ -39,7 +39,8 @@ export default function Hub({ onSelectTeam, onGodMode, onHome }) {
 
   const isAdmin = currentUser?.role === 'admin';
   const coachTeamIds = currentUser?.teamIds || [];
-  const visibleTeams = isAdmin ? teams : teams.filter(t => coachTeamIds.includes(t.id));
+  // Archived teams never appear here — God Mode is the only surface that lists them.
+  const visibleTeams = isAdmin ? activeTeams : activeTeams.filter(t => coachTeamIds.includes(t.id));
 
   // Pre-sort completed games most-recent-first per team
   const gamesByTeam = useMemo(() => {
@@ -211,7 +212,7 @@ export default function Hub({ onSelectTeam, onGodMode, onHome }) {
         />
       )}
       {showAccounts && (
-        <ManageAccountsModal teams={teams} onClose={() => setShowAccounts(false)} onSaved={() => refresh()} />
+        <ManageAccountsModal onClose={() => setShowAccounts(false)} onSaved={() => refresh()} />
       )}
     </div>
   );

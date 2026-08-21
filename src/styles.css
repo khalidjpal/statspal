@@ -4633,6 +4633,270 @@ input[type=number] {
 .god-cred-row { font-size: 13px; color: var(--text); }
 
 .god-league-team + .god-league-team { margin-top: 14px; }
+/* -----------------------------------------------------------------------------
+   Team archiving — God Mode only
+   Archiving is a soft flag: an archived team keeps every row it owns and just
+   stops appearing anywhere outside these two tabs. The styling follows that —
+   the Archived tab is a filing cabinet (muted, list-shaped), not a workspace.
+   -------------------------------------------------------------------------- */
+.god-tabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 16px;
+  padding: 4px;
+  background: rgba(255,255,255,0.025);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 11px;
+}
+.god-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 14px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: none;
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background 0.14s, color 0.14s, border-color 0.14s;
+}
+.god-tab:hover { color: var(--text); background: rgba(255,255,255,0.04); }
+.god-tab.active {
+  color: #d9b8ff;
+  background: rgba(188,140,255,0.14);
+  border-color: rgba(188,140,255,0.32);
+}
+.god-tab-archive.active {
+  color: var(--text);
+  background: rgba(255,255,255,0.07);
+  border-color: rgba(255,255,255,0.16);
+}
+.god-tab-icon { display: inline-flex; opacity: 0.85; }
+.god-tab-count {
+  min-width: 18px;
+  padding: 1px 6px;
+  border-radius: 20px;
+  background: rgba(255,255,255,0.08);
+  color: inherit;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-align: center;
+}
+
+/* The team card stopped being a <button> once it grew a second control, so the
+   whole-card click lives on a stretched hit layer underneath the content. It
+   sits above the decorative glow/grid (z-index 0) and below the archive
+   button, which needs its own click. */
+.god-team-card-hit {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+}
+.god-team-card-hit:focus-visible {
+  outline: 2px solid color-mix(in oklab, var(--god-tc) 70%, #fff);
+  outline-offset: -3px;
+  border-radius: 18px;
+}
+.god-team-card-inner { pointer-events: none; }
+.god-team-card-archive {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 10px;
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 7px;
+  background: rgba(10,13,18,0.72);
+  backdrop-filter: blur(6px);
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.16s, color 0.16s, border-color 0.16s, background 0.16s;
+}
+.god-team-card:hover .god-team-card-archive,
+.god-team-card-archive:focus-visible { opacity: 1; }
+.god-team-card-archive:hover {
+  color: var(--text);
+  border-color: rgba(255,255,255,0.28);
+  background: rgba(10,13,18,0.9);
+}
+.god-team-card-archive:disabled { opacity: 1; cursor: default; color: var(--text-secondary); }
+/* No hover on touch, so the control has to be permanently visible there. */
+@media (hover: none) {
+  .god-team-card-archive { opacity: 1; }
+}
+
+/* ---- Archived list ---- */
+.god-arch-list { display: flex; flex-direction: column; gap: 8px; }
+.god-arch-row {
+  --god-tc: #bc8cff;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 14px;
+  border: 1px solid rgba(255,255,255,0.06);
+  border-left: 3px solid color-mix(in oklab, var(--god-tc) 45%, transparent);
+  border-radius: 11px;
+  background: rgba(255,255,255,0.02);
+  transition: background 0.14s, border-color 0.14s;
+}
+.god-arch-row:hover { background: rgba(255,255,255,0.04); border-color: rgba(255,255,255,0.12); }
+.god-arch-logo {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  /* Archived: present, but not lit up like an active team. */
+  filter: saturate(0.55) brightness(0.85);
+}
+.god-arch-id { min-width: 0; }
+.god-arch-name {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.god-arch-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  margin-top: 3px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+.god-arch-meta > span + span::before {
+  content: "\00b7";
+  margin-right: 8px;
+  color: rgba(255,255,255,0.2);
+}
+.god-arch-actions { display: inline-flex; gap: 6px; flex-shrink: 0; flex-wrap: wrap; justify-content: flex-end; }
+
+/* ---- Archived banner over the workspace ---- */
+.god-arch-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: 1200px;
+  margin: 0 auto 14px;
+  padding: 11px 16px;
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 11px;
+  background: linear-gradient(90deg, rgba(255,255,255,0.05), rgba(255,255,255,0.02));
+}
+.god-arch-banner-icon { display: inline-flex; color: var(--text-secondary); flex-shrink: 0; }
+.god-arch-banner-text { flex: 1; min-width: 0; font-size: 12.5px; color: var(--text-secondary); line-height: 1.5; }
+.god-arch-banner-text strong { color: var(--text); }
+
+/* ---- Archive zone at the foot of Team Info ---- */
+.god-arch-zone {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-top: 18px;
+  padding: 14px 16px;
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 11px;
+  background: rgba(255,255,255,0.02);
+}
+.god-arch-zone-text { flex: 1; min-width: 220px; font-size: 12px; line-height: 1.55; color: var(--text-secondary); }
+.god-arch-zone-text strong { color: var(--text); }
+
+/* ---- Permanent delete confirmation ---- */
+.god-del { display: flex; flex-direction: column; gap: 16px; }
+.god-del-head { display: flex; align-items: flex-start; gap: 12px; }
+.god-del-icon {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  border-radius: 9px;
+  background: rgba(248,81,73,0.12);
+  border: 1px solid rgba(248,81,73,0.3);
+  color: #f85149;
+}
+.god-del-title { margin: 0; font-size: 17px; font-weight: 700; color: var(--text); }
+.god-del-sub { margin: 3px 0 0; font-size: 12.5px; font-weight: 600; color: #f85149; }
+.god-del-manifest {
+  padding: 12px 14px;
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 10px;
+  background: rgba(255,255,255,0.02);
+}
+.god-del-manifest-lbl {
+  display: block;
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  margin-bottom: 8px;
+}
+.god-del-manifest-empty { font-size: 12.5px; color: var(--text-secondary); }
+.god-del-list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 5px; }
+.god-del-list li { font-size: 12.5px; color: var(--text-secondary); }
+.god-del-num {
+  display: inline-block;
+  min-width: 26px;
+  font-family: var(--mono);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.god-del-note {
+  margin: 10px 0 0;
+  padding-top: 9px;
+  border-top: 1px solid rgba(255,255,255,0.06);
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+.god-del-confirm { display: block; }
+.god-del-confirm .god-field-lbl { display: block; margin-bottom: 6px; }
+.god-del-confirm .god-field-lbl strong { color: var(--text); }
+.god-del-confirm .god-quickadd-input { width: 100%; }
+.god-del-actions { display: flex; gap: 10px; }
+.god-del-actions .god-btn-secondary { padding: 10px 16px; font-size: 13px; }
+.god-del-actions .god-btn-danger-block { flex: 1; }
+.god-del-actions .god-btn-danger:disabled { opacity: 0.45; cursor: not-allowed; }
+
+@media (max-width: 640px) {
+  .god-tabs { width: 100%; }
+  .god-tab { flex: 1; justify-content: center; padding: 8px 10px; }
+  .god-arch-row { grid-template-columns: auto minmax(0, 1fr); row-gap: 10px; }
+  .god-arch-actions { grid-column: 1 / -1; justify-content: stretch; }
+  .god-arch-actions > button { flex: 1; justify-content: center; }
+  .god-arch-banner { flex-wrap: wrap; }
+}
+
 
 /* =============================================================================
    Dashboard (TeamLaunch redesign — full team command center)
@@ -9176,6 +9440,47 @@ td.dash-stand-team .dash-stand-name {
   font-size: 11px;
   color: #8b949e;
 }
+/* Import from playground ---------------------------------------------------
+   Reuses the preset popup's shell: same overlay, same card, same list rows —
+   the only new shapes are the session row's date column and the two-option
+   replace/add question. */
+.gpb-preset-item .gpb-preset-item-name { flex: 1; min-width: 0; }
+.gpb-preset-item .gpb-preset-item-meta { flex: none; white-space: nowrap; }
+
+.gpb-import-choice .gpb-preset-body { display: flex; flex-direction: column; gap: 10px; }
+.gpb-import-opt {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  width: 100%;
+  padding: 13px 15px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 10px;
+  color: #e6edf3;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+.gpb-import-opt:hover:not(:disabled) {
+  background: rgba(56,189,248,0.10);
+  border-color: rgba(56,189,248,0.35);
+}
+.gpb-import-opt:disabled { opacity: 0.5; cursor: not-allowed; }
+.gpb-import-opt-name {
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #7dd3fc;
+}
+.gpb-import-opt-desc {
+  font-size: 12px;
+  line-height: 1.5;
+  color: #8b949e;
+}
+
 .gpb-preset-row {
   display: flex; align-items: stretch; gap: 6px;
 }

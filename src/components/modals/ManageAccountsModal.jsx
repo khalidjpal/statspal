@@ -1,7 +1,12 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../../supabase';
+import { useData } from '../../contexts/DataContext';
 
-export default function ManageAccountsModal({ teams, onClose, onSaved }) {
+export default function ManageAccountsModal({ onClose, onSaved }) {
+  // Both lists: `activeTeams` is what a coach can be assigned TO, `teams` is
+  // the full list so an account already sitting on an archived team still
+  // resolves to a name instead of an em dash.
+  const { teams, activeTeams } = useData();
   const [accounts, setAccounts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState('list'); // 'list' | 'create' | 'edit'
@@ -193,7 +198,7 @@ export default function ManageAccountsModal({ teams, onClose, onSaved }) {
                 <label>Assign to Team</label>
                 <select value={teamId} onChange={e => setTeamId(e.target.value)}>
                   <option value="">No team assigned</option>
-                  {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                  {activeTeams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
                 </select>
               </>
             )}
@@ -233,7 +238,7 @@ export default function ManageAccountsModal({ teams, onClose, onSaved }) {
                 <label>Assigned Team</label>
                 <select value={editTeamId} onChange={e => setEditTeamId(e.target.value)}>
                   <option value="">No team assigned</option>
-                  {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                  {activeTeams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
                 </select>
               </>
             )}

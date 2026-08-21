@@ -7,12 +7,12 @@ import '../modules/rotationpal/rotationpal.css';
 
 export default function RotationPalScreen({ entry, onHome }) {
   const { currentUser, logout } = useAuth();
-  const { teams, players, schedule, completedGames, tournaments } = useData();
+  const { activeTeams, players, schedule, completedGames, tournaments } = useData();
   const { standaloneTeams, publishSession, clearSession } = useVolleyballPal();
 
   const isAdmin = currentUser?.role === 'admin';
   const teamIds = currentUser?.teamIds || [];
-  const visibleTeams = isAdmin ? teams : teams.filter(t => teamIds.includes(t.id));
+  const visibleTeams = isAdmin ? activeTeams : activeTeams.filter(t => teamIds.includes(t.id));
 
   // When entered in linked mode with a specific StatsPal team, narrow the
   // team list so the user lands on just that team. Standalone mode swaps the

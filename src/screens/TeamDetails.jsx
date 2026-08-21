@@ -90,15 +90,6 @@ export default function TeamDetails({ team, onBack, onExport }) {
     refresh();
   }
 
-  async function deleteTeam() {
-    if (!confirm('DELETE THIS ENTIRE TEAM? This cannot be undone!')) return;
-    if (!confirm('Are you really sure? All games, stats, and players will be lost.')) return;
-    await supabase.from('accounts').update({ team_id: null }).eq('team_id', team.id);
-    await supabase.from('teams').delete().eq('id', team.id);
-    refresh();
-    onBack();
-  }
-
   async function saveTeamInfo() {
     if (!name.trim()) return;
     setSavingInfo(true);
@@ -354,16 +345,22 @@ export default function TeamDetails({ team, onBack, onExport }) {
           </div>
         )}
 
+        {/* Removing a team is a God Mode action now: archive it there (reversible,
+            keeps every player, game and stat), and permanently delete it from God
+            Mode's Archived tab behind a type-the-name confirmation. Leaving a
+            one-click irreversible delete on this screen defeated that. */}
         {tab === 'Danger' && (
           <div className="card" style={{ textAlign: 'center' }}>
             <h3 style={{ color: '#ef4444', marginBottom: 8 }}>Danger Zone</h3>
-            <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 16 }}>
-              Permanently delete this team and all associated data.
+            <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 8, lineHeight: 1.6 }}>
+              Removing a team lives in <strong>God Mode</strong>. Open God Mode from the team
+              picker, then use <strong>Archive</strong> on the team card to hide it everywhere
+              while keeping all of its data.
             </p>
-            <button onClick={deleteTeam}
-              style={{ background: '#ef4444', color: '#fff', padding: '12px 32px', borderRadius: 8, fontSize: 14, fontWeight: 700, border: 'none', cursor: 'pointer' }}>
-              Delete Entire Team
-            </button>
+            <p style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+              An archived team can be viewed, restored, or permanently deleted from the
+              <strong> Archived</strong> tab there.
+            </p>
           </div>
         )}
       </div>

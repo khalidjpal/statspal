@@ -8,6 +8,7 @@ import {
 } from '@dnd-kit/core';
 import { supabase } from '../../supabase';
 import { useToast } from '../../contexts/ToastContext';
+import { IconImport } from '../Icons';
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 //
@@ -999,6 +1000,18 @@ async function fetchPlaygroundSession(sessionId) {
   });
   return { data: [wrapped], error: null, sessionRow: data };
 }
+// The saved sessions offered by "Import from playground" — names and dates
+// only, since the picker never needs the plan blobs. The chosen session's full
+// setup is fetched by fetchPlaygroundSession() once the coach commits.
+async function fetchPlaygroundSessions(teamId) {
+  const { data, error } = await supabase
+    .from('playground_sessions')
+    .select('id, name, updated_at, created_at')
+    .eq('team_id', teamId)
+    .order('updated_at', { ascending: false });
+  return { data: data || [], error };
+}
+
 // — Formation presets persistence —
 async function fetchPresets(teamId) {
   const { data, error } = await supabase
@@ -1120,6 +1133,105 @@ function normalizePlan(p) {
   else plan.fb_pairs = plan.fb_pairs.filter(p => p && p.front && p.back);
   if (!Number.isFinite(plan.set_number) || plan.set_number < 1) plan.set_number = 1;
   return plan;
+}
+
+// ─── Playground session → gameplan mapping ──────────────────────────────────
+//
+// A playground session and a gameplan are the SAME plan shape (both go through
+// normalizePlan), so importing is a field copy rather than a translation — the
+// formations, the sub pairs, the libero pairing, the Front/Back pairs and the
+// bubble colours all mean exactly what they already meant.
+//
+// The one thing that genuinely differs is the roster: a playground session is
+// built against the whole team at some earlier moment, and this game's roster
+// may no longer contain those players. Everything is therefore filtered by
+// player id — an unknown player is dropped, never imported as a dangling id,
+// and every id dropped is reported back so the coach is told rather than left
+// wondering where a bubble went.
+//
+// The subtle one is `subs`: confirmed_subs stores INDICES into that list, so
+// dropping a pair has to renumber the confirmations that survive it.
+function mapPlaygroundToPlan(src, allowedIds) {
+  const skipped = new Set();
+  const keep = (pid) => {
+    if (!pid) return false;
+    if (allowedIds.has(pid)) return true;
+    skipped.add(pid);
+    return false;
+  };
+
+  const assigned_players = [];
+  for (let i = 0; i < 6; i++) {
+    const pid = (src.assigned_players || [])[i] || null;
+    assigned_players.push(keep(pid) ? pid : null);
+  }
+
+  const formations = {};
+  for (let r = 1; r <= 6; r++) {
+    formations[r] = { serve: {}, receive: {} };
+    for (const mode of ['serve', 'receive']) {
+      const stored = src.formations?.[r]?.[mode] || {};
+      for (const pid of Object.keys(stored)) {
+        if (keep(pid)) formations[r][mode][pid] = { ...stored[pid] };
+      }
+    }
+  }
+
+  const colors = {};
+  for (const pid of Object.keys(src.colors || {})) {
+    if (keep(pid)) colors[pid] = src.colors[pid];
+  }
+
+  const subs = [];
+  const subIdxMap = new Map();
+  (Array.isArray(src.subs) ? src.subs : []).forEach((pair, i) => {
+    if (!pair) return;
+    const a = keep(pair.a), b = keep(pair.b);
+    if (a && b) { subIdxMap.set(i, subs.length); subs.push({ a: pair.a, b: pair.b }); }
+  });
+  const confirmed_subs = { 1: [], 2: [], 3: [], 4: [], 5: [], 6: [] };
+  for (let r = 1; r <= 6; r++) {
+    const list = Array.isArray(src.confirmed_subs?.[r]) ? src.confirmed_subs[r] : [];
+    confirmed_subs[r] = list
+      .map(i => subIdxMap.get(i))
+      .filter(i => i !== undefined);
+  }
+
+  const libero_pairs = {};
+  for (const [lib, covered] of Object.entries(src.libero_pairs || {})) {
+    if (!keep(lib)) continue;
+    const mbs = (Array.isArray(covered) ? covered : []).map(m => (keep(m) ? m : null));
+    while (mbs.length < 2) mbs.push(null);
+    if (mbs.some(Boolean)) libero_pairs[lib] = mbs.slice(0, 2);
+  }
+
+  const fb_pairs = [];
+  for (const pair of Array.isArray(src.fb_pairs) ? src.fb_pairs : []) {
+    if (!pair) continue;
+    const front = keep(pair.front), back = keep(pair.back);
+    if (front && back) fb_pairs.push({ front: pair.front, back: pair.back });
+  }
+
+  const sub_log = [];
+  for (const entry of Array.isArray(src.sub_log) ? src.sub_log : []) {
+    if (!entry) continue;
+    const from = keep(entry.fromPid), to = keep(entry.toPid);
+    if (from && to) sub_log.push({ ...entry });
+  }
+
+  return {
+    fields: {
+      assigned_players, formations, colors,
+      subs, confirmed_subs, sub_log,
+      libero_pairs,
+      libero_auto: src.libero_auto !== false,
+      fb_pairs,
+      // set_number is deliberately NOT imported: it tracks which set THIS
+      // plan's 12-substitution budget belongs to, which is a fact about the
+      // game being planned, not about the session being copied in.
+    },
+    skipped: [...skipped],
+  };
 }
 
 // ─── Scheme (formation-preset) ↔ synthetic-plan mapping ─────────────────────
@@ -1298,6 +1410,18 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
   const [applyPickerOpen, setApplyPickerOpen] = useState(false);
   const [presetMgrOpen, setPresetMgrOpen] = useState(false);
   const [presetEditing, setPresetEditing] = useState(null);
+
+  // ── Import-from-playground state ──
+  // importOpen holds the session picker; importPick is the session chosen but
+  // not yet committed, which is what puts the Replace/Add question on screen.
+  // The question is asked EVERY time — there is no remembered answer, because
+  // "replace my work" and "keep my work" are never safe to guess.
+  const [importOpen, setImportOpen] = useState(false);
+  const [importSessions, setImportSessions] = useState([]);
+  const [importError, setImportError] = useState(null);
+  const [importLoading, setImportLoading] = useState(false);
+  const [importPick, setImportPick] = useState(null);   // playground_sessions row
+  const [importBusy, setImportBusy] = useState(false);
 
   const [activeRotation, setActiveRotation] = useState(1);
   const [activeMode, setActiveMode] = useState('serve');
@@ -2583,6 +2707,75 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
     addToast(`Applied "${preset.name}"`, 'success');
   }
 
+  // ── Import from playground ──
+  // Opens on the team's saved playground sessions. Nothing is read beyond the
+  // names until the coach commits, and committing always goes through the
+  // Replace-or-Add question — there is no remembered answer.
+  function openPlaygroundImport() {
+    setImportOpen(true);
+    setImportPick(null);
+    setImportError(null);
+    setImportLoading(true);
+    fetchPlaygroundSessions(team.id).then(({ data, error }) => {
+      setImportLoading(false);
+      if (error) {
+        setImportSessions([]);
+        setImportError(isSchemaError(error) ? { schema: true } : { message: error.message });
+        return;
+      }
+      setImportSessions(data);
+    });
+  }
+
+  function closePlaygroundImport() {
+    if (importBusy) return;
+    setImportOpen(false);
+    setImportPick(null);
+  }
+
+  async function runPlaygroundImport(mode) {
+    const session = importPick;
+    if (!session || importBusy) return;
+    setImportBusy(true);
+    const { data, error } = await fetchPlaygroundSession(session.id);
+    const source = data && data[0];
+    if (error || !source) {
+      setImportBusy(false);
+      addToast(`Could not read that session${error?.message ? ': ' + error.message : ''}`, 'error');
+      return;
+    }
+
+    // Only players on THIS game's roster survive the copy.
+    const { fields, skipped } = mapPlaygroundToPlan(source, new Set(roster.map(p => p.id)));
+    const label = session.name || 'Playground session';
+
+    if (mode === 'replace') {
+      patchActivePlan(fields);
+    } else {
+      // ADD leaves the current plan exactly as it is and lands the import as
+      // its own plan tab — the gameplan model's natural "and also".
+      const used = new Set(plans.map(p => p.name));
+      let name = label;
+      for (let i = 2; used.has(name); i++) name = `${label} (${i})`;
+      const np = normalizePlan({ ...makeNewPlan(team.id, game.id, name, plans.length), ...fields });
+      setPlans(curr => [...curr, np]);
+      setActivePlanId(np.id);
+      const { error: saveErr } = await upsertPlan(np);
+      if (saveErr) handleSaveError(saveErr);
+    }
+
+    setImportBusy(false);
+    setImportPick(null);
+    setImportOpen(false);
+    setActiveRotation(1);
+    addToast(
+      skipped.length
+        ? `Imported "${label}" — ${skipped.length} player${skipped.length === 1 ? '' : 's'} not on this roster ${skipped.length === 1 ? 'was' : 'were'} skipped`
+        : `Imported "${label}"`,
+      'success',
+    );
+  }
+
   function autoDetectLibero() {
     if (!activePlan) return;
     const detected = autoDetectLiberoPairs(activePlan, playerById, roster);
@@ -3013,6 +3206,9 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
     }
     function onKey(e) {
       if (e.key === 'Escape') {
+        // Innermost first: the replace/add question sits on top of the picker.
+        if (importPick) { if (!importBusy) setImportPick(null); return; }
+        if (importOpen) { if (!importBusy) { setImportOpen(false); setImportPick(null); } return; }
         if (applyPickerOpen) { setApplyPickerOpen(false); return; }
         if (presetMgrOpen) { setPresetMgrOpen(false); return; }
         if (presetEditing) { setPresetEditing(null); return; }
@@ -3033,6 +3229,7 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
       if (isTypingTarget(e.target)) return;
       // Don't fire while a modal popup is open.
       if (subPopup || fbSwap || pairPopup || applyPickerOpen || presetMgrOpen || presetEditing) return;
+      if (importOpen || importPick) return;
       if (e.metaKey || e.ctrlKey || e.altKey) return;
 
       if (e.key >= '1' && e.key <= '6') {
@@ -3050,7 +3247,7 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
       window.removeEventListener('keydown', onKey);
       document.body.style.overflow = '';
     };
-  }, [onClose, benchDrag, selectedRosterId, pairPopup, subPopup, subFlow, fbDraft, fbSwap, cancelFbSwap, overflowOpen, applyPickerOpen, presetMgrOpen, presetEditing, handleRotationClick]);
+  }, [onClose, benchDrag, selectedRosterId, pairPopup, subPopup, subFlow, fbDraft, fbSwap, cancelFbSwap, overflowOpen, applyPickerOpen, presetMgrOpen, presetEditing, handleRotationClick, importOpen, importPick, importBusy]);
 
   // The picked-out player is identified by array index, so a rotation change
   // or a plan switch would silently re-target the flow. Drop it instead.
@@ -3169,19 +3366,9 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
 
                   <div className="gpb-slimmenu-sep" />
 
-                  <button
-                    type="button" role="menuitem" className="gpb-slimmenu-item"
-                    onClick={() => { setApplyPickerOpen(true); setOverflowOpen(false); }}
-                    disabled={!!presetError?.schema}
-                    title={presetError?.schema ? 'Run formation_presets migration to enable' : undefined}
-                  >↓  Apply preset</button>
-                  <button
-                    type="button" role="menuitem" className="gpb-slimmenu-item"
-                    onClick={() => { setPresetMgrOpen(true); setOverflowOpen(false); }}
-                  >◊  Manage presets</button>
-
-                  <div className="gpb-slimmenu-sep" />
-
+                  {/* The preset apply/manage entries lived here. They're gone
+                      with the gameplan toolbar's — the playground is where
+                      sessions are BUILT, so there is nothing to import into it. */}
                   <button
                     type="button" role="menuitem" className="gpb-slimmenu-item"
                     onClick={() => { setRosterCollapsed(c => !c); setOverflowOpen(false); }}
@@ -3372,8 +3559,9 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
             >Serve Receive</button>
           </div>
 
-          {/* Preset apply/manage — gameplan mode only; in scheme mode you ARE
-              editing the preset. */}
+          {/* Import from playground — gameplan mode only. (This whole toolbar
+              is the non-playground one, and scheme mode is editing a preset,
+              not a plan, so there is nothing to import into.) */}
           {!isScheme && (
             <>
               <div className="gpb-toolbar-sep" aria-hidden="true" />
@@ -3381,19 +3569,11 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
                 <button
                   type="button"
                   className="gpb-toolbar-btn"
-                  onClick={() => setApplyPickerOpen(true)}
-                  disabled={!!presetError?.schema}
-                  title={presetError?.schema ? 'Run formation_presets migration to enable' : 'Apply a saved preset to this gameplan'}
+                  onClick={openPlaygroundImport}
+                  title="Pull a saved playground session into this gameplan"
                 >
-                  ↓ Apply Preset
-                </button>
-                <button
-                  type="button"
-                  className="gpb-toolbar-btn"
-                  onClick={() => setPresetMgrOpen(true)}
-                  title="Manage saved presets"
-                >
-                  ◊ Presets
+                  <IconImport size={13} />
+                  Import from Playground
                 </button>
               </div>
             </>
@@ -3853,6 +4033,26 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
             onConfirmSelected={() => confirmFbBatch(fbBatch)}
             onConfirmAll={() => confirmFbBatch(fbBatchAll)}
             onCancel={cancelFbSwap}
+          />
+        )}
+
+        {/* Import from playground — pick a session, then answer replace-or-add */}
+        {importOpen && (
+          <PlaygroundImportPicker
+            sessions={importSessions}
+            loading={importLoading}
+            error={importError}
+            onPick={(s) => setImportPick(s)}
+            onCancel={closePlaygroundImport}
+          />
+        )}
+        {importOpen && importPick && (
+          <ImportModeChoice
+            session={importPick}
+            planName={activePlan?.name}
+            busy={importBusy}
+            onChoose={runPlaygroundImport}
+            onCancel={() => { if (!importBusy) setImportPick(null); }}
           />
         )}
 
@@ -5291,6 +5491,110 @@ function LiberoPairingPanel({ roster, liberos: liberosProp, mbCandidates, libero
           onClose={() => setPicker(null)}
         />
       )}
+    </div>
+  );
+}
+
+// ─── Import from playground ─────────────────────────────────────────────────
+
+function importSessionMeta(session) {
+  const stamp = session.updated_at || session.created_at;
+  if (!stamp) return 'Saved session';
+  const d = new Date(stamp);
+  if (Number.isNaN(d.getTime())) return 'Saved session';
+  return `Saved ${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
+}
+
+// Step 1 — which saved playground session. Names and dates only; the setup
+// itself isn't read until the coach commits on the next screen.
+function PlaygroundImportPicker({ sessions, loading, error, onPick, onCancel }) {
+  const SQL_URL = 'https://supabase.com/dashboard/project/eelsooiqhzwyzdoccefe/sql/new';
+  return (
+    <div className="gpb-sub-overlay" onClick={onCancel}>
+      <div className="gpb-preset-popup" onClick={e => e.stopPropagation()}>
+        <div className="gpb-sub-head">
+          <div className="gpb-sub-eyebrow">IMPORT FROM PLAYGROUND</div>
+          <div className="gpb-sub-title">Pick a saved session</div>
+        </div>
+        <div className="gpb-preset-body">
+          {loading ? (
+            <div className="gpb-preset-empty">Loading sessions…</div>
+          ) : error?.schema ? (
+            <div className="gpb-preset-error">
+              The <code>playground_sessions</code> table doesn't exist yet. Run{' '}
+              <code>scripts/playground_sessions_migration.sql</code> in the{' '}
+              <a href={SQL_URL} target="_blank" rel="noopener noreferrer">Supabase SQL editor</a>.
+            </div>
+          ) : error ? (
+            <div className="gpb-preset-error">{error.message || 'Could not load playground sessions.'}</div>
+          ) : sessions.length === 0 ? (
+            <div className="gpb-preset-empty">
+              No saved playground sessions yet. Build a setup in the Playground and save it,
+              then it shows up here.
+            </div>
+          ) : (
+            <div className="gpb-preset-list">
+              {sessions.map(s => (
+                <button key={s.id} type="button" className="gpb-preset-item" onClick={() => onPick(s)}>
+                  <span className="gpb-preset-item-name">{s.name || 'Untitled Session'}</span>
+                  <span className="gpb-preset-item-meta">{importSessionMeta(s)}</span>
+                  <span className="gpb-preset-item-arrow">Import →</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+        <div className="gpb-sub-actions">
+          <button type="button" className="gpb-sub-btn gpb-sub-cancel" onClick={onCancel}>Cancel</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Step 2 — replace or add. Asked every single time: the two outcomes differ by
+// whether the coach's current work survives, which is never safe to assume.
+function ImportModeChoice({ session, planName, busy, onChoose, onCancel }) {
+  const label = session.name || 'Untitled Session';
+  return (
+    <div className="gpb-sub-overlay" onClick={busy ? undefined : onCancel}>
+      <div className="gpb-preset-popup gpb-import-choice" onClick={e => e.stopPropagation()}>
+        <div className="gpb-sub-head">
+          <div className="gpb-sub-eyebrow">IMPORT “{label}”</div>
+          <div className="gpb-sub-title">Replace this plan, or add it as a new one?</div>
+        </div>
+        <div className="gpb-preset-body">
+          <button
+            type="button"
+            className="gpb-import-opt"
+            onClick={() => onChoose('replace')}
+            disabled={busy}
+          >
+            <span className="gpb-import-opt-name">Replace</span>
+            <span className="gpb-import-opt-desc">
+              Overwrite {planName ? `“${planName}”` : 'the current plan'} — its formations, subs,
+              libero pairing and Front/Back pairs are swapped for the session's.
+            </span>
+          </button>
+          <button
+            type="button"
+            className="gpb-import-opt"
+            onClick={() => onChoose('add')}
+            disabled={busy}
+          >
+            <span className="gpb-import-opt-name">Add</span>
+            <span className="gpb-import-opt-desc">
+              Keep every existing plan and land the session as a new plan tab of its own.
+            </span>
+          </button>
+          {busy && <div className="gpb-preset-empty">Importing…</div>}
+        </div>
+        <div className="gpb-sub-actions">
+          <button type="button" className="gpb-sub-btn gpb-sub-cancel" onClick={onCancel} disabled={busy}>
+            Cancel
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

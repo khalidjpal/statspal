@@ -1,5 +1,6 @@
-import { createContext, useContext, useState, useCallback } from 'react';
+import { createContext, useContext, useState, useCallback, useMemo } from 'react';
 import { supabase } from '../supabase';
+import { activeOnly, archivedOnly } from '../utils/teamArchive';
 
 const DataContext = createContext(null);
 
@@ -66,9 +67,17 @@ export function DataProvider({ children }) {
     setLoading(false);
   }, []);
 
+  // `teams` stays the FULL list — every `teams.find(t => t.id === …)` lookup in
+  // the app has to keep resolving, including for an archived team whose past
+  // games a coach is still reading. Screens that LIST teams for selection use
+  // activeTeams instead; God Mode is the only place archivedTeams surfaces.
+  const activeTeams = useMemo(() => activeOnly(teams), [teams]);
+  const archivedTeams = useMemo(() => archivedOnly(teams), [teams]);
+
   return (
     <DataContext.Provider value={{
-      teams, players, schedule, completedGames, playerGameStats,
+      teams, activeTeams, archivedTeams,
+      players, schedule, completedGames, playerGameStats,
       leagueTeams, leagueResults, accounts, coachAssignments, tournaments, loading, refresh,
       setTeams, setPlayers, setSchedule, setCompletedGames,
       setPlayerGameStats, setLeagueTeams, setLeagueResults, setAccounts, setCoachAssignments,

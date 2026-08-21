@@ -180,3 +180,32 @@ export function IconPlus({ size = 14, className }) {
     </svg>
   );
 }
+
+// Counter-clockwise arrow — "undo / put this back how it was". Deliberately the
+// mirror of IconRotate, which is spoken for by RotationPal.
+export function IconUndo({ size = 14, className }) {
+  return (
+    <svg {...base(size)} className={className} aria-hidden="true">
+      <path d="M3 12a9 9 0 1 0 3-6.7" />
+      <path d="M3 3v6h6" />
+    </svg>
+  );
+}
+
+export function IconClock({ size = 16, className }) {
+  return (
+    <svg {...base(size)} className={className} aria-hidden="true">
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 7v5l3 2" />
+    </svg>
+  );
+}
+
+export function IconPin({ size = 16, className }) {
+  return (
+    <svg {...base(size)} className={className} aria-hidden="true">
+      <path d="M19 10c0 5.2-7 12-7 12s-7-6.8-7-12a7 7 0 0 1 14 0Z" />
+      <circle cx="12" cy="10" r="2.6" />
+    </svg>
+  );
+}

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 
-export default function Modal({ open, onClose, children, maxWidth = 480 }) {
+export default function Modal({ open, onClose, children, maxWidth = 480, className = '' }) {
   const [mounted, setMounted] = useState(open);
   const [visible, setVisible] = useState(false);
   const closingRef = useRef(false);
@@ -42,7 +42,7 @@ export default function Modal({ open, onClose, children, maxWidth = 480 }) {
       aria-modal="true"
     >
       <div
-        className={`pop-card${visible ? ' open' : ''}`}
+        className={`pop-card${visible ? ' open' : ''}${className ? ' ' + className : ''}`}
         style={{ maxWidth }}
         onClick={e => e.stopPropagation()}
       >

@@ -223,14 +223,18 @@ export default function App() {
     // tournament game.
     let tournamentId = null;
     let tournamentGameNo = null;
+    let gameTime = null;
+    let court = null;
     if (session.schedule_game_id) {
       const { data: row } = await supabase
         .from('schedule')
-        .select('tournament_id, tournament_game_no')
+        .select('tournament_id, tournament_game_no, game_time, court')
         .eq('id', session.schedule_game_id)
         .maybeSingle();
       tournamentId = row?.tournament_id || null;
       tournamentGameNo = row?.tournament_game_no ?? null;
+      gameTime = row?.game_time || null;
+      court = row?.court || null;
     }
 
     setGameInfo({
@@ -244,6 +248,8 @@ export default function App() {
       scheduledGameId: session.schedule_game_id || null,
       tournamentId,
       tournamentGameNo,
+      gameTime,
+      court,
     });
     setActiveTournament(findTournament(tournamentId));
     setResumeSession(session);
@@ -306,6 +312,10 @@ export default function App() {
       // completed_games hand-off. Null for a standalone game.
       tournament_id: gameInfo.tournamentId || null,
       tournament_game_no: gameInfo.tournamentGameNo ?? null,
+      // Time and court ride along too, so a played game keeps the slot it was
+      // scheduled in once the row moves tables.
+      game_time: gameInfo.gameTime || null,
+      court: gameInfo.court || null,
     };
 
     let res = await supabase.from('completed_games').insert(fullPayload).select().single();

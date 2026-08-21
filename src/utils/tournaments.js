@@ -135,10 +135,111 @@ export function tournamentRoster(tournament, teamPlayers) {
   return matched.length > 0 ? matched : (teamPlayers || []);
 }
 
+// "10:30" (the HTML time-input value we store) → "10:30 AM". Tolerates the
+// "HH:MM:SS" shape too, in case the column is ever migrated to a real `time`.
+// Returns '' for anything unparseable, so callers can just test truthiness.
+export function formatGameTime(value) {
+  const m = /^(\d{1,2}):(\d{2})/.exec(String(value || '').trim());
+  if (!m) return '';
+  const h = Number(m[1]);
+  if (!(h >= 0 && h <= 23)) return '';
+  const suffix = h < 12 ? 'AM' : 'PM';
+  const h12 = h % 12 === 0 ? 12 : h % 12;
+  return `${h12}:${m[2]} ${suffix}`;
+}
+
+// Where a fixture is played, as typed parts so the row can pair each with its
+// own line icon. When and who are the fixture row's own columns — this is only
+// the trailing detail that hangs off the matchup.
+export function gamePlaceParts(game) {
+  const parts = [];
+  if (game?.court && String(game.court).trim()) {
+    parts.push({ key: 'court', text: String(game.court).trim() });
+  }
+  // 'Neutral' is the quick-add default and says nothing; Home/Away do.
+  if (game?.location && game.location !== 'Neutral') {
+    parts.push({ key: 'location', text: game.location });
+  }
+  return parts;
+}
+
+// Minutes past midnight for a stored "HH:MM" time, or Infinity when the game
+// has no time yet — which is exactly the sort key we want, since an untimed
+// game belongs after every timed one on the same day.
+function gameTimeKey(game) {
+  const m = /^(\d{1,2}):(\d{2})/.exec(String(game?.game_time || '').trim());
+  if (!m) return Infinity;
+  const h = Number(m[1]), min = Number(m[2]);
+  if (!(h >= 0 && h <= 23) || !(min >= 0 && min <= 59)) return Infinity;
+  return h * 60 + min;
+}
+
+// Games in the order they are actually played: earliest day first, earliest
+// time first within a day, untimed games after the timed ones they share a day
+// with, and undated games at the very end. Ties fall back to the game number
+// and then creation order, so the list never reshuffles between renders.
+//
+// This is deliberately NOT the order tournamentGames() returns. Every other
+// surface lists a tournament by game number, which is the number a coach reads
+// off the event's own schedule; only the fixture list re-sorts by clock time.
+export function sortGamesBySchedule(games) {
+  return [...(games || [])].sort((a, b) => {
+    const da = a?.game_date || '', db = b?.game_date || '';
+    if (!da !== !db) return da ? -1 : 1;
+    if (da !== db) return da < db ? -1 : 1;
+
+    const ta = gameTimeKey(a), tb = gameTimeKey(b);
+    if (ta !== tb) return ta - tb;
+
+    const na = a?.tournament_game_no ?? Infinity;
+    const nb = b?.tournament_game_no ?? Infinity;
+    if (na !== nb) return na - nb;
+
+    return (new Date(a?.created_at || 0).getTime() || 0) - (new Date(b?.created_at || 0).getTime() || 0);
+  });
+}
+
+// Schedule-ordered games cut into day blocks, preserving that order. Undated
+// games collect under a null date at the end.
+export function groupGamesByDay(games) {
+  const days = [];
+  for (const g of sortGamesBySchedule(games)) {
+    const date = g?.game_date || null;
+    const last = days[days.length - 1];
+    if (last && last.date === date) last.games.push(g);
+    else days.push({ date, games: [g] });
+  }
+  return days;
+}
+
+// "SAT · AUG 18" — the day divider over a multi-day tournament's fixtures.
+export function gameDayHeading(dateStr) {
+  if (!dateStr) return 'Date TBD';
+  const d = new Date(dateStr + 'T00:00:00');
+  if (Number.isNaN(d.getTime())) return dateStr;
+  const wd = d.toLocaleDateString('en-US', { weekday: 'short' });
+  const mo = d.toLocaleDateString('en-US', { month: 'short' });
+  return `${wd} · ${mo} ${d.getDate()}`.toUpperCase();
+}
+
+// "Sat 8/18" — the compact date under a fixture's time, used only on a
+// single-day list where there is no day divider to carry it.
+export function gameDateShort(dateStr) {
+  if (!dateStr) return '';
+  const d = new Date(dateStr + 'T00:00:00');
+  if (Number.isNaN(d.getTime())) return dateStr;
+  const wd = d.toLocaleDateString('en-US', { weekday: 'short' });
+  return `${wd} ${d.getMonth() + 1}/${d.getDate()}`;
+}
+
 // Quick-add a blank game to a tournament — one tap, no required fields.
 // The opponent is the literal placeholder 'TBD' and can be renamed at any time
 // as the day unfolds.
-export async function quickAddTournamentGame({ tournament, games, opponent, gameDate, location }) {
+//
+// gameTime and court are optional extras, and are left OUT of the payload
+// entirely when blank rather than sent as null: that keeps the one-tap add
+// working on an install that hasn't run game_time_court_migration.sql yet.
+export async function quickAddTournamentGame({ tournament, games, opponent, gameDate, location, gameTime, court }) {
   const payload = {
     team_id: tournament.team_id,
     opponent: (opponent || '').trim() || TBD,
@@ -149,6 +250,9 @@ export async function quickAddTournamentGame({ tournament, games, opponent, game
     tournament_id: tournament.id,
     tournament_game_no: nextGameNo(games),
   };
+  if (gameTime && String(gameTime).trim()) payload.game_time = String(gameTime).trim();
+  if (court && String(court).trim()) payload.court = String(court).trim();
+
   const { data, error } = await supabase.from('schedule').insert(payload).select().single();
   return { data, error };
 }

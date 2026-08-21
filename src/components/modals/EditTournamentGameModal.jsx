@@ -14,6 +14,10 @@ export default function EditTournamentGameModal({ game, tournament, onClose, onS
   const [opponent, setOpponent] = useState(isTBD(game.opponent) ? '' : game.opponent || '');
   const [gameDate, setGameDate] = useState(game.game_date || tournament?.start_date || '');
   const [location, setLocation] = useState(game.location || 'Neutral');
+  // Both optional. '' is stored back as null so a cleared field really clears.
+  // game_time holds the raw "HH:MM" input value; court is free text, as typed.
+  const [gameTime, setGameTime] = useState((game.game_time || '').slice(0, 5));
+  const [court, setCourt] = useState(game.court || '');
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -31,12 +35,18 @@ export default function EditTournamentGameModal({ game, tournament, onClose, onS
         opponent: opponent.trim() || TBD,
         game_date: gameDate,
         location,
+        game_time: gameTime.trim() || null,
+        court: court.trim() || null,
       })
       .eq('id', game.id);
 
     setSaving(false);
     if (err) {
-      setError(err.message || 'Failed to save');
+      setError(
+        /game_time|court/i.test(err.message || '')
+          ? 'Time/court columns are missing — run scripts/game_time_court_migration.sql in Supabase.'
+          : (err.message || 'Failed to save')
+      );
       return;
     }
     onSaved && onSaved();
@@ -94,6 +104,25 @@ export default function EditTournamentGameModal({ game, tournament, onClose, onS
             </select>
           </div>
         </div>
+
+        {/* Both optional — leave either blank for a game whose slot isn't
+            posted yet, and fill it in later when the schedule goes up. */}
+        <div className="trn-field-row">
+          <div>
+            <label>Time</label>
+            <input type="time" value={gameTime} onChange={e => setGameTime(e.target.value)} />
+          </div>
+          <div>
+            <label>Court</label>
+            <input
+              value={court}
+              onChange={e => setCourt(e.target.value)}
+              placeholder="Court 3"
+              aria-label="Court"
+            />
+          </div>
+        </div>
+        <p className="trn-field-note">Time and court are optional.</p>
 
         {confirmDelete ? (
           <div className="trn-danger-confirm">

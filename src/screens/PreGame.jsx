@@ -107,6 +107,8 @@ export default function PreGame({ team, scheduledGame, tournament, onBack, onSta
       // stays in its tournament once it's played.
       tournamentId: tournament?.id || null,
       tournamentGameNo: scheduledGame?.tournament_game_no ?? null,
+      gameTime: scheduledGame?.game_time || null,
+      court: scheduledGame?.court || null,
     });
   }
 

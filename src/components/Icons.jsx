@@ -181,6 +181,24 @@ export function IconPlus({ size = 14, className }) {
   );
 }
 
+// Tick — "this is finished", on the Done control that leaves edit mode.
+export function IconCheck({ size = 14, className }) {
+  return (
+    <svg {...base(size)} className={className} aria-hidden="true">
+      <path d="m5 13 4 4L19 7" />
+    </svg>
+  );
+}
+
+// Bare minus — the "remove this item" badge in dashboard edit mode.
+export function IconMinus({ size = 14, className }) {
+  return (
+    <svg {...base(size)} className={className} aria-hidden="true">
+      <path d="M5 12h14" />
+    </svg>
+  );
+}
+
 // Counter-clockwise arrow — "undo / put this back how it was". Deliberately the
 // mirror of IconRotate, which is spoken for by RotationPal.
 export function IconUndo({ size = 14, className }) {

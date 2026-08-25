@@ -8,7 +8,10 @@ import PlayerBadge from '../PlayerBadge';
 // Create a tournament: a container for a day/event's worth of games with one
 // shared roster. Games are added afterwards from the tournament card — a
 // tournament starts empty on purpose, because you rarely know the schedule yet.
-export default function AddTournamentModal({ team, onClose, onSaved }) {
+// `initialDate` pre-seeds the START date — the calendar's day-add passes the day
+// that was tapped. The end date stays blank (a single-day event) so a range is
+// still an explicit choice.
+export default function AddTournamentModal({ team, initialDate = '', onClose, onSaved }) {
   const { currentUser } = useAuth();
   const { players } = useData();
 
@@ -16,7 +19,7 @@ export default function AddTournamentModal({ team, onClose, onSaved }) {
 
   const today = new Date().toISOString().slice(0, 10);
   const [name, setName] = useState('');
-  const [startDate, setStartDate] = useState(today);
+  const [startDate, setStartDate] = useState(initialDate || today);
   const [endDate, setEndDate] = useState('');
   const [location, setLocation] = useState('');
   // Shared roster — everyone on by default; uncheck whoever isn't on the trip.

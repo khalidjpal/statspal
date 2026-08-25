@@ -2,6 +2,7 @@ import { useMemo, useRef, useLayoutEffect } from 'react';
 import { IconCalendar, IconArrowRight, IconTrophy } from '../Icons';
 import { useData } from '../../contexts/DataContext';
 import { tournamentGames, tournamentRecord, tournamentDateLabel } from '../../utils/tournaments';
+import { DeleteBadge, EditHint, AddInline } from './EditModeKit';
 
 function formatDateParts(dateStr) {
   const d = new Date(dateStr + 'T00:00:00');
@@ -14,6 +15,9 @@ function formatDateParts(dateStr) {
 
 export default function ScheduleWidget({
   team, schedule, completedGames, onOpenInRotationPal, onOpenTournament,
+  // Dashboard edit mode: rows wiggle, carry a remove badge and become
+  // tap-to-edit, and the list ends in an inline add.
+  editMode = false, onEditGame, onDeleteGame, onDeleteTournament, onAddGame,
 }) {
   const today = new Date().toISOString().slice(0, 10);
   const { tournaments } = useData();
@@ -138,6 +142,10 @@ export default function ScheduleWidget({
                     key={g.id}
                     game={g}
                     onOpen={g.kind === 'tournament' ? onOpenTournament : onOpenInRotationPal}
+                    editMode={editMode}
+                    onEditGame={onEditGame}
+                    onDeleteGame={onDeleteGame}
+                    onDeleteTournament={onDeleteTournament}
                   />
                 ))}
               </div>
@@ -155,18 +163,26 @@ export default function ScheduleWidget({
                     game={g}
                     onOpen={g.kind === 'tournament' ? onOpenTournament : onOpenInRotationPal}
                     highlight={i === 0}
+                    editMode={editMode}
+                    onEditGame={onEditGame}
+                    onDeleteGame={onDeleteGame}
+                    onDeleteTournament={onDeleteTournament}
                   />
                 ))}
               </div>
             )}
           </>
         )}
+
+        {editMode && onAddGame && (
+          <AddInline onClick={onAddGame} label="ADD GAME" />
+        )}
       </div>
     </div>
   );
 }
 
-function Row({ game, onOpen, highlight }) {
+function Row({ game, onOpen, highlight, editMode, onEditGame, onDeleteGame, onDeleteTournament }) {
   const { month, day, dow } = formatDateParts(game.game_date);
 
   // A tournament collapses to a single summary row that opens the tournament
@@ -175,10 +191,22 @@ function Row({ game, onOpen, highlight }) {
     return (
       <button
         type="button"
-        className={`dash-sched-row dash-sched-tourn${game.isPast ? ' dash-sched-past' : ''}`}
+        className={[
+          'dash-sched-row',
+          'dash-sched-tourn',
+          game.isPast ? 'dash-sched-past' : '',
+          editMode ? 'dash-edit-item dash-edit-item-tap' : '',
+        ].filter(Boolean).join(' ')}
         onClick={() => onOpen && onOpen(game.raw)}
         title={`Open ${game.opponent}`}
       >
+        {editMode && onDeleteTournament && (
+          <DeleteBadge
+            nested
+            onDelete={() => onDeleteTournament(game.raw)}
+            label={`Remove ${game.opponent}`}
+          />
+        )}
         <div className="dash-sched-date">
           <span className="dash-sched-month">{month}</span>
           <span className="dash-sched-day">{day}</span>
@@ -216,8 +244,18 @@ function Row({ game, onOpen, highlight }) {
         isToday ? 'dash-sched-today' : '',
         isPast ? 'dash-sched-past' : '',
         highlight && !isToday ? 'dash-sched-next' : '',
+        editMode ? 'dash-edit-item' : '',
+        editMode && onEditGame ? 'dash-edit-item-tap' : '',
       ].filter(Boolean).join(' ')}
+      onClick={editMode && onEditGame ? () => onEditGame(game.raw, game.kind) : undefined}
+      title={editMode && onEditGame ? `Edit vs ${game.opponent}` : undefined}
     >
+      {editMode && onDeleteGame && (
+        <DeleteBadge
+          onDelete={() => onDeleteGame(game.raw, game.kind)}
+          label={`Remove game vs ${game.opponent}`}
+        />
+      )}
       <div className="dash-sched-date">
         <span className="dash-sched-month">{month}</span>
         <span className="dash-sched-day">{day}</span>
@@ -246,15 +284,21 @@ function Row({ game, onOpen, highlight }) {
         ) : (
           <span className="dash-sched-pill">UPCOMING</span>
         )}
-        <button
-          type="button"
-          className="dash-sched-open"
-          onClick={() => onOpen && onOpen(game.raw)}
-          aria-label="Open in RotationPal"
-          title="Open in RotationPal"
-        >
-          <IconArrowRight size={12} />
-        </button>
+        {/* In edit mode the row itself opens the editor, so this would be a
+            competing tap target on the same row. */}
+        {editMode ? (
+          onEditGame ? <EditHint className="dash-sched-edithint" /> : null
+        ) : (
+          <button
+            type="button"
+            className="dash-sched-open"
+            onClick={() => onOpen && onOpen(game.raw)}
+            aria-label="Open in RotationPal"
+            title="Open in RotationPal"
+          >
+            <IconArrowRight size={12} />
+          </button>
+        )}
       </div>
     </div>
   );

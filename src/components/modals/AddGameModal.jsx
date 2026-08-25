@@ -1,9 +1,12 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../../supabase';
 
-export default function AddGameModal({ teamId, leagueTeams, onClose, onSaved }) {
+// `initialDate` pre-seeds the date field. The calendar's day-add passes the day
+// that was tapped; every other caller omits it and the field starts empty as
+// before.
+export default function AddGameModal({ teamId, leagueTeams, initialDate = '', onClose, onSaved }) {
   const [opponent, setOpponent] = useState('');
-  const [gameDate, setGameDate] = useState('');
+  const [gameDate, setGameDate] = useState(initialDate || '');
   const [location, setLocation] = useState('Home');
   const [isLeague, setIsLeague] = useState(false);
   const [leagueTeamId, setLeagueTeamId] = useState('');

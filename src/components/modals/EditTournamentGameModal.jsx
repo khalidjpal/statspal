@@ -2,12 +2,16 @@ import { useState } from 'react';
 import { supabase } from '../../supabase';
 import { isTBD, TBD } from '../../utils/tournaments';
 
-// Edit one tournament game's details as the day unfolds — most often renaming a
+// Edit one game's details as the day unfolds — most often renaming a
 // placeholder "TBD" to the real opponent once the bracket is called.
 //
 // The row lives in `schedule` while unplayed and in `completed_games` once
 // tracked, so the target table comes from game._kind. Score and player stats for
 // a completed game are edited with the existing ManualResultModal instead.
+//
+// `tournament` is optional. Passing null makes this the editor for a STANDALONE
+// game — the dashboard's edit mode uses it that way — and only the wording
+// changes: there is no event to name and nothing to be "removed from".
 export default function EditTournamentGameModal({ game, tournament, onClose, onSaved }) {
   const table = game._kind === 'completed' ? 'completed_games' : 'schedule';
 
@@ -70,14 +74,18 @@ export default function EditTournamentGameModal({ game, tournament, onClose, onS
 
   const busy = saving || deleting;
   const gameNo = game.tournament_game_no ? `Game ${game.tournament_game_no}` : 'Game';
+  // A standalone game is identified by who it is against, not by an ordinal.
+  const gameLabel = tournament
+    ? gameNo
+    : (isTBD(game.opponent) ? 'Game' : `vs ${game.opponent}`);
 
   return (
     <div className="modal-overlay" onClick={() => !busy && onClose()}>
       <div className="modal-content" onClick={e => e.stopPropagation()}>
-        <h2>Edit {gameNo}</h2>
+        <h2>Edit {gameLabel}</h2>
         <p className="trn-modal-hint">
           {tournament?.name}
-          {game._kind === 'completed' && ' · already played — score and stats are edited from the box score'}
+          {game._kind === 'completed' && `${tournament ? ' · ' : ''}already played — score and stats are edited from the box score`}
         </p>
 
         {error && <div className="login-error" style={{ marginBottom: 12 }}>{error}</div>}
@@ -127,7 +135,7 @@ export default function EditTournamentGameModal({ game, tournament, onClose, onS
         {confirmDelete ? (
           <div className="trn-danger-confirm">
             <div className="trn-danger-text">
-              Remove {gameNo} from this tournament?
+              {tournament ? `Remove ${gameNo} from this tournament?` : `Delete this game (${gameLabel})?`}
               {game._kind === 'completed' && ' Its player stats will be deleted too.'}
               {' '}This cannot be undone.
             </div>

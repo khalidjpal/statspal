@@ -28,6 +28,14 @@ export function addEvent(teamId, event) {
   return next;
 }
 
+// Patch one event in place, keeping its id (and seriesId, if it has one) so an
+// edit never turns into a delete-plus-re-add. Unknown ids are a no-op.
+export function updateEvent(teamId, eventId, patch) {
+  const next = readEvents(teamId).map(e => (e.id === eventId ? { ...e, ...patch, id: e.id } : e));
+  writeEvents(teamId, next);
+  return next;
+}
+
 export function removeEvent(teamId, eventId) {
   const next = readEvents(teamId).filter(e => e.id !== eventId);
   writeEvents(teamId, next);

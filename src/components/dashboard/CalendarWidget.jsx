@@ -3,6 +3,7 @@ import { IconCalendar, IconTrophy } from '../Icons';
 import { removeEvent } from '../../utils/teamEvents';
 import { tournamentDays, dayPosition, tournamentGames, tournamentDateLabel, isTBD } from '../../utils/tournaments';
 import PastGameDetailPopup from './PastGameDetailPopup';
+import { DeleteBadge } from './EditModeKit';
 
 // Each variant maps to a `.dash-cal-bar-${variant}` CSS class and also feeds
 // the legend + detail-popup tag label. Game variants are derived from the
@@ -84,6 +85,10 @@ function eventTitle(e) {
 export default function CalendarWidget({
   team, schedule, completedGames, events, tournaments = [],
   onEventsChanged, onOpenStatsPal, onOpenRotationPal, onOpenTournament,
+  // Dashboard edit mode. Bars wiggle and carry a remove badge; tapping a bar
+  // opens its editor instead of the read-only detail popup; tapping empty space
+  // in a day adds an event on that date.
+  editMode = false, onEditCalendarItem, onDeleteCalendarItem, onAddOnDate,
 }) {
   const today = new Date();
   const [cursor, setCursor] = useState({ year: today.getFullYear(), month: today.getMonth() });
@@ -136,6 +141,10 @@ export default function CalendarWidget({
       const variant = g.game_date < todayStr ? 'game-noresult' : 'game';
       push(g.game_date, {
         id: `sched-${g.id}`,
+        // The row itself, so edit mode can hand it straight to the game editor.
+        // _kind matches what utils/tournaments expects: which table it lives in.
+        raw: g,
+        _kind: 'scheduled',
         type: variant,
         title: gameTitle(g),
         opponent: g.opponent,
@@ -155,6 +164,8 @@ export default function CalendarWidget({
         'game-noresult';
       push(g.game_date, {
         id: `done-${g.id}`,
+        raw: g,
+        _kind: 'completed',
         type: variant,
         title: gameTitle(g),
         opponent: g.opponent,
@@ -211,6 +222,14 @@ export default function CalendarWidget({
   // A tournament bar goes straight to the tournament view rather than a
   // read-only detail popup — same destination as clicking it in the schedule.
   function pickEvent(e) {
+    // Edit mode sends every bar to its editor instead. A tournament is the one
+    // exception: its own detail view is where its games are edited, so it keeps
+    // going there rather than to a half-useful inline form.
+    if (editMode && onEditCalendarItem && e.type !== 'tournament') {
+      setActiveEvent(null);
+      onEditCalendarItem(e);
+      return;
+    }
     if (e.type === 'tournament' && onOpenTournament) {
       setActiveEvent(null);
       onOpenTournament(e.tournament);
@@ -249,7 +268,21 @@ export default function CalendarWidget({
                   'dash-cal-cell',
                   cell.inMonth ? '' : 'dash-cal-cell-out',
                   isToday ? 'dash-cal-cell-today' : '',
+                  editMode && onAddOnDate ? 'dash-cal-cell-add' : '',
                 ].filter(Boolean).join(' ')}
+                // Only the cell's own background adds — a click that came from a
+                // bar or its badge has already been handled by that button.
+                // Anywhere in the cell adds, EXCEPT on a bar or its badge —
+                // those have their own handlers and already fired. Testing the
+                // target this way keeps the whole empty area of the day tappable
+                // rather than only the thin margin around its contents.
+                onClick={editMode && onAddOnDate
+                  ? (ev => {
+                      if (ev.target.closest?.('.dash-cal-bar, .dash-cal-bar-more, .dash-edit-badge')) return;
+                      onAddOnDate(dateStr);
+                    })
+                  : undefined}
+                title={editMode && onAddOnDate ? `Add an event on ${dateStr}` : undefined}
               >
                 <span className="dash-cal-cell-num">{cell.date.getDate()}</span>
                 <div className="dash-cal-cell-bars">
@@ -262,16 +295,31 @@ export default function CalendarWidget({
                         `dash-cal-bar-${e.type}`,
                         e.span ? `dash-cal-span dash-cal-span-${e.span}` : '',
                         e.tournament && e.type !== 'tournament' ? 'dash-cal-bar-inturn' : '',
+                        // A tournament span is painted once per day it covers, so
+                        // wiggling it would set several bars going for one event.
+                        editMode && e.type !== 'tournament' ? 'dash-edit-item' : '',
                       ].filter(Boolean).join(' ')}
                       onClick={() => pickEvent(e)}
                       title={e.type === 'tournament'
                         ? `${e.title} · ${tournamentDateLabel(e.tournament)} · ${e.gameCount} ${e.gameCount === 1 ? 'game' : 'games'}`
                         : eventTitle(e)}
                     >
-                      {e.type === 'tournament' && (
-                        <IconTrophy size={10} className="dash-cal-bar-trophy" />
+                      {editMode && onDeleteCalendarItem && e.type !== 'tournament' && (
+                        <DeleteBadge
+                          nested
+                          onDelete={() => onDeleteCalendarItem(e)}
+                          label={`Remove ${eventTitle(e)}`}
+                        />
                       )}
-                      {eventTitle(e)}
+                      {/* The label carries the truncation, not the bar: in edit
+                          mode the bar must not clip, or it would clip the badge
+                          that hangs off its edge. */}
+                      <span className="dash-cal-bar-label">
+                        {e.type === 'tournament' && (
+                          <IconTrophy size={10} className="dash-cal-bar-trophy" />
+                        )}
+                        {eventTitle(e)}
+                      </span>
                     </button>
                   ))}
                   {overflow > 0 && (

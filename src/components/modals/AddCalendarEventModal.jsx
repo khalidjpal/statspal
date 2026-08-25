@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { addEvent } from '../../utils/teamEvents';
+import { addEvent, updateEvent } from '../../utils/teamEvents';
 import {
   expandRule,
   todayIsoLocal, fromIso,
@@ -13,12 +13,27 @@ const TYPE_LABELS = {
 const DOW_LABELS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 const DOW_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
-export default function AddCalendarEventModal({ teamId, defaultType = 'practice', onClose, onSaved }) {
-  const [type, setType] = useState(defaultType);
-  const [title, setTitle] = useState('');
+// Adds calendar events, and — when handed an existing `event` — edits that one
+// in place instead.
+//
+// Editing is deliberately single-occurrence: recurrence exists to CREATE a
+// series (it expands to one stored event per date at save time), so re-running
+// that expansion on an edit would fan one event out into many. The When picker
+// is therefore hidden while editing and only the event's own date is offered.
+//
+// `initialDate` seeds the ADD flow — the calendar's edit mode passes the day you
+// tapped. It is not an edit: only a real `event` (one that has an id) is.
+export default function AddCalendarEventModal({
+  teamId, defaultType = 'practice', event = null, initialDate: seedDate = null, onClose, onSaved,
+}) {
+  // An `event` without an id would be a patch aimed at nothing, so it does not
+  // count as an edit — it would silently save nowhere.
+  const isEdit = !!event?.id;
+  const [type, setType] = useState(event?.type === 'event' || event?.type === 'practice' ? event.type : defaultType);
+  const [title, setTitle] = useState(event?.title || '');
 
   // Recurrence: single / range (start+end+weekdays) / manual (multi-select).
-  const initialDate = todayIsoLocal();
+  const initialDate = event?.date || seedDate || todayIsoLocal();
   const [recurMode, setRecurMode] = useState('single');
   const [date, setDate] = useState(initialDate);
   const [rangeStart, setRangeStart] = useState(initialDate);
@@ -28,10 +43,10 @@ export default function AddCalendarEventModal({ teamId, defaultType = 'practice'
   const [days, setDays] = useState(() => [new Date().getDay()]);
   const [manualDates, setManualDates] = useState([initialDate]);
 
-  const [startTime, setStartTime] = useState('');
-  const [endTime, setEndTime] = useState('');
-  const [location, setLocation] = useState('');
-  const [notes, setNotes] = useState('');
+  const [startTime, setStartTime] = useState(event?.startTime || '');
+  const [endTime, setEndTime] = useState(event?.endTime || '');
+  const [location, setLocation] = useState(event?.location || '');
+  const [notes, setNotes] = useState(event?.notes || '');
   const [saving, setSaving] = useState(false);
 
   // Build the in-flight rule for preview + final expansion.
@@ -53,6 +68,24 @@ export default function AddCalendarEventModal({ teamId, defaultType = 'practice'
   function handleSave() {
     if (!canSave) return;
     setSaving(true);
+
+    // Editing patches the one event and keeps its id, so anything already
+    // pointing at it (its place in a series) survives.
+    if (isEdit) {
+      updateEvent(teamId, event.id, {
+        type,
+        title: title.trim(),
+        date,
+        startTime: startTime || null,
+        endTime: endTime || null,
+        location: location.trim() || null,
+        notes: notes.trim() || null,
+      });
+      setSaving(false);
+      onSaved && onSaved();
+      return;
+    }
+
     // Expand to one localStorage event per date. All occurrences share a
     // seriesId so a future "delete series" / "edit series" patch has the
     // join key already in place.
@@ -86,7 +119,7 @@ export default function AddCalendarEventModal({ teamId, defaultType = 'practice'
         onClick={e => e.stopPropagation()}
         style={{ maxWidth: 520, maxHeight: '92vh', overflowY: 'auto' }}
       >
-        <h2>Add {TYPE_LABELS[type] || 'Event'}</h2>
+        <h2>{isEdit ? 'Edit' : 'Add'} {TYPE_LABELS[type] || 'Event'}</h2>
 
         <label>Type</label>
         <div className="dash-modal-segment">
@@ -111,7 +144,10 @@ export default function AddCalendarEventModal({ teamId, defaultType = 'practice'
         />
 
         <label style={{ marginTop: 14 }}>When</label>
-        <div className="dash-modal-segment" style={{ marginBottom: 10 }}>
+        <div
+          className="dash-modal-segment"
+          style={{ marginBottom: 10, display: isEdit ? 'none' : undefined }}
+        >
           <button
             type="button"
             className={`dash-modal-seg-btn${recurMode === 'single' ? ' active' : ''}`}
@@ -225,6 +261,7 @@ export default function AddCalendarEventModal({ teamId, defaultType = 'practice'
         />
 
         <div style={{
+          display: isEdit ? 'none' : undefined,
           padding: '8px 12px',
           background: previewCount === 0 ? 'rgba(248,81,73,0.10)' : 'rgba(56,189,248,0.10)',
           border: `1px solid ${previewCount === 0 ? 'rgba(248,81,73,0.30)' : 'rgba(56,189,248,0.30)'}`,
@@ -251,9 +288,11 @@ export default function AddCalendarEventModal({ teamId, defaultType = 'practice'
           >
             {saving
               ? 'Saving…'
-              : (previewCount > 1
-                  ? `Add ${previewCount} ${TYPE_LABELS[type]}s`
-                  : `Add ${TYPE_LABELS[type]}`)}
+              : isEdit
+                ? 'Save Changes'
+                : (previewCount > 1
+                    ? `Add ${previewCount} ${TYPE_LABELS[type]}s`
+                    : `Add ${TYPE_LABELS[type]}`)}
           </button>
         </div>
       </div>

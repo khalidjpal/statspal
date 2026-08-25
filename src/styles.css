@@ -5801,6 +5801,16 @@ td.dash-stand-team .dash-stand-name {
   flex-shrink: 0;
   transition: transform 0.1s, filter 0.1s, box-shadow 0.12s;
 }
+/* The bar still declares its own ellipsis (harmless, and it keeps a bar with no
+   label wrapper behaving), but the wrapper is what actually truncates once edit
+   mode stops the bar clipping. */
+.dash-cal-bar-label {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .dash-cal-bar:hover {
   filter: brightness(1.18);
   box-shadow: 0 1px 4px rgba(0,0,0,0.35);
@@ -12572,3 +12582,574 @@ td.trn-railtable-player {
 }
 
 
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Dashboard EDIT MODE
+   ═══════════════════════════════════════════════════════════════════════════
+   One dashboard-wide state. TeamLaunch puts `.dash-editing` on the page root and
+   the three panels tag their editable elements `.dash-edit-item`; every rule
+   below is scoped to that pair, so with edit mode off the dashboard keeps
+   exactly the styling it had before this feature existed.
+
+   The editable cue is deliberately NOT the iOS wiggle it started as. Nothing
+   rotates or translates on a loop — a dashboard of a dozen jittering rows reads
+   as broken, not editable. Instead an editable item is *lifted*: a hairline
+   accent ring, a soft shadow, a 1px rise, and one very slow breath of glow
+   (5.5s, opacity only, staggered per item). Geometry stays perfectly still, so
+   text remains crisp and the whole grid reads calm.
+
+   Focus comes from contrast rather than decoration: the panels you can edit sit
+   forward, everything you cannot edit recedes. */
+
+.dash-editing {
+  /* --accent is #58a6ff and is NOT overridden by the light theme, so these
+     alpha variants are exact equivalents that can be used in shadows. */
+  --edit-ring:      rgba(88,166,255,0.34);
+  --edit-ring-soft: rgba(88,166,255,0.16);
+  --edit-glow:      rgba(88,166,255,0.20);
+  --edit-tint:      rgba(88,166,255,0.05);
+}
+
+/* ── The Edit / Done toggle, sitting beside the + ─────── */
+.dash-edit-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 38px;
+  padding: 0 15px;
+  border-radius: 19px;
+  border: 1px solid var(--border);
+  background: rgba(255,255,255,0.045);
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition: background var(--transition), border-color var(--transition),
+              color var(--transition), box-shadow var(--transition);
+  flex-shrink: 0;
+}
+.dash-edit-toggle:hover {
+  background: rgba(255,255,255,0.08);
+  border-color: rgba(88,166,255,0.28);
+  color: var(--text);
+}
+.dash-edit-toggle:active { transform: scale(0.97); }
+
+/* Active: accent-filled, so "you are editing" is unmistakable without shouting.
+   The ring is what makes it read as a lit control rather than a flat swatch. */
+.dash-edit-toggle.is-active {
+  background: linear-gradient(135deg, var(--navy-light) 0%, var(--navy) 100%);
+  border-color: transparent;
+  color: #fff;
+  box-shadow:
+    0 0 0 1px rgba(88,166,255,0.45),
+    0 2px 10px -2px rgba(31,111,235,0.55),
+    inset 0 1px 0 rgba(255,255,255,0.22);
+}
+.dash-edit-toggle.is-active:hover {
+  color: #fff;
+  box-shadow:
+    0 0 0 1px rgba(88,166,255,0.6),
+    0 3px 14px -2px rgba(31,111,235,0.7),
+    inset 0 1px 0 rgba(255,255,255,0.28);
+}
+.dash-edit-toggle-icon { display: inline-flex; align-items: center; }
+
+/* ── The editable cue ─────────────────────────────────── */
+/* Opacity only. A compositor-friendly property, so a dozen of these animating
+   at once costs nothing and never nudges a glyph out of alignment. */
+@keyframes dash-edit-breathe {
+  0%, 100% { opacity: 0.45; }
+  50%      { opacity: 1; }
+}
+
+.dash-editing .dash-edit-item {
+  position: relative;
+  /* The ring follows the item's own border-radius, so roster rows (5px),
+     schedule rows (7px) and calendar bars (4px) each stay in their own shape
+     while sharing one treatment. */
+  box-shadow:
+    0 0 0 1px var(--edit-ring-soft),
+    0 1px 2px rgba(0,0,0,0.22),
+    0 6px 14px -10px rgba(0,0,0,0.55);
+  background-color: var(--edit-tint);
+  /* A 1px rise, held steady — the lift is the cue, not motion. */
+  transform: translateY(-1px);
+  transition: box-shadow var(--transition), transform var(--transition),
+              background-color var(--transition);
+}
+
+/* The breath lives on an overlay so the item's own background, border and text
+   are untouched by it. */
+.dash-editing .dash-edit-item::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  box-shadow: 0 0 0 1px var(--edit-ring), 0 0 10px -2px var(--edit-glow);
+  animation: dash-edit-breathe 5.5s ease-in-out infinite;
+}
+/* Stagger so a list breathes as a shoal, never as one pulsing block. Prime-ish
+   offsets keep neighbours out of phase for far longer than a 2-step alternation
+   would. */
+.dash-editing .dash-edit-item:nth-child(2n)::before   { animation-delay: -1.1s; }
+.dash-editing .dash-edit-item:nth-child(3n)::before   { animation-delay: -2.3s; }
+.dash-editing .dash-edit-item:nth-child(5n+2)::before { animation-delay: -3.4s; }
+.dash-editing .dash-edit-item:nth-child(7n+3)::before { animation-delay: -4.2s; }
+
+/* Under the cursor an item settles and comes fully forward — it stops breathing
+   exactly when you are about to aim at one of its badges. */
+.dash-editing .dash-edit-item:hover {
+  background-color: rgba(88,166,255,0.09);
+  box-shadow:
+    0 0 0 1px var(--edit-ring),
+    0 2px 4px rgba(0,0,0,0.25),
+    0 10px 22px -12px rgba(0,0,0,0.6);
+  transform: translateY(-2px);
+}
+.dash-editing .dash-edit-item:hover::before {
+  animation-play-state: paused;
+  opacity: 1;
+}
+
+/* Reduced motion: the same premium state, held still. Everything the animation
+   was conveying is already in the ring, tint and lift — only the breath goes. */
+@media (prefers-reduced-motion: reduce) {
+  .dash-editing .dash-edit-item::before {
+    animation: none;
+    opacity: 0.9;
+  }
+}
+
+/* Edit mode is a tapping surface: kill text selection so a drag across a row
+   does not leave a blue smear instead of opening the editor. */
+.dash-editing .dash-edit-item,
+.dash-editing .dash-edit-item * {
+  user-select: none;
+  -webkit-user-select: none;
+}
+.dash-editing .dash-edit-item-tap { cursor: pointer; }
+
+/* ── Focus: editable forward, everything else back ───── */
+/* The three editable panels keep full presence and take a whisper of accent in
+   their border. */
+.dash-editing .dash-widget-roster,
+.dash-editing .dash-widget-calendar,
+.dash-editing .dash-widget-schedule {
+  border-color: rgba(88,166,255,0.22);
+  box-shadow: 0 0 0 1px rgba(88,166,255,0.06), 0 18px 40px -30px rgba(0,0,0,0.9);
+  transition: border-color var(--transition), box-shadow var(--transition), opacity var(--transition);
+}
+
+/* What cannot be edited recedes. Still legible and still clickable — this is a
+   focus cue, not a disabled state. */
+.dash-editing .dash-modules,
+.dash-editing .dash-widget-standings,
+.dash-editing .dash-widget-nextup {
+  opacity: 0.5;
+  transition: opacity var(--transition);
+}
+.dash-editing .dash-modules:hover,
+.dash-editing .dash-widget-standings:hover,
+.dash-editing .dash-widget-nextup:hover {
+  opacity: 0.78;
+}
+
+/* ── Badges ───────────────────────────────────────────── */
+.dash-edit-badge {
+  position: absolute;
+  z-index: 4;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border-radius: 50%;
+  /* Ringed in the page background so the badge reads as sitting ON the item.
+     A token, not a literal, so it survives the light theme. */
+  border: 1.5px solid var(--bg);
+  font-family: inherit;
+  line-height: 0;
+  transition: transform 0.16s cubic-bezier(0.34,1.56,0.64,1),
+              background 0.16s, box-shadow 0.16s;
+}
+/* Mobile taps land within ~44px even though the badge draws at 18px: an
+   invisible pseudo-element enlarges the hit area without moving the artwork or
+   pushing the rows apart. */
+.dash-edit-badge::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 44px;
+  height: 44px;
+  transform: translate(-50%, -50%);
+}
+@media (hover: hover) and (pointer: fine) {
+  /* A mouse is precise; a 44px invisible pad here would just swallow clicks
+     meant for the row behind it. */
+  .dash-edit-badge::after { width: 24px; height: 24px; }
+}
+
+/* Centred on the item's leading edge rather than hung off its corner. A corner
+   badge cuts across the ring's radius and reads as a sticker; on the straight
+   part of the edge it reads as a control that belongs to the row. */
+.dash-edit-badge-del {
+  top: 50%;
+  left: -9px;
+  transform: translateY(-50%);
+  background: linear-gradient(180deg, #ff6b62 0%, var(--loss) 100%);
+  color: #fff;
+  cursor: pointer;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.45), 0 0 0 0 rgba(248,81,73,0);
+}
+.dash-edit-badge-del:hover {
+  background: linear-gradient(180deg, #ff8079 0%, #fa5f57 100%);
+  transform: translateY(-50%) scale(1.14);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.5), 0 0 0 4px rgba(248,81,73,0.16);
+}
+.dash-edit-badge-del:active { transform: translateY(-50%) scale(0.9); }
+
+/* Decorative: the row itself is the tap target, so this stays quiet and must
+   never compete for a click. */
+/* Mirrors the delete badge on the trailing edge, so every editable row is
+   bracketed the same way. */
+.dash-edit-badge-edit {
+  top: 50%;
+  right: -9px;
+  transform: translateY(-50%);
+  background: rgba(22,27,34,0.95);
+  color: var(--text-secondary);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.4), inset 0 0 0 1px rgba(255,255,255,0.07);
+  pointer-events: none;
+}
+.dash-editing .dash-edit-item:hover .dash-edit-badge-edit {
+  color: var(--accent);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.4), inset 0 0 0 1px rgba(88,166,255,0.35);
+}
+
+/* ── Inline "add" affordance closing each editable list ── */
+.dash-edit-add {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  width: 100%;
+  margin-top: 10px;
+  padding: 10px 12px;
+  border: 1px solid rgba(88,166,255,0.24);
+  border-radius: 10px;
+  background: rgba(88,166,255,0.06);
+  color: var(--accent);
+  font-family: inherit;
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+  transition: background var(--transition), border-color var(--transition),
+              box-shadow var(--transition);
+  flex-shrink: 0;
+}
+.dash-edit-add:hover {
+  background: rgba(88,166,255,0.12);
+  border-color: rgba(88,166,255,0.45);
+  box-shadow: 0 2px 12px -6px rgba(88,166,255,0.6);
+}
+.dash-edit-add:active { transform: scale(0.995); }
+.dash-edit-add-icon { display: inline-flex; align-items: center; }
+
+/* ── Panel-level edit affordances ─────────────────────── */
+/* Badges hang ~7px outside an item's box. A panel body scrolls vertically, and
+   overflow-x cannot be "visible" while overflow-y is "auto" (the browser forces
+   it to auto), so the badges are NOT saved by an overflow rule here — they are
+   saved by the body's own 18px side padding, which is inside the scroll box and
+   comfortably wider than the overhang. This is why edit mode does not need the
+   rows inset any further. */
+/* Row lists get a little breathing room so the lifted rows are not touching. */
+.dash-editing .dash-roster-grp-list,
+.dash-editing .dash-sched-section { padding-top: 5px; }
+
+/* A badge centred on an edge covers ~9px of the row's inside. Without a matching
+   inset it lands on whatever sits hard against that edge — the jersey pill and
+   the position code on a roster row, the date block and the result pill on a
+   schedule row. ("MB" rendering as "ME" was exactly this.) So edit mode pulls
+   the row's own content in by slightly more than the badge reaches. */
+.dash-editing .dash-roster-grp-item { padding-left: 13px; padding-right: 15px; }
+.dash-editing .dash-sched-row       { padding-left: 15px; padding-right: 15px; }
+/* Same reasoning on a calendar bar, whose badge steps down to 14px. */
+.dash-editing .dash-cal-bar         { padding-left: 11px; }
+/* The lift plus the ring needs a hair more room between rows than the 1px the
+   normal schedule list uses. */
+.dash-editing .dash-sched-row + .dash-sched-row { margin-top: 4px; }
+.dash-editing .dash-roster-grp-item + .dash-roster-grp-item { margin-top: 3px; }
+
+/* Calendar: in edit mode an empty day is a tap target for "add here". */
+.dash-editing .dash-cal-cell-add {
+  cursor: pointer;
+  border-radius: 5px;
+  transition: background var(--transition), box-shadow var(--transition);
+}
+.dash-editing .dash-cal-cell-add:hover {
+  background: rgba(88,166,255,0.07);
+  box-shadow: inset 0 0 0 1px rgba(88,166,255,0.3);
+}
+/* Letting a bar's badge hang off its edge means nothing in the chain may clip —
+   but .dash-cal-grid is repeat(7, 1fr), and 1fr is minmax(AUTO, 1fr), so the
+   cells' overflow:hidden is the only thing stopping a long label ("Practice
+   4:00 PM – 6:00 PM") from widening its weekday column and knocking the month
+   grid out of true. Pinning the columns to minmax(0, 1fr) makes min-content
+   irrelevant, so dropping the clipping is then safe. Truncation moves to
+   .dash-cal-bar-label, which still clips and still ellipsizes — so a label keeps
+   the bar's full width instead of surrendering 20px of it to the badge. */
+.dash-editing .dash-cal-grid { grid-template-columns: repeat(7, minmax(0, 1fr)); }
+.dash-editing .dash-cal-cell,
+.dash-editing .dash-cal-cell-bars,
+.dash-editing .dash-cal-bar { overflow: visible; }
+
+/* The ring goes on the bar's own box-shadow rather than the ::before overlay:
+   one element, one shape, and it composites with the bar's own colour fill. */
+.dash-editing .dash-cal-bar {
+  box-shadow: 0 0 0 1px var(--edit-ring-soft), 0 1px 3px rgba(0,0,0,0.35);
+}
+.dash-editing .dash-cal-bar::before { display: none; }
+.dash-editing .dash-cal-bar:hover {
+  box-shadow: 0 0 0 1px var(--edit-ring), 0 2px 6px rgba(0,0,0,0.45);
+}
+/* A bar is only ~13px tall, so its badge steps down a size — same shape, same
+   colour, same edge-centred placement as every other item. */
+.dash-editing .dash-cal-bar .dash-edit-badge-del {
+  width: 14px;
+  height: 14px;
+  left: -7px;
+  border-width: 1.2px;
+}
+
+/* ── Delete confirm ───────────────────────────────────── */
+.dash-edit-confirm { max-width: 420px; text-align: center; }
+.dash-edit-confirm h2 { margin-bottom: 10px; }
+.dash-edit-confirm-detail {
+  color: var(--text-secondary);
+  font-size: 13.5px;
+  line-height: 1.55;
+  margin: 0 0 20px;
+}
+.dash-edit-confirm-actions { display: flex; flex-direction: column; gap: 10px; }
+.dash-edit-confirm-danger,
+.dash-edit-confirm-keep {
+  padding: 12px 16px;
+  border-radius: 10px;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.dash-edit-confirm-danger {
+  background: linear-gradient(180deg, #ff6b62 0%, var(--loss) 100%);
+  color: #fff;
+  border: none;
+  box-shadow: 0 2px 12px -4px rgba(248,81,73,0.6);
+}
+.dash-edit-confirm-danger:hover { background: linear-gradient(180deg, #ff8079 0%, #fa5f57 100%); }
+.dash-edit-confirm-danger:disabled { opacity: 0.6; cursor: default; box-shadow: none; }
+.dash-edit-confirm-keep {
+  background: transparent;
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+  font-weight: 600;
+}
+.dash-edit-confirm-keep:hover { color: var(--text); background: rgba(255,255,255,0.04); }
+
+/* ── Editing banner ───────────────────────────────────── */
+/* Slim and quiet: it states the mode and offers the way out, and otherwise gets
+   out of the way. */
+.dash-edit-banner {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  margin-bottom: 14px;
+  padding: 9px 10px 9px 14px;
+  border: 1px solid rgba(88,166,255,0.2);
+  border-radius: 12px;
+  background: linear-gradient(90deg, rgba(88,166,255,0.09) 0%, rgba(88,166,255,0.03) 100%);
+  font-size: 12.5px;
+  color: var(--text-secondary);
+}
+.dash-edit-banner-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--accent);
+  flex-shrink: 0;
+}
+/* One slow pulse, in step with the items' breath, so the whole mode shares a
+   single rhythm rather than two competing ones. */
+@keyframes dash-edit-dot {
+  0%, 100% { opacity: 0.35; transform: scale(0.85); }
+  50%      { opacity: 1;    transform: scale(1); }
+}
+.dash-edit-banner-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 8px rgba(88,166,255,0.7);
+  flex-shrink: 0;
+  animation: dash-edit-dot 5.5s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .dash-edit-banner-dot { animation: none; opacity: 1; }
+}
+.dash-edit-banner-hint {
+  min-width: 0;
+  color: var(--text-secondary);
+}
+.dash-edit-banner-sep {
+  width: 1px;
+  height: 16px;
+  background: rgba(255,255,255,0.1);
+  flex-shrink: 0;
+}
+.dash-edit-banner-done {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 13px;
+  border-radius: 8px;
+  border: 1px solid rgba(88,166,255,0.3);
+  background: rgba(88,166,255,0.1);
+  color: var(--accent);
+  font-family: inherit;
+  font-size: 11.5px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+  transition: background var(--transition), border-color var(--transition), color var(--transition);
+  flex-shrink: 0;
+}
+.dash-edit-banner-done:hover {
+  background: var(--navy);
+  border-color: transparent;
+  color: #fff;
+}
+
+/* Phones: the hint is the first thing to go, and the banner stays one line. */
+@media (max-width: 560px) {
+  .dash-edit-banner { gap: 8px; padding-left: 12px; }
+  .dash-edit-banner-hint,
+  .dash-edit-banner-sep { display: none; }
+}
+
+
+/* ── Calendar day-add type chooser ────────────────────── */
+/* Opens on a day tap in edit mode and only picks a type; each option then hands
+   off to the existing creation modal with the date pre-seeded. */
+.dash-dayadd { max-width: 440px; }
+
+.dash-dayadd-head { margin-bottom: 16px; }
+.dash-dayadd-kicker {
+  display: block;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 3px;
+}
+.dash-dayadd-date {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+/* Two up on desktop, one column on a phone so every row is a wide tap target. */
+.dash-dayadd-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+@media (max-width: 480px) {
+  .dash-dayadd-grid { grid-template-columns: 1fr; }
+}
+
+.dash-dayadd-opt {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  /* Comfortably past the 44px touch minimum on its short edge. */
+  min-height: 62px;
+  padding: 12px 13px;
+  border: 1px solid rgba(255,255,255,0.09);
+  border-left: 3px solid var(--opt-accent, #58a6ff);
+  border-radius: 11px;
+  background: rgba(255,255,255,0.025);
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, transform 0.15s;
+}
+.dash-dayadd-opt:hover {
+  background: rgba(255,255,255,0.06);
+  border-color: rgba(255,255,255,0.16);
+  border-left-color: var(--opt-accent, #58a6ff);
+  transform: translateY(-1px);
+}
+.dash-dayadd-opt:active { transform: scale(0.985); }
+
+.dash-dayadd-opt-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  /* The accent at low alpha, so the tile reads as the calendar colour it maps to. */
+  background: color-mix(in srgb, var(--opt-accent) 16%, transparent);
+  color: var(--opt-accent, #58a6ff);
+}
+/* color-mix is widely supported but not universal — fall back to a flat tint. */
+@supports not (background: color-mix(in srgb, red 16%, transparent)) {
+  .dash-dayadd-opt-icon { background: rgba(255,255,255,0.07); }
+}
+
+.dash-dayadd-opt-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.dash-dayadd-opt-label {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+}
+.dash-dayadd-opt-desc {
+  font-size: 11.5px;
+  color: var(--text-secondary);
+  line-height: 1.35;
+}
+
+.dash-dayadd-cancel {
+  width: 100%;
+  padding: 11px 16px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.dash-dayadd-cancel:hover { color: var(--text); background: rgba(255,255,255,0.04); }

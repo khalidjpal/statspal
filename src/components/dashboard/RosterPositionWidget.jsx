@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { sortByJersey } from '../../utils/sort';
 import { readSecondaryMap } from '../../utils/playerSecondary';
 import { IconUsers } from '../Icons';
+import { DeleteBadge, EditHint, AddInline } from './EditModeKit';
 
 // Position groups surfaced on the dashboard. classify() handles both the full
 // names stored in StatsPal ("Outside Hitter") and the short codes used by
@@ -54,6 +55,11 @@ export default function RosterPositionWidget({
   // localStorage — used when an external edit (e.g. PlayerManagementModal) has
   // closed and the parent wants the widget to refresh.
   refreshKey = 0,
+  // Dashboard edit mode. When on, every player row wiggles, carries a remove
+  // badge and becomes tap-to-edit, and the list ends in an inline add. This is
+  // independent of showEdit, which is RotationPal's existing header/row buttons.
+  editMode = false,
+  onDeletePlayer,
 }) {
   const [view, setView] = useState('primary');
 
@@ -156,7 +162,11 @@ export default function RosterPositionWidget({
           <div className="dash-empty">
             <div className="dash-empty-title">No players on roster yet</div>
             <div className="dash-empty-sub">
-              {showEdit ? 'Click "+ Add Player" above to build your roster.' : 'Add players from Team Details to see them here.'}
+              {editMode
+                ? 'Use "Add Player" below to build your roster.'
+                : showEdit
+                  ? 'Click "+ Add Player" above to build your roster.'
+                  : 'Add players from Team Details to see them here.'}
             </div>
           </div>
         ) : (
@@ -167,15 +177,21 @@ export default function RosterPositionWidget({
               secondaryMap={secondaryMap}
               showEdit={showEdit}
               onEditPlayer={onEditPlayer}
+              editMode={editMode}
+              onDeletePlayer={onDeletePlayer}
             />
           ))
+        )}
+
+        {editMode && onAddPlayer && (
+          <AddInline onClick={onAddPlayer} label="ADD PLAYER" />
         )}
       </div>
     </div>
   );
 }
 
-function RosterSection({ section, secondaryMap, showEdit, onEditPlayer }) {
+function RosterSection({ section, secondaryMap, showEdit, onEditPlayer, editMode, onDeletePlayer }) {
   return (
     <div className={`dash-roster-group${section.muted ? ' dash-roster-group-muted' : ''}`}>
       <div className="dash-roster-grp-head">
@@ -190,8 +206,21 @@ function RosterSection({ section, secondaryMap, showEdit, onEditPlayer }) {
           return (
             <li
               key={p.id}
-              className={`dash-roster-grp-item${showEdit ? ' dash-roster-grp-item-edit' : ''}`}
+              className={[
+                'dash-roster-grp-item',
+                showEdit ? 'dash-roster-grp-item-edit' : '',
+                editMode ? 'dash-edit-item' : '',
+                editMode && onEditPlayer ? 'dash-edit-item-tap' : '',
+              ].filter(Boolean).join(' ')}
+              onClick={editMode && onEditPlayer ? () => onEditPlayer(p) : undefined}
+              title={editMode && onEditPlayer ? `Edit ${p.name}` : undefined}
             >
+              {editMode && onDeletePlayer && (
+                <DeleteBadge
+                  onDelete={() => onDeletePlayer(p)}
+                  label={`Remove ${p.name} from the roster`}
+                />
+              )}
               <span className="dash-roster-jersey">
                 {p.jersey_number ? `#${p.jersey_number}` : '—'}
               </span>
@@ -199,7 +228,9 @@ function RosterSection({ section, secondaryMap, showEdit, onEditPlayer }) {
               <span className="dash-roster-role-text" title={roleText || 'No position'}>
                 {roleText || '—'}
               </span>
-              {showEdit && onEditPlayer && (
+              {/* In edit mode the whole row is the tap target, so the standing
+                  Edit button would be a second, redundant one. */}
+              {showEdit && onEditPlayer && !editMode && (
                 <button
                   type="button"
                   className="dash-roster-edit-btn"
@@ -209,6 +240,7 @@ function RosterSection({ section, secondaryMap, showEdit, onEditPlayer }) {
                   Edit
                 </button>
               )}
+              {editMode && onEditPlayer && <EditHint />}
             </li>
           );
         })}

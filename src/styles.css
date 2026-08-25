@@ -5347,6 +5347,133 @@ td.dash-stand-team .dash-stand-name {
   flex: 0 0 auto;
 }
 
+/* ── Next Up widget (club format) ─────────────────────── */
+/* Stands in for the standings widget in the top-left grid slot, so it keeps
+   the same "size to content, don't stretch" behaviour — .dash-grid row 1 is
+   `auto` and its first child is `align-self: start`. The min-height gives a
+   single-event card roughly the footprint of a short standings table instead
+   of collapsing to a thin strip. */
+.dash-nextup-body {
+  flex: 0 0 auto;
+  min-height: 168px;
+  justify-content: center;
+}
+
+.dash-nextup-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  padding: 14px;
+  background: rgba(255,255,255,0.02);
+  border: 1px solid rgba(255,255,255,0.07);
+  border-left: 3px solid var(--tc, #58a6ff);
+  border-radius: 12px;
+  font-family: inherit;
+  text-align: left;
+  color: inherit;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, transform 0.15s;
+}
+.dash-nextup-card:hover:not(.dash-nextup-static) {
+  background: rgba(255,255,255,0.05);
+  border-color: rgba(255,255,255,0.14);
+  border-left-color: var(--tc, #58a6ff);
+  transform: translateY(-1px);
+}
+.dash-nextup-card:hover:not(.dash-nextup-static) .dash-nextup-arrow {
+  color: var(--text);
+  transform: translateX(3px);
+}
+.dash-nextup-static { cursor: default; }
+
+/* Date block — same rhythm as the schedule widget's, one size up, since here
+   it is the panel's single focal point rather than one row among many. */
+.dash-nextup-date {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 58px;
+  padding: 8px 0;
+  background: rgba(255,255,255,0.03);
+  border-radius: 10px;
+  line-height: 1.1;
+}
+.dash-nextup-month {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  color: var(--tc, #58a6ff);
+}
+.dash-nextup-day {
+  font-size: 26px;
+  font-weight: 800;
+  color: var(--text);
+}
+.dash-nextup-dow {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+}
+.dash-nextup-tbd {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+}
+
+.dash-nextup-mid {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.dash-nextup-kind {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  color: var(--text-muted);
+}
+.dash-nextup-name {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dash-nextup-lines {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+  margin-top: 2px;
+}
+.dash-nextup-line {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.dash-nextup-line svg { flex-shrink: 0; color: var(--text-muted); }
+
+.dash-nextup-arrow {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  color: var(--text-muted);
+  transition: transform 0.18s, color 0.18s;
+}
+
 /* ── Schedule widget ──────────────────────────────────── */
 .dash-widget-meta {
   font-size: 11px;

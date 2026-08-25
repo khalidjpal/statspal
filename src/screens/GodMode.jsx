@@ -5,6 +5,7 @@ import { supabase } from '../supabase';
 import { hpct, n3, hcol, teamRecord } from '../utils/stats';
 import { sortByJersey, sortedCompleted } from '../utils/sort';
 import { levelsFor } from '../utils/schoolType';
+import { teamFormat, HIGH_SCHOOL, CLUB } from '../utils/teamFormat';
 import PlayerBadge from '../components/PlayerBadge';
 import { IconUsers, IconCalendar, IconChart, IconClipboard, IconArrowRight, IconArrowLeft, IconArchive, IconUndo } from '../components/Icons';
 import GodStatsModal from '../components/modals/GodStatsModal';
@@ -812,6 +813,7 @@ function TeamInfoSection({ team, data, addToast, busy, onArchive, onRestore }) {
   const [name, setName] = useState(team.name || '');
   const [gender, setGender] = useState(team.gender || 'Girls');
   const [schoolType, setSchoolType] = useState(team.school_type || 'high_school');
+  const [format, setFormat] = useState(teamFormat(team));
   const [level, setLevel] = useState(team.level || 'Varsity');
   const [season, setSeason] = useState(team.season || '');
   const [color, setColor] = useState(team.color || '#bc8cff');
@@ -822,6 +824,7 @@ function TeamInfoSection({ team, data, addToast, busy, onArchive, onRestore }) {
     setName(team.name || '');
     setGender(team.gender || 'Girls');
     setSchoolType(team.school_type || 'high_school');
+    setFormat(teamFormat(team));
     setLevel(team.level || 'Varsity');
     setSeason(team.season || '');
     setColor(team.color || '#bc8cff');
@@ -839,18 +842,38 @@ function TeamInfoSection({ team, data, addToast, busy, onArchive, onRestore }) {
   async function save() {
     if (!name.trim()) { addToast('Name is required'); return; }
     setSaving(true);
-    const r = await supabase.from('teams').update({
+    const payload = {
       name: name.trim(),
       gender,
       school_type: schoolType,
+      format,
       level,
       season: season || null,
       color,
       league_name: leagueName || null,
-    }).eq('id', team.id);
+    };
+    let err = (await supabase.from('teams').update(payload).eq('id', team.id)).error;
+
+    // This is ONE update, so a column whose migration hasn't been run yet would
+    // otherwise take the whole form down with it — a missing teams.format would
+    // block saving the name or the colour too. Drop the offending column and
+    // retry, then say which migration restores it.
+    let missing = null;
+    for (const col of ['format', 'school_type']) {
+      if (!err || !err.message?.includes(col)) continue;
+      missing = col;
+      const retry = { ...payload };
+      delete retry[col];
+      err = (await supabase.from('teams').update(retry).eq('id', team.id)).error;
+    }
+
     setSaving(false);
-    if (r.error) addToast('Failed: ' + r.error.message);
-    else addToast('Team info saved', 'success');
+    if (err) addToast('Failed: ' + err.message);
+    else if (missing === 'format') {
+      addToast('Saved, but the format was not — run scripts/team_format_migration.sql in Supabase.');
+    } else if (missing) {
+      addToast(`Saved, but ${missing} was not — that column is missing in Supabase.`);
+    } else addToast('Team info saved', 'success');
     await refresh();
   }
 
@@ -873,6 +896,15 @@ function TeamInfoSection({ team, data, addToast, busy, onArchive, onRestore }) {
             <option>Girls</option>
             <option>Boys</option>
             <option>Coed</option>
+          </select>
+        </Field>
+        {/* God Mode is the ONLY place format can change: it swaps the team's
+            dashboard panel (standings ⇄ next up), so it isn't a coach-level
+            setting. utils/teamFormat.js has the full contract. */}
+        <Field label="Team Format">
+          <select className="god-quickadd-input" value={format} onChange={e => setFormat(e.target.value)}>
+            <option value={HIGH_SCHOOL}>High School — league standings</option>
+            <option value={CLUB}>Club — tournaments &amp; next up</option>
           </select>
         </Field>
         <Field label="School Type">

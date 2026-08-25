@@ -164,6 +164,14 @@ export default function App() {
   // exempt — that is where the archiving just happened, and it keeps its own
   // separate team selection so an archived team can still be inspected there.
   const selectedTeamRow = selectedTeam ? teams.find(t => t.id === selectedTeam.id) : null;
+
+  // `selectedTeam` is the row as it looked when it was PICKED. Anything God Mode
+  // then edits on that team — its format, which decides the dashboard's
+  // top-left panel, but equally its name or colour — lands in `teams` on the
+  // next refresh() and not in this snapshot. Hand the dashboard the live row so
+  // a format switch actually swaps the panel; fall back to the snapshot while a
+  // fetch is in flight, or if the row is gone.
+  const liveTeam = selectedTeamRow || selectedTeam;
   if (selectedTeam && selectedTeamRow?.archived && screen !== SCREENS.GOD_MODE) {
     setSelectedTeam(null);
     if (currentUser?.id) {
@@ -452,7 +460,7 @@ export default function App() {
     case SCREENS.TEAM_LAUNCH:
       return (
         <TeamLaunch
-          team={selectedTeam}
+          team={liveTeam}
           canSwitchTeam={isAdmin || candidateTeams.length > 1}
           canOpenTeamDetails={isAdmin || currentUser?.role === 'coach'}
           onSwitchTeam={handleSwitchTeam}

@@ -5,11 +5,13 @@ import { teamRecord } from '../utils/stats';
 import { readEvents } from '../utils/teamEvents';
 import { IconChart, IconRotate, IconArrowRight, IconSwap } from '../components/Icons';
 import StandingsWidget from '../components/dashboard/StandingsWidget';
+import NextUpWidget from '../components/dashboard/NextUpWidget';
 import ScheduleWidget from '../components/dashboard/ScheduleWidget';
 import CalendarWidget from '../components/dashboard/CalendarWidget';
 import RosterPositionWidget from '../components/dashboard/RosterPositionWidget';
 import Fab from '../components/dashboard/Fab';
 import TournamentHost from '../components/TournamentHost';
+import { isClubFormat } from '../utils/teamFormat';
 
 export default function TeamLaunch({
   team,
@@ -46,6 +48,7 @@ export default function TeamLaunch({
   if (!team) return null;
 
   const isCoachOrAdmin = currentUser?.role === 'admin' || currentUser?.role === 'coach';
+  const isClub = isClubFormat(team);
   const teamStyle = { '--tc': color };
 
   return (
@@ -113,11 +116,26 @@ export default function TeamLaunch({
         </section>
 
         <section className="dash-grid">
-          <StandingsWidget
-            team={team}
-            leagueTeams={leagueTeams}
-            leagueResults={leagueResults}
-          />
+          {/* Top-left slot swaps on the team's format and nothing else does: a
+              club has no league table, so it gets "what's next" instead of
+              standings. isClubFormat() defaults to high school, so a team
+              without the format column keeps the standings panel it has today. */}
+          {isClub ? (
+            <NextUpWidget
+              team={team}
+              schedule={schedule}
+              completedGames={completedGames}
+              tournaments={tournaments}
+              onOpenTournament={setOpenTournament}
+              onOpenGame={isCoachOrAdmin ? onStartLive : undefined}
+            />
+          ) : (
+            <StandingsWidget
+              team={team}
+              leagueTeams={leagueTeams}
+              leagueResults={leagueResults}
+            />
+          )}
           <ScheduleWidget
             team={team}
             schedule={schedule}

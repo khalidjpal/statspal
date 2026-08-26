@@ -4,6 +4,7 @@ import { useData } from '../contexts/DataContext';
 import { teamRecord } from '../utils/stats';
 import { IconUsers, IconBolt, IconArrowRight, IconArrowLeft } from '../components/Icons';
 import ManageAccountsModal from '../components/modals/ManageAccountsModal';
+import FullscreenButton from '../components/FullscreenButton';
 
 function teamInitials(name) {
   if (!name) return '?';
@@ -56,6 +57,7 @@ export default function TeamPicker({
             Volleyball<span className="vp-home-brand-accent">Pal</span>
           </span>
         </div>
+        <FullscreenButton className="tp2-back tp2-back-icon" />
         {onBack && (
           <button className="tp2-back" onClick={onBack}>
             <IconArrowLeft size={13} /> Back

@@ -13153,3 +13153,154 @@ td.trn-railtable-player {
   cursor: pointer;
 }
 .dash-dayadd-cancel:hover { color: var(--text); background: rgba(255,255,255,0.04); }
+
+/* ── Fullscreen toggle ────────────────────────────────── */
+/* One control, hosted by several different headers. It inherits each header's
+   own button class (see FullscreenButton's `className` prop), so these rules
+   only trim each host down to a square, icon-sized button — they never restate
+   the host's colours or borders. */
+
+/* Icon-only in headers whose button class is built around an icon + label. */
+.vp-tl-topbar-btn-icon,
+.tp2-back-icon,
+.god-fs-btn {
+  padding: 6px;
+  min-width: 30px;
+  justify-content: center;
+  gap: 0;
+}
+/* god-back is align-self:flex-start inside a column; the toggle sits opposite
+   the title block instead, so it needs the row's own alignment. */
+.god-fs-btn {
+  align-self: center;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.hub-fs-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px;
+  min-width: 34px;
+}
+
+/* RotationPal's .ghost is a text button; square it off for the icon. The
+   module's own base rule is `.rotationpal-module button { padding: 10px 16px }`
+   — one class plus a type — so a bare .rp-fs-btn would lose to it. Scoping this
+   the same way puts two classes up against a class and a type, which wins. */
+.rotationpal-module .rp-fs-btn,
+.rp-fs-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 8px;
+  line-height: 0;
+}
+
+/* The live scoreboard pill held a glyph and sized itself with font-size; an SVG
+   needs the box centred instead. */
+.lv-sb-pill-fs {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 0;
+}
+
+/* Every host: the icon must not inherit a text baseline. */
+.vp-tl-topbar-btn-icon svg,
+.tp2-back-icon svg,
+.god-fs-btn svg,
+.hub-fs-btn svg,
+.rp-fs-btn svg,
+.lv-sb-pill-fs svg,
+.app-header-btn svg {
+  display: block;
+  flex-shrink: 0;
+}
+
+.fs-btn-label { font-size: 12px; font-weight: 600; }
+
+/* The app already fills the viewport, so fullscreen needs no layout change —
+   but make the guarantee explicit rather than incidental: the backdrop stays
+   the app's own, not the browser's default black, if any screen ever sizes
+   itself to less than the full viewport. */
+:fullscreen { background: var(--bg); }
+:fullscreen body { background: var(--bg); }
+
+/* ── Playground / Gameplan: hide the side panels ──────── */
+/* The subs, Front/Back and libero rail is unmounted and its grid track goes
+   with it, so the court's own minmax(0, 1fr) simply takes the freed width. No
+   JS resize path is involved: the ResizeObserver already watching .gpb-court
+   sees the new box and bubbleSizeFor scales every bubble from it.
+   Deliberately not transitioned — grid-template-columns cannot interpolate
+   across a change in track COUNT, and the roster toggle next to it has always
+   snapped too, so animating only this one would read as inconsistent. */
+
+/* Playground — three columns become two (roster | court). */
+.gpb-body.is-playground.panels-hidden {
+  grid-template-columns:
+    clamp(170px, 15vw, 232px)
+    minmax(0, 1fr);
+}
+/* Both rails away: nothing but court. Needs to out-specify
+   .gpb-body.is-playground.roster-collapsed, hence all four classes. */
+.gpb-body.is-playground.roster-collapsed.panels-hidden {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+/* Gameplan keeps its single aside, because the roster still lives in it — but
+   that aside no longer has to fit the sub / pair / libero stack, so it hands
+   some width back to the court. */
+.gpb-body.panels-hidden { grid-template-columns: 1fr 248px; }
+/* Roster hidden as well, so the aside is not rendered at all. */
+.gpb-body.roster-collapsed.panels-hidden { grid-template-columns: 1fr; }
+
+/* The toggle. It appears on both surfaces, wearing whichever button class that
+   surface uses — .gpb-toolbar-btn in the gameplan toolbar, .gpb-slim-btn in the
+   playground's slim bar — so this only handles the icon + label pairing. */
+.gpb-panels-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.gpb-panels-btn svg { display: block; flex-shrink: 0; }
+/* The slim bar sizes its buttons for a single glyph; the label needs room. */
+.gpb-slim-btn.gpb-panels-btn {
+  gap: 5px;
+  padding-inline: 8px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+/* Below ~1080px the slim bar is already tight, and the icon alone still reads
+   as "panels" next to its pressed state. */
+@media (max-width: 1080px) {
+  .gpb-panels-btn-label { display: none; }
+  .gpb-slim-btn.gpb-panels-btn { padding-inline: 6px; }
+}
+
+/* ── Narrow widths ──
+   These have to be restated here. The stacked layouts live in earlier media
+   queries at lower specificity (.gpb-body.is-playground is two classes, .gpb-body
+   is one), so the desktop rules above — three and four classes — would otherwise
+   win inside those breakpoints and re-impose columns on a phone. */
+@media (max-width: 1080px) {
+  .gpb-body.is-playground.panels-hidden,
+  .gpb-body.is-playground.roster-collapsed.panels-hidden {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  /* Stacked, the freed space is vertical rather than horizontal — so give the
+     court the height the rail was using. */
+  .gpb-body.is-playground.panels-hidden .gpb-court-wrap { min-height: 72vh; }
+}
+@media (max-width: 900px) {
+  .gpb-body.panels-hidden,
+  .gpb-body.roster-collapsed.panels-hidden {
+    grid-template-columns: 1fr;
+  }
+  /* One row of aside instead of two blocks' worth. */
+  .gpb-body.panels-hidden { grid-template-rows: 1fr 220px; }
+  .gpb-body.roster-collapsed.panels-hidden { grid-template-rows: 1fr; }
+}

@@ -8,7 +8,7 @@ import {
 } from '@dnd-kit/core';
 import { supabase } from '../../supabase';
 import { useToast } from '../../contexts/ToastContext';
-import { IconImport } from '../Icons';
+import { IconImport, IconPanelRight, IconPanelRightOff } from '../Icons';
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 //
@@ -1398,6 +1398,22 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
     try { localStorage.setItem('gpb-roster-collapsed', rosterCollapsed ? '1' : '0'); }
     catch { /* ignore */ }
   }, [rosterCollapsed]);
+
+  // The subs / Front-Back / libero rail hides the same way, independently of the
+  // roster, so the court can take the whole width for a big read-only-feeling
+  // board of bubbles. Purely a VIEW flag: it changes what is rendered and
+  // nothing else. Subs, pairs and the libero keep their state, the popups fire
+  // regardless (they are siblings of the body, not of this rail), and the court
+  // rescales its bubbles on its own — the ResizeObserver on the court element
+  // sees the grid reflow and bubbleSizeFor follows.
+  const [panelsHidden, setPanelsHidden] = useState(() => {
+    try { return localStorage.getItem('gpb-panels-hidden') === '1'; }
+    catch { return false; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem('gpb-panels-hidden', panelsHidden ? '1' : '0'); }
+    catch { /* ignore */ }
+  }, [panelsHidden]);
 
   // ── Preset state ──
   // presets: list pulled from formation_presets. presetError surfaces the
@@ -3325,6 +3341,22 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
 
             <div className="gpb-slim-spacer" />
 
+            {/* Hides the subs / Front-Back / libero rail so the court takes the
+                whole width. Lives in the bar, not the ⋯ menu, because it is a
+                view control you toggle constantly. */}
+            <button
+              type="button"
+              className={`gpb-slim-btn gpb-panels-btn${panelsHidden ? ' is-on' : ''}`}
+              onClick={() => setPanelsHidden(v => !v)}
+              aria-pressed={panelsHidden}
+              title={panelsHidden
+                ? 'Show the subs, Front/Back and libero panels'
+                : 'Hide the subs, Front/Back and libero panels for a full-width court'}
+            >
+              {panelsHidden ? <IconPanelRight size={13} /> : <IconPanelRightOff size={13} />}
+              <span className="gpb-panels-btn-label">{panelsHidden ? 'Show panels' : 'Hide panels'}</span>
+            </button>
+
             <div className="gpb-slim-more" ref={overflowRef}>
               <button
                 type="button"
@@ -3600,6 +3632,23 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
           >
             {rosterCollapsed ? '▶ Roster' : '◀ Hide'}
           </button>
+          {/* Sits next to the roster toggle because it is the same kind of
+              control — the pair of them decide how much width the court gets.
+              This one takes the subs / Front-Back / libero rail. */}
+          {!isScheme && (
+            <button
+              type="button"
+              className="gpb-toolbar-btn ghost gpb-panels-btn"
+              onClick={() => setPanelsHidden(v => !v)}
+              aria-pressed={panelsHidden}
+              title={panelsHidden
+                ? 'Show the subs, Front/Back and libero panels'
+                : 'Hide the subs, Front/Back and libero panels for a full-width court'}
+            >
+              {panelsHidden ? <IconPanelRight size={13} /> : <IconPanelRightOff size={13} />}
+              {panelsHidden ? 'Show panels' : 'Hide panels'}
+            </button>
+          )}
         </div>
         </>)}
 
@@ -3621,7 +3670,7 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
           onDragCancel={handleDragCancel}
           autoScroll={false}
         >
-          <div className={`gpb-body${isPlayground ? ' is-playground' : ''}${rosterCollapsed ? ' roster-collapsed' : ''}`}>
+          <div className={`gpb-body${isPlayground ? ' is-playground' : ''}${rosterCollapsed ? ' roster-collapsed' : ''}${panelsHidden ? ' panels-hidden' : ''}`}>
             {loading ? (
               <div className="gpb-loading">Loading plans…</div>
             ) : loadError ? (
@@ -3967,7 +4016,9 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
                       </aside>
                     )}
                     {courtColumn}
-                    <aside className="gpb-roster gpb-col-subs">{subChrome}</aside>
+                    {!panelsHidden && (
+                      <aside className="gpb-roster gpb-col-subs">{subChrome}</aside>
+                    )}
                   </>
                 );
               }
@@ -3979,7 +4030,7 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
                   {!rosterCollapsed && (
                     <aside className="gpb-roster">
                       {rosterHead}
-                      {subChrome}
+                      {!panelsHidden && subChrome}
                       {rosterHint}
                       {rosterList}
                     </aside>

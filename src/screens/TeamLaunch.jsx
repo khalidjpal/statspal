@@ -16,6 +16,7 @@ import CalendarWidget from '../components/dashboard/CalendarWidget';
 import RosterPositionWidget from '../components/dashboard/RosterPositionWidget';
 import Fab from '../components/dashboard/Fab';
 import TournamentHost from '../components/TournamentHost';
+import FullscreenButton from '../components/FullscreenButton';
 import { ConfirmDelete } from '../components/dashboard/EditModeKit';
 import DayAddChooser from '../components/dashboard/DayAddChooser';
 import AddPlayerModal from '../components/modals/AddPlayerModal';
@@ -280,6 +281,8 @@ export default function TeamLaunch({
             {editing ? 'Done' : 'Edit'}
           </button>
         )}
+
+        <FullscreenButton className="vp-tl-topbar-btn vp-tl-topbar-btn-icon" />
 
         <Fab
           team={team}

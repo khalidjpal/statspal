@@ -181,6 +181,52 @@ export function IconPlus({ size = 14, className }) {
   );
 }
 
+// A pane with its right rail in place — the side panels are showing.
+export function IconPanelRight({ size = 16, className }) {
+  return (
+    <svg {...base(size)} className={className} aria-hidden="true">
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <path d="M15 4v16" />
+    </svg>
+  );
+}
+
+// The same pane with the rail dropped — the side panels are hidden, and the
+// court has the whole width.
+export function IconPanelRightOff({ size = 16, className }) {
+  return (
+    <svg {...base(size)} className={className} aria-hidden="true">
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <path d="M15 4v3" opacity="0.45" />
+      <path d="M15 17v3" opacity="0.45" />
+    </svg>
+  );
+}
+
+// Four arrows pushing out to the corners — enter fullscreen.
+export function IconExpand({ size = 16, className }) {
+  return (
+    <svg {...base(size)} className={className} aria-hidden="true">
+      <path d="M9 3H3v6" />
+      <path d="M15 3h6v6" />
+      <path d="M15 21h6v-6" />
+      <path d="M9 21H3v-6" />
+    </svg>
+  );
+}
+
+// The same arrows pulled back in — exit fullscreen.
+export function IconCollapse({ size = 16, className }) {
+  return (
+    <svg {...base(size)} className={className} aria-hidden="true">
+      <path d="M3 9h6V3" />
+      <path d="M21 9h-6V3" />
+      <path d="M21 15h-6v6" />
+      <path d="M3 15h6v6" />
+    </svg>
+  );
+}
+
 // Tick — "this is finished", on the Done control that leaves edit mode.
 export function IconCheck({ size = 14, className }) {
   return (

@@ -7,6 +7,7 @@ import { useState } from 'react';
 import CreateTeamModal from '../components/modals/CreateTeamModal';
 import ManageAccountsModal from '../components/modals/ManageAccountsModal';
 import { IconHome, IconUsers, IconBolt } from '../components/Icons';
+import FullscreenButton from '../components/FullscreenButton';
 
 function formatNextGame(game) {
   if (!game) return null;
@@ -91,6 +92,7 @@ export default function Hub({ onSelectTeam, onGodMode, onHome }) {
           <h1 className="hub-logo">StatsPal</h1>
         </div>
         <div className="hub-user-info">
+          <FullscreenButton className="hub-logout-btn hub-fs-btn" />
           <span className="hub-user-name">{currentUser?.name}</span>
           <button className="hub-logout-btn" onClick={logout}>Logout</button>
         </div>

@@ -7,6 +7,7 @@ import { sortedUpcoming, sortedCompleted } from '../utils/sort';
 import PlayerBadge from '../components/PlayerBadge';
 import Modal from '../components/Modal';
 import PlayerGameDetail from './PlayerGameDetail';
+import FullscreenButton from '../components/FullscreenButton';
 
 const TABS = ['Season', 'Bests', 'Games', 'Efficiency', 'Schedule', 'Standings'];
 
@@ -122,6 +123,7 @@ export default function PlayerHome({ onSelectGame }) {
           <div className="player-header-team">{team.name}</div>
         </div>
         <div className="player-header-actions">
+          <FullscreenButton className="app-header-btn" />
           <button
             className="app-header-btn"
             onClick={() => { setInboxOpen(true); fetchInbox(); }}

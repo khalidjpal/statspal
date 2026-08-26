@@ -47,6 +47,7 @@ import {
   makeDefaultFormations, defaultFormationFor, ensureFormations,
 } from './gameplanFormations'
 import { SCHEME_TEMPLATES, makeTemplateDraft } from './schemeTemplates'
+import FullscreenButton from '../../components/FullscreenButton'
 
 const SLOTS = ['P1', 'P2', 'P3', 'P4', 'P5', 'P6']
 const SLOT_COORDS = {
@@ -576,6 +577,7 @@ function HeaderBar({ session, onHome, onLogout, modeBadge, title, subtitle, left
       </div>
       <div className="dashboard-actions">
         {rightActions}
+        <FullscreenButton className="ghost rp-fs-btn" />
         {onHome && (
           <button className="ghost rp-home-btn" onClick={onHome} title="VolleyballPal home">
             Home

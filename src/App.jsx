@@ -22,6 +22,7 @@ import Export from './screens/Export';
 import GodMode from './screens/GodMode';
 import PlayerHome from './screens/PlayerHome';
 import PlayerGameDetailPlayer from './screens/PlayerGameDetailPlayer';
+import { useFullscreen } from './hooks/useFullscreen';
 
 const SCREENS = {
   LOGIN: 'login',
@@ -46,6 +47,11 @@ const SCREENS = {
 const lastTeamKey = (userId) => `vp-last-team:${userId}`;
 
 export default function App() {
+  // Bound once for the whole app, so fullscreen has a keyboard route even on the
+  // screens that have no header to hang a button in. The hook ignores the key
+  // while a text field has focus.
+  useFullscreen({ shortcut: true });
+
   const { currentUser } = useAuth();
   const { teams, activeTeams, tournaments, refresh } = useData();
   const { addToast } = useToast();

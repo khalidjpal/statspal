@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { hpct, n3, hcol, passAvg, pfmt, pcol } from '../utils/stats';
 import { saveSession, abandonSession } from '../utils/liveSession';
 import { sortByJersey } from '../utils/sort';
+import FullscreenButton from '../components/FullscreenButton';
 
 const CATEGORIES = [
   { label: 'ATTACK', actions: [
@@ -138,16 +139,6 @@ export default function LiveGame({ team, gameInfo, onEndMatch, onAbandon, resume
   const [showAbandonConfirm, setShowAbandonConfirm] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [removeIdx, setRemoveIdx] = useState(null);
-  const [isFullscreen, setIsFullscreen] = useState(() => !!document.fullscreenElement);
-  useEffect(() => {
-    const onFs = () => setIsFullscreen(!!document.fullscreenElement);
-    document.addEventListener('fullscreenchange', onFs);
-    return () => document.removeEventListener('fullscreenchange', onFs);
-  }, []);
-  const toggleFullscreen = () => {
-    if (document.fullscreenElement) document.exitFullscreen?.();
-    else document.documentElement.requestFullscreen?.();
-  };
   const isDeuce = homeScore>=(currentSet===bestOf?14:24)&&awayScore>=(currentSet===bestOf?14:24)&&homeScore>0;
 
   const saveTimer=useRef(null);
@@ -303,7 +294,7 @@ export default function LiveGame({ team, gameInfo, onEndMatch, onAbandon, resume
               <button className={`lv-sb-tabtn ${view==='track'?'on':''}`} onClick={()=>setView('track')}>Live</button>
               <button className={`lv-sb-tabtn ${view==='stats'?'on':''}`} onClick={()=>setView('stats')}>Stats</button>
             </div>
-            <button className="lv-sb-pill lv-sb-pill-fs" onClick={toggleFullscreen} title={isFullscreen?'Exit fullscreen':'Enter fullscreen'} aria-label="Toggle fullscreen">{isFullscreen?'🗗':'🗖'}</button>
+            <FullscreenButton className="lv-sb-pill lv-sb-pill-fs" size={14} />
             <button className="lv-sb-pill lv-sb-pill-end" onClick={manualEndSet} disabled={homeScore===0&&awayScore===0}>End Set</button>
           </div>
           <div className="lv-sb-scores">

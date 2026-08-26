@@ -11,6 +11,7 @@ import PlayerDetail from './PlayerDetail';
 import GameSummary from './GameSummary';
 import PlayerGameDetail from './PlayerGameDetail';
 import InboxModal from '../components/modals/InboxModal';
+import FullscreenButton from '../components/FullscreenButton';
 
 const TABS = ['Schedule', 'Standings', 'Averages', 'Roster'];
 
@@ -70,6 +71,8 @@ export default function TeamDashboard({ team, onBack, onPreGame, onStartLive, on
         <span className="app-header-title">{team.name}</span>
 
         <div className="app-header-actions">
+          <FullscreenButton className="app-header-btn" />
+
           {/* Refresh */}
           <button
             className="app-header-btn"

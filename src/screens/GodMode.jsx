@@ -15,6 +15,7 @@ import ManualResultModal from '../components/modals/ManualResultModal';
 import EditLeagueResultModal from '../components/modals/EditLeagueResultModal';
 import DeleteTeamModal from '../components/modals/DeleteTeamModal';
 import { isArchived, setTeamArchived, deleteTeamPermanently, teamDataCounts } from '../utils/teamArchive';
+import FullscreenButton from '../components/FullscreenButton';
 
 const SPORT = 'Volleyball';
 
@@ -299,6 +300,7 @@ function GodHeader({ onBack, backLabel = 'Back', title, subtitle, accentColor })
           <h1 className="god-header-title">{title}</h1>
           {subtitle && <div className="god-header-sub">{subtitle}</div>}
         </div>
+        <FullscreenButton className="god-back god-fs-btn" />
       </div>
     </header>
   );

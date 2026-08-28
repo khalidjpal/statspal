@@ -13265,21 +13265,42 @@ td.trn-railtable-player {
   gap: 6px;
 }
 .gpb-panels-btn svg { display: block; flex-shrink: 0; }
-/* The slim bar sizes its buttons for a single glyph; the label needs room. */
+/* .gpb-slim-btn is a FIXED 28x28 square — it exists to hold the single "⋯"
+   glyph. A labelled button inheriting that keeps the 28px box while its icon and
+   text paint straight out of it, across the ⋯ and over the close button: the
+   elements never overlap (their boxes are still 8px apart), only the ink does,
+   which is why this looked like a collision but measured clean. Sizing to
+   content is the fix, so width has to be reset explicitly. */
 .gpb-slim-btn.gpb-panels-btn {
-  gap: 5px;
-  padding-inline: 8px;
+  width: auto;
+  min-width: 28px;
+  gap: 6px;
+  padding: 0 10px;
   font-size: 11px;
   font-weight: 700;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.03em;
   white-space: nowrap;
 }
-/* Below ~1080px the slim bar is already tight, and the icon alone still reads
-   as "panels" next to its pressed state. */
+/* Below ~1080px the slim bar is tight, so the button falls back to the square
+   icon-only form the rest of the bar uses. */
 @media (max-width: 1080px) {
   .gpb-panels-btn-label { display: none; }
-  .gpb-slim-btn.gpb-panels-btn { padding-inline: 6px; }
+  .gpb-slim-btn.gpb-panels-btn { width: 28px; padding: 0; gap: 0; }
 }
+
+/* The close button is a corner action, not the last item in the toolbar run —
+   a hairline gives it its own space. */
+.gpb-slim-sep-close {
+  flex: 0 0 auto;
+  width: 1px;
+  height: 18px;
+  background: rgba(255,255,255,0.12);
+  margin-inline: 2px;
+}
+
+/* The gameplan toolbar's buttons already size to their content, so that variant
+   only needs the icon and label paired. */
+.gpb-toolbar-btn.gpb-panels-btn { white-space: nowrap; }
 
 /* ── Narrow widths ──
    These have to be restated here. The stacked layouts live in earlier media

@@ -8,7 +8,7 @@ import {
 } from '@dnd-kit/core';
 import { supabase } from '../../supabase';
 import { useToast } from '../../contexts/ToastContext';
-import { IconImport, IconPanelRight, IconPanelRightOff } from '../Icons';
+import { IconImport, IconPanelRight } from '../Icons';
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 //
@@ -3353,7 +3353,7 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
                 ? 'Show the subs, Front/Back and libero panels'
                 : 'Hide the subs, Front/Back and libero panels for a full-width court'}
             >
-              {panelsHidden ? <IconPanelRight size={13} /> : <IconPanelRightOff size={13} />}
+              <IconPanelRight size={13} />
               <span className="gpb-panels-btn-label">{panelsHidden ? 'Show panels' : 'Hide panels'}</span>
             </button>
 
@@ -3430,6 +3430,8 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
                 </div>
               )}
             </div>
+
+            <span className="gpb-slim-sep gpb-slim-sep-close" aria-hidden="true" />
 
             <button
               type="button"
@@ -3645,7 +3647,7 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
                 ? 'Show the subs, Front/Back and libero panels'
                 : 'Hide the subs, Front/Back and libero panels for a full-width court'}
             >
-              {panelsHidden ? <IconPanelRight size={13} /> : <IconPanelRightOff size={13} />}
+              <IconPanelRight size={13} />
               {panelsHidden ? 'Show panels' : 'Hide panels'}
             </button>
           )}

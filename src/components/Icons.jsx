@@ -181,24 +181,18 @@ export function IconPlus({ size = 14, className }) {
   );
 }
 
-// A pane with its right rail in place — the side panels are showing.
+// A pane with a side rail — the side-panel toggle.
+//
+// The rail is FILLED on purpose. Drawn as a bare outlined rectangle with a
+// divider, at 13px this reads as an empty checkbox rather than a layout icon,
+// which is exactly how the first version of this control was misread. The solid
+// block gives it enough weight to say "panel". One icon serves both states: the
+// button's pressed styling and its label carry which way the toggle is set.
 export function IconPanelRight({ size = 16, className }) {
   return (
     <svg {...base(size)} className={className} aria-hidden="true">
       <rect x="3" y="4" width="18" height="16" rx="2" />
-      <path d="M15 4v16" />
-    </svg>
-  );
-}
-
-// The same pane with the rail dropped — the side panels are hidden, and the
-// court has the whole width.
-export function IconPanelRightOff({ size = 16, className }) {
-  return (
-    <svg {...base(size)} className={className} aria-hidden="true">
-      <rect x="3" y="4" width="18" height="16" rx="2" />
-      <path d="M15 4v3" opacity="0.45" />
-      <path d="M15 17v3" opacity="0.45" />
+      <path d="M15 5.2h4a1 1 0 0 1 1 1v11.6a1 1 0 0 1-1 1h-4z" fill="currentColor" stroke="none" />
     </svg>
   );
 }

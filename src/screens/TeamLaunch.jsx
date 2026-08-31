@@ -8,7 +8,7 @@ import { readEvents, removeEvent } from '../utils/teamEvents';
 import { deleteTournamentGame } from '../utils/tournaments';
 import { deletePlayerCompletely } from '../utils/playerCrud';
 import { isClubFormat } from '../utils/teamFormat';
-import { IconChart, IconRotate, IconArrowRight, IconSwap, IconPencil, IconCheck } from '../components/Icons';
+import { IconChart, IconRotate, IconClipboard, IconArrowRight, IconSwap, IconPencil, IconCheck } from '../components/Icons';
 import StandingsWidget from '../components/dashboard/StandingsWidget';
 import NextUpWidget from '../components/dashboard/NextUpWidget';
 import ScheduleWidget from '../components/dashboard/ScheduleWidget';
@@ -33,6 +33,7 @@ export default function TeamLaunch({
   onSwitchTeam,
   onLaunchStatsPal,
   onLaunchRotationPal,
+  onLaunchPracticePal,
   onOpenTeamDetails,
   onStartLive,
   onSelectGame,
@@ -327,6 +328,16 @@ export default function TeamLaunch({
             <span className="dash-module-body">
               <span className="dash-module-title">StatsPal</span>
               <span className="dash-module-sub">Live games &amp; stats</span>
+            </span>
+            <span className="dash-module-arrow"><IconArrowRight size={14} /></span>
+          </button>
+          {/* Third pillar. Practice reps live in their own tables — nothing
+              tracked here ever reaches the game stats StatsPal records. */}
+          <button className="dash-module dash-module-practice" onClick={onLaunchPracticePal}>
+            <span className="dash-module-icon"><IconClipboard size={24} /></span>
+            <span className="dash-module-body">
+              <span className="dash-module-title">PracticePal</span>
+              <span className="dash-module-sub">Drills &amp; practice reps</span>
             </span>
             <span className="dash-module-arrow"><IconArrowRight size={14} /></span>
           </button>

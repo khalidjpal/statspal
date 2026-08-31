@@ -289,3 +289,52 @@ export function IconImport({ size = 16, className }) {
     </svg>
   );
 }
+
+// ── PracticePal drill icons ────────────────────────────────────────────────
+// One per drill type, used on the dashboard's "Start a drill" buttons.
+
+// Serve-receive: the ball dropping into a passing platform.
+export function IconReceive({ size = 16, className }) {
+  return (
+    <svg {...base(size)} className={className} aria-hidden="true">
+      <path d="M12 3v8" />
+      <path d="m8.5 7.5 3.5 3.5 3.5-3.5" />
+      <path d="M4 15.5 12 20l8-4.5" />
+    </svg>
+  );
+}
+
+// Hitting: the ball driven down across the net.
+export function IconAttack({ size = 16, className }) {
+  return (
+    <svg {...base(size)} className={className} aria-hidden="true">
+      <circle cx="7" cy="6" r="2.5" />
+      <path d="m9.5 8.5 8 9" />
+      <path d="M18 13.5V18h-4.5" />
+    </svg>
+  );
+}
+
+// Serving: the ball leaving the hand on its arc.
+export function IconServe({ size = 16, className }) {
+  return (
+    <svg {...base(size)} className={className} aria-hidden="true">
+      <circle cx="6" cy="17.5" r="2.5" />
+      <path d="M8.5 15.5C11.5 7.5 15.5 4 21 4" />
+      <path d="M21 4v4.5" />
+      <path d="M21 4h-4.5" />
+    </svg>
+  );
+}
+
+// Custom drill: sliders — a drill the coach defines themselves.
+export function IconDrill({ size = 16, className }) {
+  return (
+    <svg {...base(size)} className={className} aria-hidden="true">
+      <path d="M4 7h16" />
+      <path d="M4 17h16" />
+      <circle cx="9" cy="7" r="2.2" />
+      <circle cx="15" cy="17" r="2.2" />
+    </svg>
+  );
+}

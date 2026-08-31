@@ -10,6 +10,7 @@ import Login from './screens/Login';
 import TeamPicker from './screens/TeamPicker';
 import TeamLaunch from './screens/TeamLaunch';
 import RotationPalScreen from './screens/RotationPal';
+import PracticePal from './screens/PracticePal';
 import Hub from './screens/Hub';
 import TeamDashboard from './screens/TeamDashboard';
 import PreGame from './screens/PreGame';
@@ -30,6 +31,7 @@ const SCREENS = {
   TEAM_PICKER: 'team_picker',
   TEAM_LAUNCH: 'team_launch',
   ROTATIONPAL: 'rotationpal',
+  PRACTICEPAL: 'practicepal',
   HUB: 'hub',
   TEAM_DASHBOARD: 'team_dashboard',
   PRE_GAME: 'pre_game',
@@ -103,6 +105,13 @@ export default function App() {
     setSelectedTeam(team);
     setActiveEntry({ mode: 'linked', teamId: team.id });
     nav(SCREENS.ROTATIONPAL);
+  }
+
+  // Third pillar. Like RotationPal it opens straight onto the team already
+  // selected — practice tracking is always for the team you're standing on.
+  function launchPracticePalForTeam(team) {
+    setSelectedTeam(team);
+    nav(SCREENS.PRACTICEPAL);
   }
 
   function launchTeamDetailsForTeam(team) {
@@ -472,6 +481,7 @@ export default function App() {
           onSwitchTeam={handleSwitchTeam}
           onLaunchStatsPal={() => launchStatsPalForTeam(selectedTeam)}
           onLaunchRotationPal={() => launchRotationPalForTeam(selectedTeam)}
+          onLaunchPracticePal={() => launchPracticePalForTeam(selectedTeam)}
           onOpenTeamDetails={() => launchTeamDetailsForTeam(selectedTeam)}
           onStartLive={handleStartLive}
           onSelectGame={handleSelectGame}
@@ -483,6 +493,14 @@ export default function App() {
         <RotationPalScreen
           entry={activeEntry}
           onHome={() => { setActiveEntry(null); nav(SCREENS.TEAM_LAUNCH); }}
+        />
+      );
+
+    case SCREENS.PRACTICEPAL:
+      return (
+        <PracticePal
+          team={liveTeam}
+          onHome={() => nav(SCREENS.TEAM_LAUNCH)}
         />
       );
 

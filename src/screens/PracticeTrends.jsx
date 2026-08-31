@@ -195,19 +195,39 @@ function PerfLegend({ drillType }) {
 // Both sides are computed by the SAME function on the SAME column names — that
 // is the whole point of the shared schema — so the two numbers are directly
 // comparable rather than merely adjacent.
-function CompareRow({ title, note, drillType, practice, game, practiceReps, gameReps, repsLabel }) {
-  const fmt = perfBands(drillType).fmt;
-  const delta = (practice != null && game != null) ? practice - game : null;
+// Three contexts, in ascending order of pressure: a focused DRILL, an
+// intrasquad SCRIMMAGE, a real GAME. Reading them left to right is the whole
+// point — a player who passes 2.4 in a drill, 2.0 in a scrimmage and 1.6 in a
+// match has a transfer problem, and that only shows up side by side.
+//
+// `contexts` is always three entries, present or not, so the columns stay in
+// the same place for every stat and every player.
+const CONTEXT_ORDER = [
+  { key: 'drill', tag: 'Drill', cls: 'pp-cmp-drill' },
+  { key: 'scrimmage', tag: 'Scrimmage', cls: 'pp-cmp-scrim' },
+  { key: 'game', tag: 'Game', cls: 'pp-cmp-game' },
+];
 
-  // Say WHICH side is missing rather than a generic blank — "no game data yet"
-  // tells the coach the comparison is waiting on a match, not that it's broken.
-  const missing = practice == null && game == null
-    ? 'no data yet'
-    : practice == null
-      ? 'no practice data yet'
-      : game == null
-        ? 'no game data yet'
-        : null;
+function CompareRow({ title, note, drillType, contexts, repsLabel }) {
+  const fmt = perfBands(drillType).fmt;
+  const by = Object.fromEntries(contexts.map(c => [c.key, c]));
+
+  // The gap that matters is drill-to-game: does the practice number survive a
+  // match? Scrimmage sits between them as the intermediate reading.
+  const drillV = by.drill?.value;
+  const gameV = by.game?.value;
+  const gap = (drillV != null && gameV != null) ? drillV - gameV : null;
+
+  const present = CONTEXT_ORDER.filter(c => by[c.key]?.value != null).map(c => c.tag);
+  const footNote = gap != null
+    ? (gap > 0
+      ? `Drills run ${fmt(gap).replace('+', '')} above games`
+      : gap < 0
+        ? `Games run ${fmt(-gap).replace('+', '')} above drills`
+        : 'Level between drills and games')
+    : present.length === 0
+      ? 'No data in any context yet'
+      : `Only ${present.join(' and ')} data so far`;
 
   return (
     <div className="pp-cmp-row">
@@ -215,39 +235,24 @@ function CompareRow({ title, note, drillType, practice, game, practiceReps, game
         <span className="pp-cmp-title-main">{title}</span>
         <span className="pp-cmp-title-note">{note}</span>
       </div>
-      <div className="pp-cmp-pair">
-        <div className="pp-cmp-side pp-cmp-practice">
-          <span className="pp-cmp-tag">Practice</span>
-          <span className="pp-cmp-val" style={{ color: perfShade(drillType, practice) }}>
-            {practice != null ? fmt(practice) : '—'}
-          </span>
-          <span className="pp-cmp-reps">{practiceReps} {repsLabel}</span>
-        </div>
-        <div className="pp-cmp-mid">
-          {delta != null ? (
-            <>
-              <span
-                className="pp-cmp-delta"
-                style={{ color: delta > 0 ? 'var(--win)' : delta < 0 ? 'var(--loss)' : 'var(--text-muted)' }}
-              >
-                {delta > 0 ? '+' : ''}{fmt(delta).replace('+', '')}
+      <div className="pp-cmp-trio">
+        {CONTEXT_ORDER.map(c => {
+          const ctx = by[c.key] || {};
+          const has = ctx.value != null;
+          return (
+            <div key={c.key} className={`pp-cmp-side ${c.cls}${has ? '' : ' pp-cmp-none'}`}>
+              <span className="pp-cmp-tag">{c.tag}</span>
+              <span className="pp-cmp-val" style={{ color: perfShade(drillType, ctx.value ?? null) }}>
+                {has ? fmt(ctx.value) : '—'}
               </span>
-              <span className="pp-cmp-delta-lbl">
-                {delta > 0 ? 'better in practice' : delta < 0 ? 'better in games' : 'level'}
+              <span className="pp-cmp-reps">
+                {has ? `${ctx.reps} ${repsLabel}` : 'no data yet'}
               </span>
-            </>
-          ) : (
-            <span className="pp-cmp-delta-lbl">{missing}</span>
-          )}
-        </div>
-        <div className="pp-cmp-side pp-cmp-game">
-          <span className="pp-cmp-tag">Game</span>
-          <span className="pp-cmp-val" style={{ color: perfShade(drillType, game) }}>
-            {game != null ? fmt(game) : '—'}
-          </span>
-          <span className="pp-cmp-reps">{gameReps} {repsLabel}</span>
-        </div>
+            </div>
+          );
+        })}
       </div>
+      <div className="pp-cmp-note">{footNote}</div>
     </div>
   );
 }
@@ -261,7 +266,9 @@ function CompareRow({ title, note, drillType, practice, game, practiceReps, game
 // Sums are taken over RAW COUNTERS before any rate is derived (sumPracticeRows
 // then drillHeadline), never by averaging per-session rates — so a player who
 // took 40 receives in one session and 4 in another is weighted correctly.
-const METRIC_ABBR = { serve_receive: 'Pass', hitting: 'Hit', serving: 'Srv', custom: 'Custom' };
+const METRIC_ABBR = {
+  serve_receive: 'Pass', hitting: 'Hit', serving: 'Srv', custom: 'Custom', scrimmage: 'Scrim',
+};
 
 function TeamStats({ roster, practiceStats, sessionById, onPick }) {
   const [sortDrill, setSortDrill] = useState(null);
@@ -324,8 +331,11 @@ function TeamStats({ roster, practiceStats, sessionById, onPick }) {
     <div className="pp-team">
       <div className="pp-team-cards">
         {teamMetrics.map(m => (
+          // Labelled by DRILL, not by metric: a scrimmage and the hitting
+          // drill both headline on hitting %, and two cards reading
+          // "Hitting %" would be indistinguishable.
           <div key={m.drill} className="pp-team-card">
-            <span className="pp-team-card-lbl">{m.label}</span>
+            <span className="pp-team-card-lbl">{drillOf(m.drill).short}</span>
             <span className="pp-team-card-val" style={{ color: perfShade(m.drill, m.value) }}>
               {m.display}
             </span>
@@ -469,6 +479,11 @@ export default function PracticeTrends({
     () => sumPracticeRows(myPractice.filter(x => x.session.drill_type === 'hitting').map(x => x.row)),
     [myPractice]
   );
+  // Scrimmage rows carry the full stat set, so one sum serves both comparisons.
+  const scrimmage = useMemo(
+    () => sumPracticeRows(myPractice.filter(x => x.session.drill_type === 'scrimmage').map(x => x.row)),
+    [myPractice]
+  );
   const gameTotals = useMemo(
     () => playerTotals((playerGameStats || []).filter(s => s.player_id === playerId)),
     [playerGameStats, playerId]
@@ -597,20 +612,21 @@ export default function PracticeTrends({
               explicitly rather than the whole block vanishing. */}
           <section className="pp-block">
             <div className="pp-block-head">
-              <h3>Practice vs Game</h3>
+              <h3>Drill vs Scrimmage vs Game</h3>
               <span className="pp-block-sub">
-                Practice from PracticePal, game from StatsPal — game data is read-only
+                Drill and scrimmage from PracticePal, game from StatsPal — game data is read-only
               </span>
             </div>
 
             <CompareRow
               title="Passing average"
-              note="0–3 scale, identical in both"
+              note="0–3 scale, identical in all three"
               drillType="serve_receive"
-              practice={passAvg(practicePassing)}
-              game={passAvg(gameTotals)}
-              practiceReps={practicePassing.receives || 0}
-              gameReps={gameTotals.receives || 0}
+              contexts={[
+                { key: 'drill', value: passAvg(practicePassing), reps: practicePassing.receives || 0 },
+                { key: 'scrimmage', value: passAvg(scrimmage), reps: scrimmage.receives || 0 },
+                { key: 'game', value: passAvg(gameTotals), reps: gameTotals.receives || 0 },
+              ]}
               repsLabel="receives"
             />
 
@@ -618,10 +634,11 @@ export default function PracticeTrends({
               title="Hitting %"
               note="(kills − errors) ÷ attempts"
               drillType="hitting"
-              practice={hpct(practiceHitting.kills, practiceHitting.errors, practiceHitting.attempts)}
-              game={hpct(gameTotals.kills, gameTotals.errors, gameTotals.attempts)}
-              practiceReps={practiceHitting.attempts || 0}
-              gameReps={gameTotals.attempts || 0}
+              contexts={[
+                { key: 'drill', value: hpct(practiceHitting.kills, practiceHitting.errors, practiceHitting.attempts), reps: practiceHitting.attempts || 0 },
+                { key: 'scrimmage', value: hpct(scrimmage.kills, scrimmage.errors, scrimmage.attempts), reps: scrimmage.attempts || 0 },
+                { key: 'game', value: hpct(gameTotals.kills, gameTotals.errors, gameTotals.attempts), reps: gameTotals.attempts || 0 },
+              ]}
               repsLabel="attempts"
             />
 

@@ -3,42 +3,9 @@ import { hpct, n3, hcol, passAvg, pfmt, pcol } from '../utils/stats';
 import { saveSession, abandonSession } from '../utils/liveSession';
 import { sortByJersey } from '../utils/sort';
 import FullscreenButton from '../components/FullscreenButton';
-
-const CATEGORIES = [
-  { label: 'ATTACK', actions: [
-    { key:'kill',         abbr:'K',   label:'Kill',    stat:'kills',              autoAtt:true, err:false },
-    { key:'attack_error', abbr:'E',   label:'Atk Err', stat:'errors',             autoAtt:true, err:true  },
-    { key:'attempt',      abbr:'Att', label:'Attempt', stat:'attempts',                          err:false },
-  ]},
-  { label: 'SERVE', actions: [
-    { key:'ace',          abbr:'SA',  label:'Ace',     stat:'aces',                              err:false },
-    { key:'serve_error',  abbr:'SE',  label:'Srv Err', stat:'serve_errors',                      err:true  },
-  ]},
-  // Every receive is graded: one press logs the receive AND its pass rating.
-  // `also` is the rating counter; `stat` stays receives so the R total is
-  // unchanged no matter which grade is pressed.
-  // The four grades render as one segmented RECEIVE control (ascending 1·2·3,
-  // then 0/aced) so they read as a single stat with four grades, not four tiles.
-  { label: 'DEFENSE', actions: [
-    { key:'dig',          abbr:'D',   label:'Dig',     stat:'digs',                              err:false },
-    { key:'receive_grp', group:'RECEIVE', actions: [
-      { key:'pass_1',     abbr:'1',   label:'Poor',    stat:'receives', also:'pass_1', tone:'r1', hist:'Pass 1 (Poor)',    err:false },
-      { key:'pass_2',     abbr:'2',   label:'Good',    stat:'receives', also:'pass_2', tone:'r2', hist:'Pass 2 (Good)',    err:false },
-      { key:'pass_3',     abbr:'3',   label:'Perfect', stat:'receives', also:'pass_3', tone:'r3', hist:'Pass 3 (Perfect)', err:false },
-      { key:'pass_0',     abbr:'0',   label:'Aced',    stat:'receives', also:'pass_0', tone:'r0', hist:'Pass 0 (Aced)',    err:false },
-    ]},
-    { key:'dig_error',    abbr:'DE',  label:'Dig Err', stat:'digging_errors',                    err:true  },
-  ]},
-  { label: 'BLOCKING', actions: [
-    { key:'block_solo',   abbr:'BS',  label:'Block',   stat:'blocks',                            err:false },
-    { key:'block_assist', abbr:'BA',  label:'Blk Ast', stat:'block_assists',                     err:false },
-    { key:'block_error',  abbr:'BE',  label:'Blk Err', stat:'blocking_errors',                   err:true  },
-  ]},
-  { label: 'BALL HANDLING', actions: [
-    { key:'assist',       abbr:'A',   label:'Assist',  stat:'assists',                           err:false },
-    { key:'bhe',          abbr:'BHE', label:'BH Err',  stat:'ball_handling_errors',              err:true  },
-  ]},
-];
+// The stat set and its button grid are shared with PracticePal's scrimmage
+// tracker, so the two cannot drift apart.
+import StatActionGrid from '../components/StatActionGrid';
 
 const EMPTY_SET_STATS = () => ({ kills:0, aces:0, digs:0, assists:0, blocks:0, errors:0, attempts:0, block_assists:0, serve_errors:0, blocking_errors:0, digging_errors:0, ball_handling_errors:0, receives:0, pass_3:0, pass_2:0, pass_1:0, pass_0:0 });
 
@@ -341,27 +308,12 @@ export default function LiveGame({ team, gameInfo, onEndMatch, onAbandon, resume
                   <span className="lv-sr-line"><FullStats s={selStats} /></span>
                 </div>
                 {/* Action buttons — category grid */}
-                <div className="lv-btns">
-                  {CATEGORIES.map(cat => (
-                    <div key={cat.label} className="lv-btns-cat">
-                      <div className="lv-btns-cat-label">{cat.label}</div>
-                      <div className="lv-btns-row">
-                        {cat.actions.map(a => a.group ? (
-                          <div key={a.key} className="lv-recgrp">
-                            <div className="lv-recgrp-lbl">{a.group}</div>
-                            <div className="lv-recgrp-btns">
-                              {a.actions.map(g => (
-                                <ActBtn key={g.key} a={g} err={g.err} fid={flashId} fk={flashKey} onClick={()=>recordAction(g)} count={selStats[g.also || g.stat]||0} />
-                              ))}
-                            </div>
-                          </div>
-                        ) : (
-                          <ActBtn key={a.key} a={a} err={a.err} fid={flashId} fk={flashKey} onClick={()=>recordAction(a)} count={selStats[a.also || a.stat]||0} />
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                <StatActionGrid
+                  stats={selStats}
+                  flashId={flashId}
+                  flashKey={flashKey}
+                  onAction={recordAction}
+                />
               </>
             ) : (
               <div className="lv-empty"><span className="lv-empty-arrow">←</span> Select a player</div>
@@ -488,23 +440,3 @@ export default function LiveGame({ team, gameInfo, onEndMatch, onAbandon, resume
   );
 }
 
-function ActBtn({ a, err, fid, fk, onClick, count = 0 }) {
-  const [fl,setFl]=useState(false); const pk=useRef(fk); const tm=useRef(null);
-  // The un-flash timer is held in a ref, not cleaned up on dep changes: pressing
-  // another button within 150ms used to cancel this one's reset and leave it lit.
-  useEffect(()=>{if(fk!==pk.current&&fid===a.key){setFl(true);if(tm.current)clearTimeout(tm.current);tm.current=setTimeout(()=>setFl(false),150);}pk.current=fk;},[fk,fid,a.key]);
-  useEffect(()=>()=>{if(tm.current)clearTimeout(tm.current);},[]);
-  const tone = a.tone || (err ? 'err' : 'ok');
-  const isRate = !!a.tone;                       // graded receive → violet/amber, never green/red
-  const flClass = fl
-    ? (isRate ? (tone === 'r0' ? 'lv-ab-fl-amber' : 'lv-ab-fl-pass') : (err ? 'lv-ab-fl-err' : 'lv-ab-fl-ok'))
-    : '';
-  const badgeClass = isRate ? (tone === 'r0' ? 'lv-ab-badge-amber' : 'lv-ab-badge-pass') : (err ? 'lv-ab-badge-err' : '');
-  return (
-    <button className={`lv-ab lv-ab-${tone} ${isRate?'lv-ab-rate':''} ${flClass}`} onClick={onClick}>
-      {count > 0 && <span className={`lv-ab-badge ${badgeClass}`}>{count}</span>}
-      <span className="lv-ab-a">{a.abbr}</span>
-      <span className="lv-ab-l">{a.label}</span>
-    </button>
-  );
-}

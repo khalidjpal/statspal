@@ -74,9 +74,31 @@ export const DRILLS = {
       { key: 'miss', abbr: 'MISS', label: 'Missed',  tone: 'err', hist: 'Missed', fields: { missed: 1 } },
     ],
   },
+  // A scrimmage is an intrasquad practice match: both sides are this team's
+  // own roster, every StatsPal stat is tracked, and a score is kept. It has no
+  // `actions` of its own because it uses StatsPal's full CATEGORIES button set
+  // (src/utils/statActions.js) rather than a short drill-specific list.
+  scrimmage: {
+    key: 'scrimmage',
+    label: 'Scrimmage',
+    short: 'Scrimmage',
+    blurb: 'Intrasquad match — full stat set, Team A vs Team B',
+    actions: [],
+  },
 };
 
-export const DRILL_ORDER = ['serve_receive', 'hitting', 'serving', 'custom'];
+export const DRILL_ORDER = ['serve_receive', 'hitting', 'serving', 'custom', 'scrimmage'];
+
+// The two sides of a scrimmage. Stored on practice_stats.side; null everywhere
+// else, because no other drill has sides.
+export const SIDES = [
+  { key: 'team_a', label: 'Team A' },
+  { key: 'team_b', label: 'Team B' },
+];
+
+export function sideLabel(side) {
+  return SIDES.find(s => s.key === side)?.label || '';
+}
 
 export function drillOf(type) {
   return DRILLS[type] || DRILLS.serve_receive;
@@ -92,11 +114,15 @@ export function sessionDrillLabel(session) {
 // ─── Row shape ─────────────────────────────────────────────────────────────
 // Every counter in practice_stats. Used to build empty rows, to strip anything
 // that isn't a stat before an insert, and to sum rows across sessions.
+// The last seven arrived with the scrimmage drill, which tracks StatsPal's
+// full stat set. They stay at 0 for the focused drills.
 export const PRACTICE_FIELDS = [
   'receives', 'pass_3', 'pass_2', 'pass_1', 'pass_0',
   'kills', 'errors', 'attempts',
   'aces', 'serve_errors', 'serves_in', 'serve_attempts',
   'made', 'missed',
+  'digs', 'assists', 'blocks', 'block_assists',
+  'blocking_errors', 'digging_errors', 'ball_handling_errors',
 ];
 
 export function emptyPracticeRow() {
@@ -216,6 +242,21 @@ export function drillHeadline(drillType, s) {
         domain: [0, 1],
       };
     }
+    // A scrimmage carries every stat, so its single headline is the one that
+    // best summarises a match — the same hitting % a game is judged on, on the
+    // same bands.
+    case 'scrimmage': {
+      const v = hpct(s.kills, s.errors, s.attempts);
+      return {
+        value: v,
+        display: s.attempts > 0 ? n3(v) : '—',
+        color: s.attempts > 0 ? hcol(s.kills, s.errors, s.attempts) : '#484f58',
+        label: 'Hitting %',
+        reps: s.attempts || 0,
+        repsLabel: 'attempts',
+        domain: [-0.3, 0.5],
+      };
+    }
     case 'serve_receive':
     default: {
       const v = passAvg(s);
@@ -246,6 +287,19 @@ export function drillBreakdown(drillType, s) {
       ];
     case 'custom':
       return [['Made', s.made || 0], ['Miss', s.missed || 0]];
+    // The box-score line for a scrimmage, in the order StatsPal's own stats
+    // table uses so the two read the same way.
+    case 'scrimmage':
+      return [
+        ['K', s.kills || 0],
+        ['E', s.errors || 0],
+        ['TA', s.attempts || 0],
+        ['A', s.assists || 0],
+        ['SA', s.aces || 0],
+        ['D', s.digs || 0],
+        ['BS', s.blocks || 0],
+        ['Rec', s.receives || 0],
+      ];
     case 'serve_receive':
     default:
       return [
@@ -294,7 +348,10 @@ export async function fetchPracticeStats(sessionIds) {
   return { data: data || [], error };
 }
 
-export async function createPracticeSession({ teamId, drillType, name, customLabel, sessionDate, createdBy }) {
+export async function createPracticeSession({
+  teamId, drillType, name, customLabel, sessionDate, createdBy, scoreA, scoreB, setScores,
+}) {
+  const isScrimmage = drillType === 'scrimmage';
   const payload = {
     team_id: teamId,
     drill_type: drillType,
@@ -302,6 +359,12 @@ export async function createPracticeSession({ teamId, drillType, name, customLab
     custom_label: drillType === 'custom' ? (customLabel?.trim() || 'Custom Drill') : null,
     session_date: sessionDate || new Date().toISOString().slice(0, 10),
     created_by: createdBy || null,
+    // Only a scrimmage has a score; every other drill leaves these null rather
+    // than storing a meaningless 0–0. With sets in play these hold SETS WON —
+    // the points for each set are in set_scores.
+    score_a: isScrimmage ? (scoreA ?? 0) : null,
+    score_b: isScrimmage ? (scoreB ?? 0) : null,
+    set_scores: isScrimmage ? (setScores || []) : [],
   };
   const { data, error } = await supabase
     .from(SESSIONS_TABLE)
@@ -318,23 +381,87 @@ export async function createPracticeSession({ teamId, drillType, name, customLab
 // creates — so saving the same session twice corrects the existing rows rather
 // than duplicating them. That matters because the live screen saves on demand
 // and a coach may well hit Save twice.
-export async function savePracticeStats(sessionId, statsByPlayer) {
-  const rows = Object.entries(statsByPlayer || {})
-    .map(([playerId, raw]) => ({
-      practice_session_id: sessionId,
-      player_id: playerId,
-      ...cleanPracticeRow(raw),
-    }))
-    .filter(hasPracticeStats);
+//
+// `opts.sides` maps playerId -> 'team_a' | 'team_b' for a scrimmage; it is the
+// only thing written outside the counter set, and cleanPracticeRow still
+// strips everything else.
+//
+// `opts.keepEmpty` saves a picked player even when they recorded nothing. A
+// scrimmage needs it: the two team sheets are reconstructed from these rows,
+// so a benched player who never touched the ball must still be on record as
+// having been on Team B. The focused drills leave it off, where an all-zero
+// row would be noise.
+export async function savePracticeStats(sessionId, statsByPlayer, opts = {}) {
+  const { sides = null, keepEmpty = false, setNumber = 1 } = opts;
+  return savePracticeSetStats(sessionId, { [setNumber]: statsByPlayer }, { sides, keepEmpty });
+}
+
+// The per-set save. `statsBySet` is { [setNumber]: { [playerId]: row } }, so a
+// whole multi-set scrimmage goes up in ONE round trip rather than one per set.
+export async function savePracticeSetStats(sessionId, statsBySet, opts = {}) {
+  const { sides = null, keepEmpty = false } = opts;
+
+  const rows = [];
+  for (const [setNo, byPlayer] of Object.entries(statsBySet || {})) {
+    for (const [playerId, raw] of Object.entries(byPlayer || {})) {
+      const row = {
+        practice_session_id: sessionId,
+        player_id: playerId,
+        set_number: Number(setNo) || 1,
+        ...cleanPracticeRow(raw),
+      };
+      if (sides && sides[playerId]) row.side = sides[playerId];
+      if (keepEmpty || hasPracticeStats(row)) rows.push(row);
+    }
+  }
 
   if (rows.length === 0) return { data: [], error: null, saved: 0 };
 
-  const { data, error } = await supabase
+  const res = await upsertPracticeRows(rows);
+  if (res.error) console.error('[practice] stats upsert failed:', res.error.message);
+  return { data: res.data || [], error: res.error, saved: rows.length };
+}
+
+// Upsert on the three-column key the sets migration creates.
+//
+// If that migration has not been run yet, PostgREST rejects the whole write
+// because there is no unique index matching the conflict target — which would
+// silently lose a session's stats. So on that specific failure we merge each
+// player's sets back into one row and retry on the old two-column key: the
+// save succeeds and only the per-set split is lost. Same shape of fallback
+// insertPlayerStats already uses for the graded-passing columns.
+async function upsertPracticeRows(rows) {
+  const res = await supabase
     .from(STATS_TABLE)
-    .upsert(rows, { onConflict: 'practice_session_id,player_id' })
+    .upsert(rows, { onConflict: 'practice_session_id,player_id,set_number' })
     .select();
-  if (error) console.error('[practice] stats upsert failed:', error.message);
-  return { data: data || [], error, saved: rows.length };
+  if (!res.error) return res;
+
+  const msg = `${res.error.message || ''} ${res.error.details || ''} ${res.error.hint || ''}`;
+  const looksLikeMissingKey = res.error.code === '42P10'
+    || msg.includes('set_number')
+    || /no unique|exclusion constraint|on conflict/i.test(msg);
+  if (!looksLikeMissingKey) return res;
+
+  console.warn('[practice] per-set key missing — merging sets and retrying on the old key. '
+    + 'Run scripts/practicepal_sets_migration.sql to keep set-by-set detail.');
+
+  const merged = {};
+  for (const r of rows) {
+    const cur = merged[r.player_id];
+    if (!cur) {
+      const copy = { ...r };
+      delete copy.set_number;
+      merged[r.player_id] = copy;
+      continue;
+    }
+    for (const f of PRACTICE_FIELDS) cur[f] = (cur[f] || 0) + (r[f] || 0);
+    if (r.side) cur.side = r.side;
+  }
+  return supabase
+    .from(STATS_TABLE)
+    .upsert(Object.values(merged), { onConflict: 'practice_session_id,player_id' })
+    .select();
 }
 
 // Deleting a session cascades to its stat rows via the FK.
@@ -381,6 +508,9 @@ export const PERF_BANDS = {
   serving:       { good: 0.90,  ok: 0.80,  floor: 0.55,   ceil: 1.0,   fmt: pctFmt, scale: 'share of serves in' },
   // A generic made/missed drill: two thirds is solid, half is borderline.
   custom:        { good: 0.70,  ok: 0.50,  floor: 0.20,   ceil: 1.0,   fmt: pctFmt, scale: 'made ÷ reps' },
+  // A scrimmage is judged on hitting %, so it shares hitting's bands exactly —
+  // a .250 in a scrimmage should read the same green as a .250 in a match.
+  scrimmage:     { good: 0.200, ok: 0.100, floor: -0.100, ceil: 0.400, fmt: n3,     scale: '(K − E) ÷ TA' },
 };
 
 export function perfBands(drillType) {
@@ -447,4 +577,23 @@ export function perfRampTicks(drillType) {
     { key: 'ok',   pct: clamp01((b.ok - b.floor) / span) * 100,   label: b.fmt(b.ok) },
     { key: 'good', pct: clamp01((b.good - b.floor) / span) * 100, label: b.fmt(b.good) },
   ];
+}
+
+// Sets won by each side, derived from the per-set point scores. A tied set
+// counts for neither — a scrimmage set can be stopped level.
+export function setsWon(setScores) {
+  let a = 0;
+  let b = 0;
+  for (const s of setScores || []) {
+    const pa = s?.a ?? 0;
+    const pb = s?.b ?? 0;
+    if (pa > pb) a++;
+    else if (pb > pa) b++;
+  }
+  return { a, b };
+}
+
+// "25–21 · 18–25" — the per-set line shown under a scrimmage's headline.
+export function setScoreLine(setScores) {
+  return (setScores || []).map(s => `${s?.a ?? 0}–${s?.b ?? 0}`).join(' · ');
 }

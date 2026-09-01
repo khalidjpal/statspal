@@ -5,7 +5,7 @@ import { hpct, passAvg, playerTotals } from '../utils/stats';
 import {
   DRILL_ORDER, drillOf, drillHeadline, drillBreakdown,
   sumPracticeRows, sessionDrillLabel,
-  perfShade, perfBands, perfRampStops, perfRampTicks,
+  perfShade, perfBands, perfRampStops, perfRampTicks, serveInPct,
 } from '../utils/practice';
 import { sortByJersey } from '../utils/sort';
 
@@ -202,57 +202,141 @@ function PerfLegend({ drillType }) {
 //
 // `contexts` is always three entries, present or not, so the columns stay in
 // the same place for every stat and every player.
+// ─── Drills vs Scrimmage vs Game ───────────────────────────────────────────
+// One grid, three context columns, grouped by skill so a stat reads straight
+// across: PASSING → [drills] [scrimmage] [game], then HITTING, then SERVING.
+//
+// The three contexts sit in ascending order of pressure. A player who passes
+// 2.4 in a drill, 2.0 in a scrimmage and 1.6 in a match has a transfer
+// problem, and that only shows up when the three line up on one row.
+//
+// Every value is computed by the SHARED helpers — passAvg(), hpct(),
+// serveInPct() — on the same column names in all three contexts, which is the
+// whole reason practice_stats reuses player_game_stats' names.
 const CONTEXT_ORDER = [
-  { key: 'drill', tag: 'Drill', cls: 'pp-cmp-drill' },
+  { key: 'drills', tag: 'Drills', cls: 'pp-cmp-drill' },
   { key: 'scrimmage', tag: 'Scrimmage', cls: 'pp-cmp-scrim' },
   { key: 'game', tag: 'Game', cls: 'pp-cmp-game' },
 ];
 
-function CompareRow({ title, note, drillType, contexts, repsLabel }) {
-  const fmt = perfBands(drillType).fmt;
-  const by = Object.fromEntries(contexts.map(c => [c.key, c]));
+// `band` names the perfBands entry used to shade a value; null means the value
+// is a raw count with no good/bad scale, so it stays uncoloured.
+//
+// `untracked` marks the case where a context CANNOT produce this stat rather
+// than merely having no reps yet — the difference between "nothing recorded"
+// and "this is not measurable here", which the coach deserves to be told.
+const COMPARE_SKILLS = [
+  {
+    key: 'passing',
+    label: 'Passing',
+    rows: [{
+      key: 'pass_avg',
+      label: 'Passing average',
+      note: '0–3 scale',
+      band: 'serve_receive',
+      value: s => passAvg(s),
+      reps: s => s.receives || 0,
+      repsLabel: 'receives',
+    }],
+  },
+  {
+    key: 'hitting',
+    label: 'Hitting',
+    rows: [{
+      key: 'hit_pct',
+      label: 'Hitting %',
+      note: '(kills − errors) ÷ attempts',
+      band: 'hitting',
+      value: s => hpct(s.kills, s.errors, s.attempts),
+      reps: s => s.attempts || 0,
+      repsLabel: 'attempts',
+    }],
+  },
+  {
+    key: 'serving',
+    label: 'Serving',
+    rows: [
+      {
+        key: 'serve_in',
+        label: 'Serve-in %',
+        note: 'serves in ÷ serves taken',
+        band: 'serving',
+        value: s => serveInPct(s),
+        reps: s => s.serve_attempts || 0,
+        repsLabel: 'serves',
+        // StatsPal's live tracker records aces and serve errors but never the
+        // TOTAL serves taken — and the scrimmage shares that button set, as
+        // does player_game_stats. So the denominator only exists in the
+        // serving drill. Saying "not tracked" is honest; showing 0% would be a
+        // lie, and a blank would look like the player never served.
+        untracked: s => (s.serve_attempts || 0) === 0
+          && ((s.aces || 0) > 0 || (s.serve_errors || 0) > 0),
+      },
+      {
+        key: 'aces',
+        label: 'Aces',
+        note: 'count, with serve errors',
+        band: null,
+        value: s => ((s.aces || 0) + (s.serve_errors || 0) > 0 ? (s.aces || 0) : null),
+        fmt: v => String(v),
+        reps: s => s.serve_errors || 0,
+        repsLabel: 'serve errors',
+      },
+    ],
+  },
+];
 
-  // The gap that matters is drill-to-game: does the practice number survive a
-  // match? Scrimmage sits between them as the intermediate reading.
-  const drillV = by.drill?.value;
-  const gameV = by.game?.value;
-  const gap = (drillV != null && gameV != null) ? drillV - gameV : null;
-
-  const present = CONTEXT_ORDER.filter(c => by[c.key]?.value != null).map(c => c.tag);
-  const footNote = gap != null
-    ? (gap > 0
-      ? `Drills run ${fmt(gap).replace('+', '')} above games`
-      : gap < 0
-        ? `Games run ${fmt(-gap).replace('+', '')} above drills`
-        : 'Level between drills and games')
-    : present.length === 0
-      ? 'No data in any context yet'
-      : `Only ${present.join(' and ')} data so far`;
+function CompareCell({ row, stats, ctxKey }) {
+  const value = stats ? row.value(stats) : null;
+  const isUntracked = !!(stats && row.untracked && row.untracked(stats));
+  const has = value != null;
+  const fmt = row.fmt || perfBands(row.band || 'serve_receive').fmt;
 
   return (
-    <div className="pp-cmp-row">
-      <div className="pp-cmp-title">
-        <span className="pp-cmp-title-main">{title}</span>
-        <span className="pp-cmp-title-note">{note}</span>
+    <div className={`pp-cmp-cell${has ? '' : ' pp-cmp-cell-none'}`} data-ctx={ctxKey}>
+      <span
+        className="pp-cmp-cell-val"
+        style={row.band && has ? { color: perfShade(row.band, value) } : undefined}
+      >
+        {has ? fmt(value) : '—'}
+      </span>
+      <span className="pp-cmp-cell-sub">
+        {has
+          ? `${row.reps(stats)} ${row.repsLabel}`
+          : isUntracked ? 'not tracked' : 'no data'}
+      </span>
+    </div>
+  );
+}
+
+function CompareGrid({ byContext }) {
+  return (
+    <div className="pp-cmp-grid">
+      {/* Column headers, stated once and repeated visually down every skill
+          block by keeping the grid columns identical. */}
+      <div className="pp-cmp-grid-head">
+        <span className="pp-cmp-corner" />
+        {CONTEXT_ORDER.map(c => (
+          <span key={c.key} className={`pp-cmp-ctx ${c.cls}`}>{c.tag}</span>
+        ))}
       </div>
-      <div className="pp-cmp-trio">
-        {CONTEXT_ORDER.map(c => {
-          const ctx = by[c.key] || {};
-          const has = ctx.value != null;
-          return (
-            <div key={c.key} className={`pp-cmp-side ${c.cls}${has ? '' : ' pp-cmp-none'}`}>
-              <span className="pp-cmp-tag">{c.tag}</span>
-              <span className="pp-cmp-val" style={{ color: perfShade(drillType, ctx.value ?? null) }}>
-                {has ? fmt(ctx.value) : '—'}
+
+      {COMPARE_SKILLS.map(skill => (
+        <div key={skill.key} className="pp-cmp-skill">
+          <div className="pp-cmp-skill-hd">{skill.label}</div>
+          {skill.rows.map(row => (
+            <div key={row.key} className="pp-cmp-metric">
+              <span className="pp-cmp-metric-lbl">
+                <span className="pp-cmp-metric-name">{row.label}</span>
+                <span className="pp-cmp-metric-note">{row.note}</span>
               </span>
-              <span className="pp-cmp-reps">
-                {has ? `${ctx.reps} ${repsLabel}` : 'no data yet'}
-              </span>
+              {CONTEXT_ORDER.map(c => (
+                <CompareCell key={c.key} row={row} stats={byContext[c.key]} ctxKey={c.key} />
+              ))}
             </div>
-          );
-        })}
-      </div>
-      <div className="pp-cmp-note">{footNote}</div>
+          ))}
+        </div>
+      ))}
     </div>
   );
 }
@@ -471,12 +555,12 @@ export default function PracticeTrends({
   // ── Practice vs Game ─────────────────────────────────────────────────────
   // Practice side: every serve-receive / hitting session summed.
   // Game side: the player's player_game_stats rows summed. READ ONLY.
-  const practicePassing = useMemo(
-    () => sumPracticeRows(myPractice.filter(x => x.session.drill_type === 'serve_receive').map(x => x.row)),
-    [myPractice]
-  );
-  const practiceHitting = useMemo(
-    () => sumPracticeRows(myPractice.filter(x => x.session.drill_type === 'hitting').map(x => x.row)),
+  // One sum across every NON-scrimmage drill row feeds all three skills at
+  // once. That is safe because each focused drill only ever fills its own
+  // counters — a serve-receive row has no attempts, a hitting row has no
+  // receives — so nothing overlaps and nothing is double counted.
+  const practiceDrills = useMemo(
+    () => sumPracticeRows(myPractice.filter(x => x.session.drill_type !== 'scrimmage').map(x => x.row)),
     [myPractice]
   );
   // Scrimmage rows carry the full stat set, so one sum serves both comparisons.
@@ -612,39 +696,26 @@ export default function PracticeTrends({
               explicitly rather than the whole block vanishing. */}
           <section className="pp-block">
             <div className="pp-block-head">
-              <h3>Drill vs Scrimmage vs Game</h3>
+              <h3>Drills vs Scrimmage vs Game</h3>
               <span className="pp-block-sub">
-                Drill and scrimmage from PracticePal, game from StatsPal — game data is read-only
+                Every value from the same shared helpers — game data is read-only
               </span>
             </div>
 
-            <CompareRow
-              title="Passing average"
-              note="0–3 scale, identical in all three"
-              drillType="serve_receive"
-              contexts={[
-                { key: 'drill', value: passAvg(practicePassing), reps: practicePassing.receives || 0 },
-                { key: 'scrimmage', value: passAvg(scrimmage), reps: scrimmage.receives || 0 },
-                { key: 'game', value: passAvg(gameTotals), reps: gameTotals.receives || 0 },
-              ]}
-              repsLabel="receives"
-            />
-
-            <CompareRow
-              title="Hitting %"
-              note="(kills − errors) ÷ attempts"
-              drillType="hitting"
-              contexts={[
-                { key: 'drill', value: hpct(practiceHitting.kills, practiceHitting.errors, practiceHitting.attempts), reps: practiceHitting.attempts || 0 },
-                { key: 'scrimmage', value: hpct(scrimmage.kills, scrimmage.errors, scrimmage.attempts), reps: scrimmage.attempts || 0 },
-                { key: 'game', value: hpct(gameTotals.kills, gameTotals.errors, gameTotals.attempts), reps: gameTotals.attempts || 0 },
-              ]}
-              repsLabel="attempts"
+            <CompareGrid
+              byContext={{
+                drills: practiceDrills,
+                scrimmage,
+                game: gameTotals,
+              }}
             />
 
             <p className="pp-cmp-foot">
               Practice reps are stored in their own tables and are never counted
-              towards a player&rsquo;s match statistics.
+              towards a player&rsquo;s match statistics. A serve-in&nbsp;% needs
+              the total serves taken, which only the serving drill records —
+              scrimmages and matches log aces and serve errors but not every
+              serve, so that row reads &ldquo;not tracked&rdquo; there.
             </p>
           </section>
         </>

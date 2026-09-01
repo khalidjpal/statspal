@@ -15064,3 +15064,1133 @@ td.trn-railtable-player {
   .lv-sb-row1 { flex-wrap: wrap; row-gap: 3px; }
   .pp-newset-btn { order: 9; }
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   PRACTICEPAL — Drills / Scrimmage / Game comparison grid
+   ───────────────────────────────────────────────────────────────────────────
+   One grid for all three skills, so the three context columns land on exactly
+   the same x-position in PASSING, HITTING and SERVING. That alignment is the
+   whole point: a stat has to be readable straight across, and each skill
+   having its own independent table would break the column rhythm.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.pp-cmp-grid { display: flex; flex-direction: column; gap: 2px; }
+
+/* Every row shares this template — the label rail plus three equal columns. */
+.pp-cmp-grid-head,
+.pp-cmp-metric {
+  display: grid;
+  grid-template-columns: minmax(96px, 1.15fr) repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  align-items: stretch;
+}
+
+.pp-cmp-grid-head {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--card);
+  padding-bottom: 7px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--border);
+}
+.pp-cmp-ctx {
+  text-align: center;
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  padding: 4px 2px;
+  border-radius: 6px;
+}
+.pp-cmp-grid-head .pp-cmp-drill { background: var(--pp-dim); color: var(--pp); }
+.pp-cmp-grid-head .pp-cmp-scrim { background: rgba(56, 189, 248, 0.12); color: #38bdf8; }
+.pp-cmp-grid-head .pp-cmp-game  { background: rgba(107, 179, 255, 0.12); color: #6bb3ff; }
+
+/* ── Skill blocks ──────────────────────────────────────────────────────── */
+.pp-cmp-skill { margin-top: 10px; }
+.pp-cmp-skill:first-of-type { margin-top: 2px; }
+.pp-cmp-skill-hd {
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--text-secondary);
+  padding: 6px 0 5px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  margin-bottom: 5px;
+}
+
+.pp-cmp-metric { padding: 3px 0; }
+.pp-cmp-metric-lbl {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 1px;
+  min-width: 0;
+  padding-right: 4px;
+}
+.pp-cmp-metric-name { font-size: 12px; font-weight: 700; line-height: 1.2; }
+.pp-cmp-metric-note { font-size: 9.5px; color: var(--text-muted); line-height: 1.25; }
+
+/* ── Cells ─────────────────────────────────────────────────────────────── */
+.pp-cmp-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  padding: 8px 4px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  min-width: 0;
+}
+.pp-cmp-cell[data-ctx="drills"]    { background: var(--pp-dim); border-color: rgba(74, 222, 128, 0.24); }
+.pp-cmp-cell[data-ctx="scrimmage"] { background: rgba(56, 189, 248, 0.09); border-color: rgba(56, 189, 248, 0.24); }
+.pp-cmp-cell[data-ctx="game"]      { background: rgba(107, 179, 255, 0.09); border-color: rgba(107, 179, 255, 0.24); }
+/* A context with nothing to show recedes but keeps its place, so the three
+   columns stay aligned across every skill. */
+.pp-cmp-cell-none {
+  background: rgba(255, 255, 255, 0.02) !important;
+  border-style: dashed;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+}
+.pp-cmp-cell-val {
+  font-family: var(--mono);
+  font-size: 17px;
+  font-weight: 800;
+  line-height: 1.1;
+  color: var(--text);
+}
+.pp-cmp-cell-none .pp-cmp-cell-val { color: var(--text-muted); }
+.pp-cmp-cell-sub {
+  font-size: 9px;
+  color: var(--text-muted);
+  text-align: center;
+  line-height: 1.2;
+}
+
+@media (max-width: 859px) {
+  .pp-cmp-grid-head,
+  .pp-cmp-metric { grid-template-columns: minmax(72px, 1fr) repeat(3, minmax(0, 1fr)); gap: 4px; }
+  .pp-cmp-cell { padding: 7px 2px; }
+  .pp-cmp-cell-val { font-size: 15px; }
+  .pp-cmp-metric-name { font-size: 11px; }
+  .pp-cmp-metric-note { display: none; }
+  .pp-cmp-ctx { font-size: 8.5px; letter-spacing: 0.05em; }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   DESIGN SYSTEM — tokens and components
+   ───────────────────────────────────────────────────────────────────────────
+   Documented in DESIGN.md at the repo root. Target: Linear's restraint and
+   density with Sleeper's sports-data presentation.
+
+   The `--ds-*` tokens are a NEW layer deliberately kept separate from the
+   legacy `--bg` / `--card` / `--accent` tokens above. Redefining those would
+   restyle every screen at once; this way the system is adopted one screen at a
+   time, and the dashboard is the first. When the last screen has moved over,
+   the legacy tokens can be deleted.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+:root {
+  /* ── Surfaces ── four levels, each a step lighter ── */
+  --ds-bg: #08090b;
+  --ds-surface: #0e1013;
+  --ds-surface-2: #15181c;
+  --ds-surface-3: #1c2026;
+
+  /* ── Borders ── depth comes from these, not from shadows ── */
+  --ds-border: rgba(255, 255, 255, 0.07);
+  --ds-border-strong: rgba(255, 255, 255, 0.13);
+  --ds-border-faint: rgba(255, 255, 255, 0.04);
+
+  /* ── Text ── hierarchy is carried by colour before size ── */
+  --ds-text: #f2f4f7;
+  --ds-text-secondary: #9ba3af;
+  --ds-text-muted: #6b7280;
+  --ds-text-faint: #4b5563;
+
+  /* ── Accent ── exactly one, used sparingly ── */
+  --ds-accent: #6366f1;
+  --ds-accent-hover: #7c81f5;
+  --ds-accent-subtle: rgba(99, 102, 241, 0.12);
+  --ds-accent-border: rgba(99, 102, 241, 0.34);
+  --ds-accent-ink: #0a0b14;          /* text on an accent fill */
+
+  /* ── Semantic ── meaning only, never decoration ── */
+  --ds-success: #3ecf8e;
+  --ds-success-subtle: rgba(62, 207, 142, 0.12);
+  --ds-warning: #f5a524;
+  --ds-warning-subtle: rgba(245, 165, 36, 0.12);
+  --ds-danger: #f0555c;
+  --ds-danger-subtle: rgba(240, 85, 92, 0.12);
+  --ds-info: #5b9df9;
+  --ds-info-subtle: rgba(91, 157, 249, 0.12);
+
+  /* ── Category colours ── labels, not accents ── */
+  --ds-cat-rotation: #c6a3ff;
+  --ds-cat-stats: #6bb3ff;
+  --ds-cat-practice: #4ade80;
+
+  /* ── Typography ── */
+  --ds-font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --ds-font-display: 'Space Grotesk', var(--ds-font);
+  --ds-font-mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+
+  --ds-fs-2xs: 10px;
+  --ds-fs-xs: 11px;
+  --ds-fs-sm: 12px;
+  --ds-fs-base: 13px;
+  --ds-fs-md: 14px;
+  --ds-fs-lg: 16px;
+  --ds-fs-xl: 20px;
+  --ds-fs-2xl: 26px;
+  --ds-fs-3xl: 34px;
+
+  /* ── Spacing ── every value a multiple of 4 ── */
+  --ds-space-1: 4px;
+  --ds-space-2: 8px;
+  --ds-space-3: 12px;
+  --ds-space-4: 16px;
+  --ds-space-5: 20px;
+  --ds-space-6: 24px;
+  --ds-space-7: 32px;
+  --ds-space-8: 40px;
+
+  /* ── Radius ── */
+  --ds-radius-sm: 6px;
+  --ds-radius-md: 8px;
+  --ds-radius-lg: 12px;
+  --ds-radius-xl: 16px;
+  --ds-radius-full: 999px;
+
+  /* ── Elevation ── a card at rest has border + hairline and NO shadow ── */
+  --ds-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.45);
+  --ds-shadow-md: 0 6px 20px rgba(0, 0, 0, 0.35);
+  --ds-shadow-lg: 0 16px 44px rgba(0, 0, 0, 0.5);
+  --ds-hairline: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+
+  --ds-transition: 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* ── Numbers ───────────────────────────────────────────────────────────────
+   Every statistic gets this. Tabular figures keep digits in a fixed column so
+   a value does not jitter sideways as it updates — the single most noticeable
+   difference between a polished stats UI and an amateur one. */
+.ds-num {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1, 'lnum' 1;
+}
+.ds-mono {
+  font-family: var(--ds-font-mono);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
+}
+
+/* The recurring uppercase micro-label: SESSIONS, PASSING, SETTERS. */
+.ds-label {
+  font-size: var(--ds-fs-2xs);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--ds-text-muted);
+}
+
+/* ── Card ─────────────────────────────────────────────────────────────── */
+.ds-card {
+  background: var(--ds-surface);
+  border: 1px solid var(--ds-border);
+  border-radius: var(--ds-radius-lg);
+  box-shadow: var(--ds-hairline);
+  overflow: hidden;
+}
+.ds-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ds-space-3);
+  padding: var(--ds-space-3) var(--ds-space-4);
+  border-bottom: 1px solid var(--ds-border);
+}
+.ds-card-title {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ds-space-2);
+  font-size: var(--ds-fs-2xs);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--ds-text-secondary);
+}
+.ds-card-meta { font-size: var(--ds-fs-xs); color: var(--ds-text-muted); }
+.ds-card-body { padding: var(--ds-space-4); }
+
+/* ── Buttons ──────────────────────────────────────────────────────────── */
+.ds-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--ds-space-2);
+  height: 32px;
+  padding: 0 var(--ds-space-3);
+  border-radius: var(--ds-radius-md);
+  border: 1px solid transparent;
+  font-family: var(--ds-font);
+  font-size: var(--ds-fs-sm);
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background var(--ds-transition), border-color var(--ds-transition),
+              color var(--ds-transition), filter var(--ds-transition);
+}
+.ds-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.ds-btn-sm { height: 26px; padding: 0 var(--ds-space-2); font-size: var(--ds-fs-xs); }
+.ds-btn-lg { height: 40px; padding: 0 var(--ds-space-4); font-size: var(--ds-fs-base); }
+
+.ds-btn-primary { background: var(--ds-accent); color: #fff; }
+.ds-btn-primary:hover:not(:disabled) { background: var(--ds-accent-hover); }
+
+.ds-btn-secondary {
+  background: var(--ds-surface-2);
+  border-color: var(--ds-border);
+  color: var(--ds-text);
+}
+.ds-btn-secondary:hover:not(:disabled) {
+  background: var(--ds-surface-3);
+  border-color: var(--ds-border-strong);
+}
+
+.ds-btn-ghost { background: transparent; color: var(--ds-text-secondary); }
+.ds-btn-ghost:hover:not(:disabled) {
+  background: var(--ds-surface-2);
+  color: var(--ds-text);
+  border-color: var(--ds-border);
+}
+
+.ds-btn-danger {
+  background: var(--ds-danger-subtle);
+  border-color: rgba(240, 85, 92, 0.28);
+  color: var(--ds-danger);
+}
+.ds-btn-danger:hover:not(:disabled) { background: rgba(240, 85, 92, 0.2); }
+
+/* Touch devices get a real tap target regardless of the visual height. */
+@media (pointer: coarse) {
+  .ds-btn { min-height: 44px; }
+  .ds-btn-sm { min-height: 38px; }
+}
+
+/* ── Input ────────────────────────────────────────────────────────────── */
+.ds-input {
+  width: 100%;
+  height: 34px;
+  padding: 0 var(--ds-space-3);
+  background: var(--ds-surface-2);
+  border: 1px solid var(--ds-border);
+  border-radius: var(--ds-radius-md);
+  color: var(--ds-text);
+  font-family: var(--ds-font);
+  font-size: var(--ds-fs-base);
+}
+.ds-input::placeholder { color: var(--ds-text-faint); }
+.ds-input:focus {
+  outline: none;
+  border-color: var(--ds-accent-border);
+  box-shadow: 0 0 0 3px var(--ds-accent-subtle);
+}
+
+/* ── Badge ────────────────────────────────────────────────────────────── */
+.ds-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ds-space-1);
+  padding: 2px var(--ds-space-2);
+  border-radius: var(--ds-radius-sm);
+  font-size: var(--ds-fs-2xs);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+}
+.ds-badge-neutral  { background: var(--ds-surface-3);      color: var(--ds-text-secondary); }
+.ds-badge-accent   { background: var(--ds-accent-subtle);  color: var(--ds-accent); }
+.ds-badge-success  { background: var(--ds-success-subtle); color: var(--ds-success); }
+.ds-badge-warning  { background: var(--ds-warning-subtle); color: var(--ds-warning); }
+.ds-badge-danger   { background: var(--ds-danger-subtle);  color: var(--ds-danger); }
+.ds-badge-rotation { background: rgba(198, 163, 255, 0.13); color: var(--ds-cat-rotation); }
+.ds-badge-stats    { background: rgba(107, 179, 255, 0.13); color: var(--ds-cat-stats); }
+.ds-badge-practice { background: rgba(74, 222, 128, 0.13);  color: var(--ds-cat-practice); }
+
+/* ── Tabs / segmented control ─────────────────────────────────────────── */
+.ds-tabs {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  background: var(--ds-surface-2);
+  border: 1px solid var(--ds-border);
+  border-radius: var(--ds-radius-md);
+}
+.ds-tab {
+  padding: 5px var(--ds-space-3);
+  border: none;
+  border-radius: var(--ds-radius-sm);
+  background: transparent;
+  color: var(--ds-text-muted);
+  font-family: var(--ds-font);
+  font-size: var(--ds-fs-xs);
+  font-weight: 600;
+  cursor: pointer;
+  transition: background var(--ds-transition), color var(--ds-transition);
+}
+.ds-tab:hover { color: var(--ds-text-secondary); }
+.ds-tab.is-active {
+  background: var(--ds-surface-3);
+  color: var(--ds-text);
+  box-shadow: var(--ds-shadow-sm);
+}
+
+/* ── List row ─────────────────────────────────────────────────────────── */
+/* Rows carry no border or radius of their own — the card supplies both. */
+.ds-row {
+  display: flex;
+  align-items: center;
+  gap: var(--ds-space-3);
+  padding: var(--ds-space-2) var(--ds-space-3);
+  border-bottom: 1px solid var(--ds-border-faint);
+  transition: background var(--ds-transition);
+}
+.ds-row:last-child { border-bottom: none; }
+.ds-row:hover { background: var(--ds-surface-2); }
+
+/* ── Stat card ────────────────────────────────────────────────────────── */
+.ds-stat {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ds-space-1);
+  min-width: 0;
+}
+.ds-stat-label {
+  font-size: var(--ds-fs-2xs);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--ds-text-muted);
+}
+.ds-stat-value {
+  font-size: var(--ds-fs-2xl);
+  font-weight: 800;
+  line-height: 1.1;
+  letter-spacing: -0.015em;
+  color: var(--ds-text);
+  font-variant-numeric: tabular-nums;
+}
+.ds-stat-sub { font-size: var(--ds-fs-xs); color: var(--ds-text-muted); }
+
+/* ── Player row (Sleeper-style) ───────────────────────────────────────── */
+/* Jersey and trailing stat are fixed-width columns, so a list of players
+   reads as a clean table without actually being one. */
+.ds-player {
+  display: flex;
+  align-items: center;
+  gap: var(--ds-space-3);
+  min-width: 0;
+}
+.ds-player-num {
+  flex: 0 0 26px;
+  text-align: right;
+  font-family: var(--ds-font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--ds-fs-xs);
+  color: var(--ds-text-muted);
+}
+.ds-player-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.ds-player-name {
+  font-size: var(--ds-fs-base);
+  font-weight: 700;
+  color: var(--ds-text);
+  letter-spacing: -0.005em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ds-player-meta {
+  font-size: var(--ds-fs-xs);
+  color: var(--ds-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ds-player-stat {
+  flex: 0 0 auto;
+  font-family: var(--ds-font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--ds-fs-base);
+  font-weight: 800;
+  color: var(--ds-text);
+  text-align: right;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   DESIGN SYSTEM — applied to the TEAM DASHBOARD (pilot screen)
+   ───────────────────────────────────────────────────────────────────────────
+   Everything here is scoped under `.dash-page`, so no other screen moves. The
+   markup is untouched: this re-skins the existing `.dash-*` classes onto the
+   tokens. When the rest of the app is migrated, these rules fold into the
+   components themselves and this block disappears.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.dash-page {
+  background: var(--ds-bg);
+  color: var(--ds-text);
+  font-family: var(--ds-font);
+  -webkit-font-smoothing: antialiased;
+}
+.dash-page button,
+.dash-page input,
+.dash-page select { font-family: var(--ds-font); }
+
+/* Every number on the dashboard gets tabular figures. Doing it at the screen
+   root is what stops a score or a record from shifting sideways as it
+   updates — the cheapest single win in the whole pass. */
+.dash-page { font-variant-numeric: tabular-nums; }
+
+/* ── Header ───────────────────────────────────────────────────────────── */
+.dash-page .dash-topbar {
+  background: var(--ds-surface);
+  border-bottom: 1px solid var(--ds-border);
+  padding: var(--ds-space-3) var(--ds-space-5);
+  gap: var(--ds-space-4);
+  box-shadow: none;
+}
+.dash-page .vp-home-brand-name {
+  font-family: var(--ds-font-display);
+  font-size: var(--ds-fs-md);
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  color: var(--ds-text);
+}
+.dash-page .vp-home-brand-accent { color: var(--ds-cat-practice); }
+
+.dash-page .dash-topbar-team { gap: var(--ds-space-2); }
+.dash-page .dash-topbar-team-name {
+  font-size: var(--ds-fs-md);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--ds-text);
+  background: transparent;
+  border: none;
+  padding: 0;
+}
+.dash-page .dash-topbar-team-name:hover:not(:disabled) { color: var(--ds-accent); }
+.dash-page .dash-topbar-team-sep { color: var(--ds-text-faint); }
+.dash-page .dash-topbar-team-rec {
+  font-family: var(--ds-font-mono);
+  font-size: var(--ds-fs-sm);
+  font-weight: 700;
+}
+.dash-page .dash-topbar-team-w { color: var(--ds-success) !important; }
+.dash-page .dash-topbar-team-l { color: var(--ds-text-muted); }
+.dash-page .dash-topbar-team-dash { color: var(--ds-text-faint); }
+
+/* Toolbar buttons all read as one family: quiet until hovered. */
+.dash-page .vp-tl-topbar-btn,
+.dash-page .dash-edit-toggle,
+.dash-page .vp-home-logout {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ds-space-2);
+  height: 30px;
+  padding: 0 var(--ds-space-3);
+  background: transparent;
+  border: 1px solid var(--ds-border);
+  border-radius: var(--ds-radius-md);
+  color: var(--ds-text-secondary);
+  font-size: var(--ds-fs-xs);
+  font-weight: 600;
+  transition: background var(--ds-transition), color var(--ds-transition),
+              border-color var(--ds-transition);
+}
+.dash-page .vp-tl-topbar-btn:hover,
+.dash-page .dash-edit-toggle:hover,
+.dash-page .vp-home-logout:hover {
+  background: var(--ds-surface-2);
+  border-color: var(--ds-border-strong);
+  color: var(--ds-text);
+}
+/* Edit mode is the one place the accent appears in the header, and only while
+   it is actually on. */
+.dash-page .dash-edit-toggle.is-active {
+  background: var(--ds-accent-subtle);
+  border-color: var(--ds-accent-border);
+  color: var(--ds-accent);
+}
+.dash-page .vp-home-username {
+  font-size: var(--ds-fs-xs);
+  font-weight: 600;
+  color: var(--ds-text-muted);
+}
+
+/* ── Main ─────────────────────────────────────────────────────────────── */
+.dash-page .dash-main {
+  padding: var(--ds-space-5);
+  gap: var(--ds-space-4);
+  max-width: 1560px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+/* ── Pillar entry cards ───────────────────────────────────────────────── */
+.dash-page .dash-modules { gap: var(--ds-space-3); }
+.dash-page .dash-module {
+  gap: var(--ds-space-3);
+  padding: var(--ds-space-3) var(--ds-space-4);
+  background: var(--ds-surface);
+  border: 1px solid var(--ds-border);
+  border-radius: var(--ds-radius-lg);
+  box-shadow: var(--ds-hairline);
+  transition: background var(--ds-transition), border-color var(--ds-transition);
+}
+.dash-page .dash-module:hover {
+  background: var(--ds-surface-2);
+  border-color: var(--ds-border-strong);
+  transform: none;             /* Linear does not bounce cards */
+  box-shadow: var(--ds-hairline);
+}
+.dash-page .dash-module::before { display: none; }   /* drop the gradient wash */
+.dash-page .dash-module-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: var(--ds-radius-md);
+  background: var(--ds-surface-2);
+  border: 1px solid var(--ds-border);
+}
+/* Category colour arrives as the icon only — a tag, not a fill. */
+.dash-page .dash-module-rotation .dash-module-icon { color: var(--ds-cat-rotation); }
+.dash-page .dash-module-stats    .dash-module-icon { color: var(--ds-cat-stats); }
+.dash-page .dash-module-practice .dash-module-icon { color: var(--ds-cat-practice); }
+.dash-page .dash-module-title {
+  font-size: var(--ds-fs-md);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--ds-text);
+}
+.dash-page .dash-module-sub {
+  font-size: var(--ds-fs-xs);
+  color: var(--ds-text-muted);
+}
+.dash-page .dash-module-arrow { color: var(--ds-text-faint); }
+.dash-page .dash-module:hover .dash-module-arrow {
+  color: var(--ds-text-secondary);
+  transform: translateX(2px);
+}
+
+/* ── Widgets become DS cards ──────────────────────────────────────────── */
+.dash-page .dash-grid { gap: var(--ds-space-4); }
+.dash-page .dash-widget {
+  background: var(--ds-surface);
+  border: 1px solid var(--ds-border);
+  border-radius: var(--ds-radius-lg);
+  box-shadow: var(--ds-hairline);
+}
+.dash-page .dash-widget-head {
+  padding: var(--ds-space-3) var(--ds-space-4);
+  border-bottom: 1px solid var(--ds-border);
+  background: transparent;
+}
+.dash-page .dash-widget-title {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ds-space-2);
+  font-size: var(--ds-fs-2xs);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--ds-text-secondary);
+}
+.dash-page .dash-widget-title svg { color: var(--ds-text-muted); }
+.dash-page .dash-widget-meta {
+  font-size: var(--ds-fs-xs);
+  color: var(--ds-text-muted);
+  font-weight: 500;
+}
+.dash-page .dash-widget-body { padding: var(--ds-space-3) var(--ds-space-4); }
+.dash-page .dash-widget-action {
+  height: 26px;
+  padding: 0 var(--ds-space-2);
+  background: var(--ds-surface-2);
+  border: 1px solid var(--ds-border);
+  border-radius: var(--ds-radius-sm);
+  color: var(--ds-text-secondary);
+  font-size: var(--ds-fs-xs);
+  font-weight: 600;
+}
+.dash-page .dash-widget-action:hover {
+  background: var(--ds-surface-3);
+  border-color: var(--ds-border-strong);
+  color: var(--ds-text);
+}
+
+/* Empty states: quiet, never alarming. */
+.dash-page .dash-empty { padding: var(--ds-space-6) var(--ds-space-4); }
+.dash-page .dash-empty-title {
+  font-size: var(--ds-fs-base);
+  font-weight: 600;
+  color: var(--ds-text-secondary);
+}
+.dash-page .dash-empty-sub {
+  font-size: var(--ds-fs-xs);
+  color: var(--ds-text-muted);
+  line-height: 1.55;
+}
+
+/* ── Standings ────────────────────────────────────────────────────────── */
+.dash-page .dash-stand-tbl { font-size: var(--ds-fs-sm); }
+.dash-page .dash-stand-tbl thead th {
+  font-size: var(--ds-fs-2xs);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--ds-text-muted);
+  border-bottom: 1px solid var(--ds-border);
+  padding: var(--ds-space-2) var(--ds-space-1);
+  background: transparent;
+}
+.dash-page .dash-stand-tbl tbody td {
+  padding: var(--ds-space-2) var(--ds-space-1);
+  border-bottom: 1px solid var(--ds-border-faint);
+  font-family: var(--ds-font-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--ds-text-secondary);
+}
+.dash-page .dash-stand-tbl tbody tr:last-child td { border-bottom: none; }
+.dash-page .dash-stand-tbl tbody td.dash-stand-team {
+  font-family: var(--ds-font);
+  font-size: var(--ds-fs-base);
+  font-weight: 600;
+  color: var(--ds-text);
+}
+.dash-page .dash-stand-w { color: var(--ds-success); font-weight: 700; }
+.dash-page .dash-stand-l { color: var(--ds-text-muted); }
+.dash-page .dash-stand-pct { color: var(--ds-text); font-weight: 700; }
+.dash-page .dash-stand-rank-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  border-radius: var(--ds-radius-sm);
+  background: var(--ds-surface-2);
+  color: var(--ds-text-muted);
+  font-family: var(--ds-font-mono);
+  font-size: var(--ds-fs-2xs);
+  font-weight: 700;
+}
+/* The team you coach is the one row that gets emphasis. */
+.dash-page .dash-stand-tbl tbody tr.dash-stand-us { background: var(--ds-surface-2); }
+.dash-page .dash-stand-tbl tbody tr.dash-stand-us .dash-stand-team { color: var(--ds-text); }
+.dash-page .dash-stand-tbl tbody tr.dash-stand-us .dash-stand-rank-pill {
+  background: var(--ds-accent-subtle);
+  color: var(--ds-accent);
+}
+
+/* ── Next up ──────────────────────────────────────────────────────────── */
+.dash-page .dash-nextup-body { gap: var(--ds-space-3); padding: var(--ds-space-1) 0; }
+.dash-page .dash-nextup-date {
+  background: var(--ds-surface-2);
+  border: 1px solid var(--ds-border);
+  border-radius: var(--ds-radius-md);
+  padding: var(--ds-space-2);
+}
+.dash-page .dash-nextup-month {
+  font-size: var(--ds-fs-2xs);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--ds-text-muted);
+}
+.dash-page .dash-nextup-day {
+  font-family: var(--ds-font-mono);
+  font-size: var(--ds-fs-xl);
+  font-weight: 800;
+  color: var(--ds-text);
+}
+.dash-page .dash-nextup-dow { font-size: var(--ds-fs-2xs); color: var(--ds-text-faint); }
+.dash-page .dash-nextup-name {
+  font-size: var(--ds-fs-md);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--ds-text);
+}
+.dash-page .dash-nextup-line { font-size: var(--ds-fs-xs); color: var(--ds-text-muted); }
+.dash-page .dash-nextup-kind {
+  display: inline-flex;
+  padding: 2px var(--ds-space-2);
+  border-radius: var(--ds-radius-sm);
+  background: var(--ds-surface-3);
+  color: var(--ds-text-secondary);
+  font-size: var(--ds-fs-2xs);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.dash-page .dash-nextup-arrow { color: var(--ds-text-faint); }
+
+/* ── Schedule ─────────────────────────────────────────────────────────── */
+.dash-page .dash-sched-section {
+  font-size: var(--ds-fs-2xs);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--ds-text-muted);
+  padding: var(--ds-space-3) 0 var(--ds-space-2);
+}
+.dash-page .dash-sched-date {
+  background: var(--ds-surface-2);
+  border: 1px solid var(--ds-border);
+  border-radius: var(--ds-radius-sm);
+}
+.dash-page .dash-sched-day {
+  font-family: var(--ds-font-mono);
+  font-weight: 800;
+  color: var(--ds-text);
+}
+.dash-page .dash-sched-month,
+.dash-page .dash-sched-dow { font-size: var(--ds-fs-2xs); color: var(--ds-text-muted); }
+.dash-page .dash-sched-opp {
+  font-size: var(--ds-fs-base);
+  font-weight: 700;
+  color: var(--ds-text);
+  letter-spacing: -0.005em;
+}
+.dash-page .dash-sched-loc { font-size: var(--ds-fs-xs); color: var(--ds-text-muted); }
+.dash-page .dash-sched-score {
+  font-family: var(--ds-font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--ds-fs-md);
+  font-weight: 800;
+}
+.dash-page .dash-sched-pill {
+  padding: 2px var(--ds-space-2);
+  border-radius: var(--ds-radius-sm);
+  background: var(--ds-surface-3);
+  color: var(--ds-text-secondary);
+  font-size: var(--ds-fs-2xs);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.dash-page .dash-sched-pill-today { background: var(--ds-accent-subtle); color: var(--ds-accent); }
+.dash-page .dash-sched-pill-next  { background: var(--ds-info-subtle);   color: var(--ds-info); }
+.dash-page .dash-sched-pill-muted { background: var(--ds-surface-2);     color: var(--ds-text-faint); }
+.dash-page .dash-sched-divider { border-color: var(--ds-border-faint); }
+
+/* ── Roster: Sleeper-style rows ───────────────────────────────────────── */
+.dash-page .dash-roster-toggle {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  margin: 0 var(--ds-space-4) var(--ds-space-1);
+  background: var(--ds-surface-2);
+  border: 1px solid var(--ds-border);
+  border-radius: var(--ds-radius-md);
+}
+.dash-page .dash-roster-toggle-btn {
+  padding: 5px var(--ds-space-3);
+  border: none;
+  border-radius: var(--ds-radius-sm);
+  background: transparent;
+  color: var(--ds-text-muted);
+  font-size: var(--ds-fs-xs);
+  font-weight: 600;
+  transition: background var(--ds-transition), color var(--ds-transition);
+}
+.dash-page .dash-roster-toggle-btn:hover { color: var(--ds-text-secondary); }
+.dash-page .dash-roster-toggle-btn.active {
+  background: var(--ds-surface-3);
+  color: var(--ds-text);
+  box-shadow: var(--ds-shadow-sm);
+}
+
+.dash-page .dash-roster-grp-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--ds-space-3) 0 var(--ds-space-2);
+}
+.dash-page .dash-roster-grp-label {
+  font-size: var(--ds-fs-2xs);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--ds-text-muted);
+}
+.dash-page .dash-roster-grp-count {
+  font-family: var(--ds-font-mono);
+  font-size: var(--ds-fs-2xs);
+  font-weight: 700;
+  color: var(--ds-text-faint);
+  background: var(--ds-surface-2);
+  border-radius: var(--ds-radius-sm);
+  padding: 1px var(--ds-space-2);
+}
+
+.dash-page .dash-roster-grp-item {
+  gap: var(--ds-space-3);
+  padding: var(--ds-space-2) var(--ds-space-2);
+  margin: 0 calc(var(--ds-space-2) * -1);
+  border-radius: var(--ds-radius-md);
+  border-bottom: 1px solid var(--ds-border-faint);
+  transition: background var(--ds-transition);
+}
+.dash-page .dash-roster-grp-list > .dash-roster-grp-item:last-child { border-bottom: none; }
+.dash-page .dash-roster-grp-item:hover { background: var(--ds-surface-2); }
+/* Fixed-width jersey column is what makes a list of names line up like a
+   table without being one — the Sleeper trick. */
+/* The jersey number is a chip in the TEAM's colour — the roster's one piece of
+   identity colour, and the thing that makes a squad list feel like this team's
+   squad rather than a generic table. `--tc` is set on .dash-main from the team
+   record, with a fallback there too.
+   Per DESIGN.md this is an identity colour, not the accent: it labels, and it
+   is confined to a small tinted chip rather than filling anything.
+   Fixed width keeps every name starting on the same x, which is what lets the
+   list read as a table without being one. */
+.dash-page .dash-roster-jersey {
+  flex: 0 0 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 22px;
+  border-radius: var(--ds-radius-sm);
+  border: 1px solid color-mix(in oklab, var(--tc) 32%, transparent);
+  background: color-mix(in oklab, var(--tc) 10%, transparent);
+  color: var(--tc);
+  font-family: var(--ds-font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--ds-fs-xs);
+  font-weight: 800;
+}
+/* Players in the "Unassigned" / "Primary Only" group stay deliberately quiet,
+   so the coloured chips read as the real roster. Restated here because the
+   original rule has the same specificity as the one above and would otherwise
+   lose on source order. */
+.dash-page .dash-roster-group-muted .dash-roster-jersey {
+  border-color: var(--ds-border);
+  background: transparent;
+  color: var(--ds-text-muted);
+}
+.dash-page .dash-roster-name {
+  font-size: var(--ds-fs-base);
+  font-weight: 700;
+  letter-spacing: -0.005em;
+  color: var(--ds-text);
+}
+.dash-page .dash-roster-role-text {
+  padding: 2px var(--ds-space-2);
+  border-radius: var(--ds-radius-sm);
+  background: var(--ds-surface-2);
+  color: var(--ds-text-muted);
+  font-size: var(--ds-fs-2xs);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+.dash-page .dash-roster-edit-btn {
+  height: 24px;
+  padding: 0 var(--ds-space-2);
+  background: transparent;
+  border: 1px solid var(--ds-border);
+  border-radius: var(--ds-radius-sm);
+  color: var(--ds-text-muted);
+  font-size: var(--ds-fs-2xs);
+  font-weight: 600;
+}
+.dash-page .dash-roster-edit-btn:hover {
+  background: var(--ds-surface-3);
+  color: var(--ds-text);
+  border-color: var(--ds-border-strong);
+}
+.dash-page .dash-roster-group-muted { opacity: 0.72; }
+
+/* ── Calendar ─────────────────────────────────────────────────────────── */
+.dash-page .dash-cal-dow {
+  font-size: var(--ds-fs-2xs);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--ds-text-faint);
+}
+.dash-page .dash-cal-cell-num {
+  font-family: var(--ds-font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--ds-fs-xs);
+  color: var(--ds-text-muted);
+}
+.dash-page .dash-cal-detail {
+  background: var(--ds-surface-2);
+  border: 1px solid var(--ds-border);
+  border-radius: var(--ds-radius-md);
+}
+.dash-page .dash-cal-detail-lbl {
+  font-size: var(--ds-fs-2xs);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--ds-text-muted);
+}
+.dash-page .dash-cal-detail-val { font-size: var(--ds-fs-sm); color: var(--ds-text); }
+.dash-page .dash-cal-bar-label { font-size: var(--ds-fs-2xs); font-weight: 600; }
+
+/* ── Edit mode ────────────────────────────────────────────────────────── */
+.dash-page .dash-edit-banner {
+  background: var(--ds-accent-subtle);
+  border: 1px solid var(--ds-accent-border);
+  border-radius: var(--ds-radius-md);
+  padding: var(--ds-space-2) var(--ds-space-3);
+  gap: var(--ds-space-3);
+}
+.dash-page .dash-edit-banner-label {
+  font-size: var(--ds-fs-2xs);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--ds-accent);
+}
+.dash-page .dash-edit-banner-dot { background: var(--ds-accent); }
+.dash-page .dash-edit-banner-hint { font-size: var(--ds-fs-xs); color: var(--ds-text-secondary); }
+.dash-page .dash-edit-banner-done {
+  height: 26px;
+  padding: 0 var(--ds-space-3);
+  background: var(--ds-accent);
+  border: none;
+  border-radius: var(--ds-radius-sm);
+  color: #fff;
+  font-size: var(--ds-fs-xs);
+  font-weight: 600;
+}
+
+/* ── Responsive ───────────────────────────────────────────────────────── */
+@media (max-width: 780px) {
+  .dash-page .dash-topbar { padding: var(--ds-space-3) var(--ds-space-4); gap: var(--ds-space-3); }
+  .dash-page .dash-main { padding: var(--ds-space-4); gap: var(--ds-space-3); }
+  .dash-page .dash-grid { gap: var(--ds-space-3); }
+  .dash-page .dash-widget-head { padding: var(--ds-space-3); }
+  .dash-page .dash-widget-body { padding: var(--ds-space-2) var(--ds-space-3); }
+  .dash-page .dash-roster-toggle { margin: 0 var(--ds-space-3) var(--ds-space-1); }
+  .dash-page .dash-module { padding: var(--ds-space-3); }
+}
+
+/* The "You" tag replacing the star that used to mark your own team in the
+   standings — a badge, per DESIGN.md, so the dashboard carries no glyph icons. */
+.dash-page .dash-stand-you {
+  display: inline-flex;
+  align-items: center;
+  margin-left: var(--ds-space-2);
+  padding: 1px var(--ds-space-2);
+  border-radius: var(--ds-radius-sm);
+  background: var(--ds-accent-subtle);
+  color: var(--ds-accent);
+  font-size: var(--ds-fs-2xs);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+/* Fab options now hold an SVG rather than a glyph. */
+.dash-page .dash-fab-option-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--opt-accent, var(--ds-text-secondary));
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   DASHBOARD — FULL-BLEED, FULL-HEIGHT LAYOUT
+   ───────────────────────────────────────────────────────────────────────────
+   The dashboard fills the whole viewport at every desktop size: no centred
+   column, no side gutters, no dead space at the bottom.
+
+   The machinery for full height was already here — at >=900px `.dash-page` is
+   `height: 100dvh; overflow: hidden`, `.dash-main` is the single scroll
+   container, and `.dash-grid` is `flex: 1`. What broke it was the
+   `max-width: 1560px; margin: 0 auto` this design-system pass first put on
+   `.dash-main`: on anything wider than 1560px that parked the whole dashboard
+   in a centred column with empty bands either side. Undone below.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.dash-page .dash-main {
+  max-width: none;
+  margin: 0;
+  width: 100%;
+  padding: var(--ds-space-4) var(--ds-space-5) var(--ds-space-5);
+}
+
+/* The page never scrolls sideways: every grid track is minmax(0, …) so a wide
+   child shrinks instead of pushing the layout out. */
+.dash-page { overflow-x: hidden; }
+
+/* ── Calendar as the centrepiece ───────────────────────────────────────────
+   Column placement is inherited from the >=1200 rule above and deliberately
+   NOT overridden: column 1 keeps the standings above the schedule, the
+   calendar owns column 2 spanning both rows, the roster owns column 3. Only
+   the column WIDTHS change here.
+
+   An earlier version of this block gave each of the four panels its own
+   column at >=1800. That filled the screen but broke the pairing — the
+   schedule stopped sitting under the standings, and the calendar became just
+   another equal column instead of the thing the dashboard is built around.
+
+   Emphasis here is size, not colour: per DESIGN.md the accent is reserved for
+   interaction, so the calendar earns its prominence by taking roughly half
+   the width and the full height rather than by being tinted. */
+@media (min-width: 1200px) {
+  .dash-page .dash-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.75fr) minmax(0, 1fr);
+  }
+  /* The calendar is now big enough to carry a slightly larger date, which
+     stops the cells reading as empty boxes at this size. */
+  .dash-page .dash-cal-cell-num { font-size: var(--ds-fs-sm); }
+  .dash-page .dash-cal-dow { font-size: var(--ds-fs-xs); }
+}
+
+/* Large monitors: give the calendar the extra width rather than spreading it
+   evenly across all three columns. At 1920 that is ~940px of calendar. */
+@media (min-width: 1800px) {
+  .dash-page .dash-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 2.1fr) minmax(0, 1fr);
+  }
+}
+
+/* ── Ultra-wide (>=2400px) ─────────────────────────────────────────────────
+   Four panels across 2400px+ would each be ~580px and start to feel sparse.
+   Cap the reading width of the content inside each card rather than the page,
+   so the layout stays edge-to-edge while the text stops sprawling. */
+@media (min-width: 2400px) {
+  .dash-page .dash-main { padding: var(--ds-space-5) var(--ds-space-6) var(--ds-space-6); }
+  .dash-page .dash-grid { gap: var(--ds-space-5); }
+}
+
+/* ── Short laptops (<=800px tall) ──────────────────────────────────────────
+   On a 1280x720 or 1366x768 panel the vertical budget is what runs out, not
+   the width. Tighten the fixed chrome so the grid keeps as much height as
+   possible; the grid itself already takes all the remainder. */
+@media (min-width: 900px) and (max-height: 800px) {
+  .dash-page .dash-topbar { padding: var(--ds-space-2) var(--ds-space-5); }
+  .dash-page .dash-main {
+    padding: var(--ds-space-3) var(--ds-space-4) var(--ds-space-4);
+    gap: var(--ds-space-3);
+  }
+  .dash-page .dash-module { padding: var(--ds-space-2) var(--ds-space-3); }
+  .dash-page .dash-module-icon { width: 30px; height: 30px; }
+  .dash-page .dash-widget-head { padding: var(--ds-space-2) var(--ds-space-3); }
+  .dash-page .dash-grid { gap: var(--ds-space-3); }
+}
+
+/* ── Mobile ────────────────────────────────────────────────────────────────
+   Below 900px the page scrolls normally and the widgets grow to their
+   content. The tall bottom padding clears the floating + button, which would
+   otherwise sit on top of the last row. */
+@media (max-width: 899px) {
+  .dash-page .dash-main {
+    padding: var(--ds-space-4) var(--ds-space-4) 96px;
+    gap: var(--ds-space-3);
+  }
+}

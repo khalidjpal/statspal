@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { computeStandings } from '../../utils/stats';
+import { IconTrophy } from '../Icons';
 
 function ordinal(n) {
   const s = ['th', 'st', 'nd', 'rd'];
@@ -41,7 +42,7 @@ export default function StandingsWidget({ team, leagueTeams, leagueResults }) {
   return (
     <div className="dash-widget dash-widget-standings">
       <header className="dash-widget-head">
-        <span className="dash-widget-title">🏆 Standings</span>
+        <span className="dash-widget-title"><IconTrophy size={13} /> Standings</span>
         <span className="dash-widget-meta">{ranked.length} teams</span>
       </header>
 
@@ -74,7 +75,7 @@ export default function StandingsWidget({ team, leagueTeams, leagueResults }) {
                     <td className="dash-stand-team">
                       <span className="dash-stand-dot" style={{ background: t.dot_color || '#58a6ff' }} />
                       <span className="dash-stand-name">
-                        {t.name}{t.is_us && <span className="dash-stand-star"> ★</span>}
+                        {t.name}{t.is_us && <span className="dash-stand-you">You</span>}
                       </span>
                     </td>
                     <td className="dash-stand-w">{t.wins}</td>

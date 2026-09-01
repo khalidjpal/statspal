@@ -338,3 +338,17 @@ export function IconDrill({ size = 16, className }) {
     </svg>
   );
 }
+
+// A ranked list / table — used for standings.
+export function IconList({ size = 16, className }) {
+  return (
+    <svg {...base(size)} className={className} aria-hidden="true">
+      <path d="M8 6h12" />
+      <path d="M8 12h12" />
+      <path d="M8 18h12" />
+      <path d="M4 6h.01" />
+      <path d="M4 12h.01" />
+      <path d="M4 18h.01" />
+    </svg>
+  );
+}

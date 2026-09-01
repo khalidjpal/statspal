@@ -1,4 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
+// Line icons, not emoji — see DESIGN.md.
+import {
+  IconPlay, IconTrophy, IconClipboard, IconCalendar, IconChart, IconList, IconUsers,
+} from '../Icons';
 import AddGameModal from '../modals/AddGameModal';
 import AddTournamentModal from '../modals/AddTournamentModal';
 import AddResultModal from '../modals/AddResultModal';
@@ -9,49 +13,49 @@ import PlayerManagementModal from '../modals/PlayerManagementModal';
 const OPTIONS = [
   {
     key: 'game',
-    icon: '🏐',
+    Icon: IconPlay,
     label: 'Add Game',
     desc: 'Schedule an upcoming match',
     accent: '#58a6ff',
   },
   {
     key: 'tournament',
-    icon: '🏆',
+    Icon: IconTrophy,
     label: 'Add Tournament',
     desc: 'Group a day of games under one event',
     accent: '#f0a500',
   },
   {
     key: 'practice',
-    icon: '📋',
+    Icon: IconClipboard,
     label: 'Add Practice',
     desc: 'Plan a practice session',
     accent: '#3fb950',
   },
   {
     key: 'event',
-    icon: '📅',
+    Icon: IconCalendar,
     label: 'Add Event',
     desc: 'Tournament, meeting or other',
     accent: '#f0a500',
   },
   {
     key: 'result',
-    icon: '📊',
+    Icon: IconChart,
     label: 'Add Result',
     desc: 'Enter the score of a past game',
     accent: '#bc8cff',
   },
   {
     key: 'standing',
-    icon: '🏆',
+    Icon: IconList,
     label: 'Add Standing',
     desc: 'Add a team to the standings',
     accent: '#ff8a65',
   },
   {
     key: 'roster',
-    icon: '👤',
+    Icon: IconUsers,
     label: 'Edit Roster / Players',
     desc: 'Manage your team roster',
     accent: '#22d3c5',
@@ -124,7 +128,7 @@ export default function Fab({ team, leagueTeams, onRefresh, onEventsChanged }) {
                 role="menuitem"
                 tabIndex={open ? 0 : -1}
               >
-                <span className="dash-fab-option-icon">{opt.icon}</span>
+                <span className="dash-fab-option-icon"><opt.Icon size={16} /></span>
                 <span className="dash-fab-option-body">
                   <span className="dash-fab-option-label">{opt.label}</span>
                   <span className="dash-fab-option-desc">{opt.desc}</span>

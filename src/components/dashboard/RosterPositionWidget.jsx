@@ -87,7 +87,7 @@ export default function RosterPositionWidget({
       const sorted = [...decorated].sort((a, b) =>
         (a.name || '').localeCompare(b.name || '')
       );
-      return [{ key: 'all', label: 'All players', short: '★', count: sorted.length, players: sorted }];
+      return [{ key: 'all', label: 'All players', short: 'ALL', count: sorted.length, players: sorted }];
     }
     if (view === 'jersey') {
       return [{ key: 'all', label: 'All players · by jersey', short: '#', count: decorated.length, players: sortByJersey(decorated) }];

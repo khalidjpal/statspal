@@ -446,11 +446,10 @@ function TeamStats({ roster, practiceStats, sessionById, onPick }) {
       <div className="pp-team-list">
         {ordered.map(p => {
           const metrics = perPlayer[p.id] || [];
-          // The sorted metric leads the row; the rest follow in drill order.
-          const sorted = [
-            ...metrics.filter(m => m.drill === activeSort),
-            ...metrics.filter(m => m.drill !== activeSort),
-          ];
+          // Only the sorted metric is shown; `others` is how many more drills
+          // this player has data in.
+          const lead = metrics.find(m => m.drill === activeSort) || null;
+          const others = metrics.filter(m => m.drill !== activeSort).length;
           return (
             <button
               key={p.id}
@@ -462,19 +461,25 @@ function TeamStats({ roster, practiceStats, sessionById, onPick }) {
                 {p.jersey_number != null && p.jersey_number !== '' ? p.jersey_number : '—'}
               </span>
               <span className="pp-team-row-name">{p.name}</span>
+              {/* ONE number per row: the metric the list is sorted by. The
+                  row used to carry every metric the player had, in shrinking
+                  type — four numbers to compare down a column when only one of
+                  them is the one being ranked. The rest are a tap away in the
+                  player's own view. */}
               <span className="pp-team-row-vals">
-                {sorted.length === 0 ? (
-                  <span className="pp-team-row-none">no reps</span>
-                ) : sorted.map((m, i) => (
+                {lead ? (
                   <span
-                    key={m.drill}
-                    className={`pp-team-val${i === 0 ? ' is-lead' : ''}`}
-                    style={{ color: perfShade(m.drill, m.value) }}
+                    className="pp-team-val is-lead"
+                    style={{ color: perfShade(lead.drill, lead.value) }}
                   >
-                    {m.display}
-                    <small>{METRIC_ABBR[m.drill]}</small>
+                    {lead.display}
                   </span>
-                ))}
+                ) : (
+                  <span className="pp-team-row-none">—</span>
+                )}
+                {/* A quiet count of the other drills they have data in, so the
+                    row still says "there is more here" without spelling it out. */}
+                {others > 0 && <span className="pp-team-row-more">+{others}</span>}
               </span>
             </button>
           );
@@ -582,21 +587,10 @@ export default function PracticeTrends({
   return (
     <div className="pp-trends">
       {/* Player selector */}
-      <div className="pp-picker">
-        {roster.map(p => (
-          <button
-            key={p.id}
-            type="button"
-            className={`pp-chip${p.id === playerId ? ' pp-chip-on' : ''}`}
-            onClick={() => onSelectPlayer(p.id === playerId ? null : p.id)}
-          >
-            {p.jersey_number != null && p.jersey_number !== '' && (
-              <span className="pp-chip-num">{p.jersey_number}</span>
-            )}
-            {p.name}
-          </button>
-        ))}
-      </div>
+      {/* The row of player chips that used to sit here has gone. It listed the
+          same names as the leaderboard directly below it, so it was a second
+          copy of the same control taking the top of the card — a player is
+          picked by clicking their row, and left by the header's back button. */}
 
       {!player ? (
         <TeamStats

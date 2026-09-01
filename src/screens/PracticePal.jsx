@@ -55,6 +55,17 @@ function today() {
   return new Date().toISOString().slice(0, 10);
 }
 
+// 'Aug 31, 2026' — shown once per day, so the chips beneath it can drop the
+// date entirely. Built from the parts rather than Date() so a YYYY-MM-DD string
+// is never shifted by the local timezone.
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+function fmtDateLong(d) {
+  if (!d) return 'Undated';
+  const [y, m, day] = String(d).split('-');
+  if (!y || !m || !day) return String(d);
+  return `${MONTHS[Number(m) - 1] || m} ${Number(day)}, ${y}`;
+}
+
 function fmtDate(d) {
   if (!d) return '';
   const [y, m, day] = String(d).split('-');
@@ -653,6 +664,19 @@ export default function PracticePal({ team, onHome }) {
     [sessions, sessionFilter]
   );
 
+  // Sessions grouped by day. `shownSessions` is already newest-first and a Map
+  // preserves insertion order, so the groups come out newest-first for free —
+  // no second sort, and no chance of the two orderings disagreeing.
+  const sessionsByDay = useMemo(() => {
+    const byDay = new Map();
+    for (const s of shownSessions) {
+      const key = s.session_date || '';
+      if (!byDay.has(key)) byDay.set(key, []);
+      byDay.get(key).push(s);
+    }
+    return [...byDay.entries()];
+  }, [shownSessions]);
+
   function openSetup(drillType) {
     setOpenSessionId(null);
     setSetupDrill(drillType);
@@ -800,37 +824,39 @@ export default function PracticePal({ team, onHome }) {
                 </p>
               </div>
             ) : (
-              <div className="pp-list">
-                {shownSessions.map(s => {
-                  const rows = rowsBySession[s.id] || [];
-                  const head = drillHeadline(s.drill_type, sumPracticeRows(rows));
-                  const hasLabel = !!s.name && s.name !== sessionDrillLabel(s);
-                  return (
-                    <button
-                      key={s.id}
-                      type="button"
-                      className={`pp-sess${s.id === openSessionId ? ' pp-sess-open' : ''}`}
-                      onClick={() => setOpenSessionId(s.id)}
-                    >
-                      <span className="pp-sess-top">
-                        <span className={`pp-sess-type pp-sess-type-${s.drill_type}`}>
-                          {sessionDrillLabel(s)}
-                        </span>
-                        <span className="pp-sess-date">{fmtDate(s.session_date)}</span>
-                      </span>
-                      {hasLabel && <span className="pp-sess-name">{s.name}</span>}
-                      <span className="pp-sess-foot">
-                        <span className="pp-sess-meta">
-                          {rows.length} player{rows.length !== 1 ? 's' : ''} · {head.reps} {head.repsLabel}
-                        </span>
-                        <span className="pp-sess-val" style={{ color: head.color }}>
-                          <b>{head.display}</b>
-                          <span>{head.label}</span>
-                        </span>
-                      </span>
-                    </button>
-                  );
-                })}
+              <div className="pp-days">
+                {sessionsByDay.map(([date, daySessions]) => (
+                  <div key={date} className="pp-day">
+                    <div className="pp-day-hd">
+                      <span className="pp-day-date">{fmtDateLong(date)}</span>
+                      <span className="pp-day-count">{daySessions.length}</span>
+                    </div>
+                    <div className="pp-day-chips">
+                      {daySessions.map(s => {
+                        const rows = rowsBySession[s.id] || [];
+                        const head = drillHeadline(s.drill_type, sumPracticeRows(rows));
+                        const label = sessionDrillLabel(s);
+                        const hasLabel = !!s.name && s.name !== label;
+                        return (
+                          <button
+                            key={s.id}
+                            type="button"
+                            className={`pp-schip pp-schip-${s.drill_type}${s.id === openSessionId ? ' pp-schip-open' : ''}`}
+                            onClick={() => setOpenSessionId(s.id)}
+                            title={hasLabel
+                              ? `${s.name} — ${rows.length} player${rows.length !== 1 ? 's' : ''}, ${head.reps} ${head.repsLabel}`
+                              : `${label} — ${rows.length} player${rows.length !== 1 ? 's' : ''}, ${head.reps} ${head.repsLabel}`}
+                          >
+                            <span className="pp-schip-name">{hasLabel ? s.name : label}</span>
+                            <span className="pp-schip-val" style={{ color: head.color }}>
+                              {head.display}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
             </div>

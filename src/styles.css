@@ -16194,3 +16194,147 @@ td.trn-railtable-player {
     gap: var(--ds-space-3);
   }
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   PRACTICEPAL — declutter pass
+   ───────────────────────────────────────────────────────────────────────────
+   Sessions grouped by day and pushed to the left edge; the middle card given
+   room to breathe. Follows DESIGN.md: one accent, tabular figures, the 4px
+   spacing scale, hierarchy from weight and colour rather than size.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Flush left ────────────────────────────────────────────────────────────
+   The sessions card sits hard against the left edge; the other two keep
+   ordinary breathing room. Asymmetric on purpose — the ask was for sessions
+   at the edge, not for the whole dashboard to shift. */
+@media (min-width: 860px) {
+  .pp-dash {
+    padding-left: var(--ds-space-2);
+    padding-right: var(--ds-space-5);
+  }
+  /* Compact now that a row is a chip rather than a three-line card. */
+  .pp-dash { grid-template-columns: minmax(232px, 268px) minmax(0, 1fr) minmax(240px, 288px); }
+}
+
+/* ── Sessions grouped by day ───────────────────────────────────────────── */
+.pp-days { display: flex; flex-direction: column; gap: var(--ds-space-4); }
+
+.pp-day-hd {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--ds-space-2);
+  padding-bottom: var(--ds-space-2);
+  margin-bottom: var(--ds-space-2);
+  border-bottom: 1px solid var(--ds-border);
+}
+/* The date is stated once per day and is the only heading in the column, so it
+   carries real weight rather than being another muted micro-label. */
+.pp-day-date {
+  font-size: var(--ds-fs-sm);
+  font-weight: 700;
+  letter-spacing: -0.005em;
+  color: var(--ds-text);
+}
+.pp-day-count {
+  font-family: var(--ds-font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--ds-fs-2xs);
+  font-weight: 700;
+  color: var(--ds-text-faint);
+}
+
+.pp-day-chips { display: flex; flex-direction: column; gap: var(--ds-space-1); }
+
+/* One chip per session. Drill type on the left, its headline number on the
+   right — no date, because the header above already said it. */
+.pp-schip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ds-space-2);
+  width: 100%;
+  padding: var(--ds-space-2) var(--ds-space-3);
+  border-radius: var(--ds-radius-md);
+  background: var(--ds-surface-2);
+  border: 1px solid transparent;
+  border-left: 2px solid var(--ds-border-strong);
+  color: var(--ds-text-secondary);
+  text-align: left;
+  transition: background var(--ds-transition), border-color var(--ds-transition),
+              color var(--ds-transition);
+}
+.pp-schip:hover { background: var(--ds-surface-3); color: var(--ds-text); }
+.pp-schip-name {
+  font-size: var(--ds-fs-sm);
+  font-weight: 600;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pp-schip-val {
+  font-family: var(--ds-font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--ds-fs-sm);
+  font-weight: 800;
+  flex-shrink: 0;
+}
+/* The drill type is carried by a 2px edge rather than a pill, which keeps the
+   chip to one line and the column quiet. */
+.pp-schip-serve_receive { border-left-color: #a78bfa; }
+.pp-schip-hitting       { border-left-color: var(--ds-success); }
+.pp-schip-serving       { border-left-color: var(--ds-info); }
+.pp-schip-custom        { border-left-color: var(--ds-warning); }
+.pp-schip-scrimmage     { border-left-color: #38bdf8; }
+/* The open session is the one accent in this column. */
+.pp-schip-open {
+  background: var(--ds-accent-subtle);
+  border-color: var(--ds-accent-border);
+  color: var(--ds-text);
+}
+
+/* ── Middle card: room to breathe ──────────────────────────────────────── */
+.pp-team { gap: var(--ds-space-5); }
+
+/* Summary cards: smaller and quieter, so the leaderboard is what the eye
+   lands on rather than four competing hero numbers. */
+.pp-team-cards { gap: var(--ds-space-2); grid-template-columns: repeat(auto-fit, minmax(104px, 1fr)); }
+.pp-team-card { padding: var(--ds-space-2) var(--ds-space-3); gap: 0; }
+.pp-team-card-val { font-size: var(--ds-fs-lg); letter-spacing: -0.01em; }
+.pp-team-card-sub { font-size: var(--ds-fs-2xs); }
+
+/* The metric control is a proper segmented control now. */
+.pp-team .pp-seg {
+  margin-bottom: 0;
+  background: var(--ds-surface-2);
+  border-color: var(--ds-border);
+  border-radius: var(--ds-radius-md);
+}
+.pp-team .pp-seg-btn { padding: 5px var(--ds-space-3); font-size: var(--ds-fs-xs); }
+.pp-team .pp-seg-btn.on {
+  background: var(--ds-surface-3);
+  color: var(--ds-text);
+  box-shadow: var(--ds-shadow-sm);
+}
+
+/* Leaderboard rows: one number each, more air between them. */
+.pp-team-row { padding: var(--ds-space-2) var(--ds-space-2); gap: var(--ds-space-3); }
+.pp-team-row-vals { gap: var(--ds-space-2); align-items: baseline; }
+.pp-team-row-vals .pp-team-val.is-lead {
+  font-size: var(--ds-fs-md);
+  font-weight: 800;
+  opacity: 1;
+}
+.pp-team-row-more {
+  font-family: var(--ds-font-mono);
+  font-size: var(--ds-fs-2xs);
+  font-weight: 700;
+  color: var(--ds-text-faint);
+}
+.pp-team-row-none { color: var(--ds-text-faint); font-style: normal; }
+
+@media (max-width: 859px) {
+  .pp-dash { padding-left: var(--ds-space-3); padding-right: var(--ds-space-3); }
+  .pp-days { gap: var(--ds-space-3); }
+}

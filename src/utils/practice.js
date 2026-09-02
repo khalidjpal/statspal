@@ -312,6 +312,114 @@ export function drillBreakdown(drillType, s) {
   }
 }
 
+// ─── Overall aggregates ────────────────────────────────────────────────────
+// The totals shown under a team trend graph. Counts come straight off the
+// summed counters and the rate is derived ONCE from those same counters, via
+// the same helpers the headline card and the chart use — so the aggregate can
+// never quietly disagree with the number above it.
+//
+// `lead` marks the derived rate: the one figure worth shading, since it is the
+// one with agreed bands. Ace % is deliberately not lead — it is a more-is-
+// better stat with no accepted good/bad line, and tinting it would imply a
+// judgement the numbers do not support.
+//
+// A scrimmage carries every counter, so the same summed row answers all three
+// metrics — which is what lets the scrimmage card switch between them without
+// re-reading anything.
+export const SCRIM_METRICS = ['serve_receive', 'hitting', 'serving'];
+
+export const METRIC_LABEL = {
+  serve_receive: 'Passing',
+  hitting: 'Hitting',
+  serving: 'Serving',
+};
+
+export function drillAggregate(metric, s) {
+  const c = k => String(s?.[k] || 0);
+  switch (metric) {
+    case 'hitting':
+    case 'scrimmage': {
+      const ta = s?.attempts || 0;
+      const v = ta > 0 ? hpct(s.kills, s.errors, ta) : null;
+      return [
+        { key: 'k', label: 'K', value: c('kills') },
+        { key: 'e', label: 'E', value: c('errors') },
+        { key: 'ta', label: 'Att', value: c('attempts') },
+        { key: 'hit', label: 'Hit', value: v == null ? '—' : n3(v), raw: v, lead: true },
+      ];
+    }
+    case 'serving': {
+      const v = serveInPct(s);
+      return [
+        { key: 'sa', label: 'Aces', value: c('aces') },
+        { key: 'se', label: 'Miss', value: c('serve_errors') },
+        { key: 'in', label: 'In', value: pctFmt(v), raw: v, lead: true },
+        { key: 'ace', label: 'Ace', value: pctFmt(acePct(s)) },
+      ];
+    }
+    case 'custom': {
+      const v = successPct(s);
+      return [
+        { key: 'made', label: 'Made', value: c('made') },
+        { key: 'missed', label: 'Miss', value: c('missed') },
+        { key: 'pct', label: 'Success', value: pctFmt(v), raw: v, lead: true },
+      ];
+    }
+    case 'serve_receive':
+    default: {
+      const v = passAvg(s);
+      return [
+        { key: 'p3', label: '3', value: c('pass_3') },
+        { key: 'p2', label: '2', value: c('pass_2') },
+        { key: 'p1', label: '1', value: c('pass_1') },
+        { key: 'p0', label: '0', value: c('pass_0') },
+        { key: 'avg', label: 'Avg', value: pfmt(v), raw: v, lead: true },
+      ];
+    }
+  }
+}
+
+
+// ─── Scrimmage, every aspect ───────────────────────────────────────────────
+// A scrimmage carries the whole StatsPal counter set, so it can be read from
+// six angles. The three that have a derived rate reuse drillAggregate() rather
+// than re-deriving anything — that is what keeps the scrimmage board's passing
+// average identical to the one on the trend card. The other three are pure
+// counts, which need no helper and no shading.
+export function scrimmageAspects(s) {
+  const c = k => String(s?.[k] || 0);
+  return [
+    { key: 'passing', label: 'Passing', metric: 'serve_receive', figures: drillAggregate('serve_receive', s) },
+    { key: 'hitting', label: 'Hitting', metric: 'hitting', figures: drillAggregate('hitting', s) },
+    { key: 'serving', label: 'Serving', metric: 'serving', figures: drillAggregate('serving', s) },
+    {
+      key: 'defense',
+      label: 'Defense',
+      figures: [
+        { key: 'd', label: 'Digs', value: c('digs') },
+        { key: 'de', label: 'Err', value: c('digging_errors') },
+      ],
+    },
+    {
+      key: 'blocking',
+      label: 'Blocking',
+      figures: [
+        { key: 'bs', label: 'Solo', value: c('blocks') },
+        { key: 'ba', label: 'Assist', value: c('block_assists') },
+        { key: 'be', label: 'Err', value: c('blocking_errors') },
+      ],
+    },
+    {
+      key: 'setting',
+      label: 'Ball handling',
+      figures: [
+        { key: 'a', label: 'Assists', value: c('assists') },
+        { key: 'bhe', label: 'Err', value: c('ball_handling_errors') },
+      ],
+    },
+  ];
+}
+
 // ─── Persistence ───────────────────────────────────────────────────────────
 // A missing table means the migration has not been run. Detect it precisely so
 // the UI can say so rather than showing a blank screen.

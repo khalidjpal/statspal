@@ -16338,3 +16338,396 @@ td.trn-railtable-player {
   .pp-dash { padding-left: var(--ds-space-3); padding-right: var(--ds-space-3); }
   .pp-days { gap: var(--ds-space-3); }
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   PRACTICEPAL — FULL-BLEED, FULL-HEIGHT
+   ───────────────────────────────────────────────────────────────────────────
+   Two things were leaving space: `.pp-dash` had `max-width: 1560px; margin: 0
+   auto`, which parks the whole screen in a centred column on anything wider;
+   and the grid was `align-items: start`, so the three panels sized to their
+   content and left a dead band underneath.
+
+   Fixed by locking the page to the viewport at desktop widths and letting each
+   panel scroll inside itself, the same shape the team dashboard uses.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.pp-dash,
+.pp-page .pp-main { max-width: none; margin: 0; width: 100%; }
+.pp-page { overflow-x: hidden; }
+
+@media (min-width: 860px) {
+  /* The page IS the viewport; nothing outside a panel scrolls. */
+  .pp-page { height: 100dvh; min-height: 0; overflow: hidden; }
+
+  .pp-dash {
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+    /* Panels stretch to the full row height instead of sizing to content —
+       this is what removes the empty band along the bottom. */
+    align-items: stretch;
+    grid-template-rows: auto minmax(0, 1fr);
+    padding: var(--ds-space-3) var(--ds-space-4) var(--ds-space-4) var(--ds-space-2);
+    gap: var(--ds-space-4);
+  }
+
+  /* Fluid shares rather than fixed side columns. The middle carries the tiles
+     and the leaderboard so it takes roughly half; the two side panels keep
+     sensible floors so they never collapse, and fr caps stop the sessions
+     column sprawling on a very wide monitor. */
+  .pp-dash {
+    grid-template-columns:
+      minmax(240px, 0.85fr)
+      minmax(0, 2.2fr)
+      minmax(230px, 0.95fr);
+  }
+
+  /* Each panel is its own scroll container. */
+  .pp-col { min-height: 0; }
+  .pp-col-body {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.14) transparent;
+  }
+  .pp-col-body::-webkit-scrollbar { width: 6px; }
+  .pp-col-body::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.12);
+    border-radius: 4px;
+  }
+  /* Superseded: the sessions body no longer needs its own height cap now that
+     every panel is bounded by the grid row. */
+  .pp-col-sessions .pp-col-body { max-height: none; }
+
+  /* The setup screen still scrolls as one page, but full width. */
+  .pp-page .pp-main {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: var(--ds-space-4) var(--ds-space-5) var(--ds-space-6);
+  }
+}
+
+/* Wide monitors: hand the extra width to the middle rather than spreading it,
+   so the leaderboard gets the room and the side panels stay readable. */
+@media (min-width: 1700px) {
+  .pp-dash {
+    grid-template-columns:
+      minmax(260px, 0.8fr)
+      minmax(0, 2.6fr)
+      minmax(250px, 0.9fr);
+    gap: var(--ds-space-5);
+    padding: var(--ds-space-4) var(--ds-space-5) var(--ds-space-5) var(--ds-space-3);
+  }
+}
+
+/* Below 860 the page scrolls normally and panels grow to their content. */
+@media (max-width: 859px) {
+  .pp-page { height: auto; min-height: 100dvh; overflow: visible; }
+  .pp-dash { align-items: start; overflow: visible; }
+  .pp-col-body { overflow: visible; max-height: none; }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   PRACTICEPAL — TEAM PROGRESSION GRAPHS
+   ───────────────────────────────────────────────────────────────────────────
+   Small multiples: one chart per drill, all on the same shading scale, so the
+   team's shape across drills is readable in one pass. Two columns where there
+   is room, one where there is not.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.pp-view-seg { align-self: flex-start; }
+
+.pp-tg-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: var(--ds-space-4);
+}
+
+.pp-tg {
+  display: flex;
+  flex-direction: column;
+  padding: var(--ds-space-3);
+  border-radius: var(--ds-radius-md);
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--ds-border-faint);
+  min-width: 0;
+}
+.pp-tg-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--ds-space-2);
+  margin-bottom: var(--ds-space-2);
+}
+.pp-tg-title {
+  font-size: var(--ds-fs-sm);
+  font-weight: 700;
+  letter-spacing: -0.005em;
+  color: var(--ds-text);
+}
+.pp-tg-meta {
+  font-size: var(--ds-fs-2xs);
+  color: var(--ds-text-muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.pp-tg-empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  padding: var(--ds-space-5) var(--ds-space-2);
+  font-size: var(--ds-fs-xs);
+  color: var(--ds-text-muted);
+  line-height: 1.5;
+}
+
+/* The charts are half-width here, so the axis type needs to come back up a
+   step or it disappears once the SVG scales down. */
+.pp-tg .pp-chart { margin-bottom: var(--ds-space-2); }
+.pp-tg .pp-ch-ylab,
+.pp-tg .pp-tg .pp-ch-xlab { font-size: 13px; }
+.pp-tg .pp-ch-xlab { font-size: 13px; }
+.pp-tg .pp-ch-val { font-size: 13.5px; }
+
+/* ── Aggregate totals under each graph ──────────────────────────────────────
+   Replaces the old threshold ramp. A <dl> of label/value pairs: the label sits
+   above the figure so a long one ("Success") cannot squeeze the number, and
+   every value is tabular so the columns line up across the four cards even
+   though the counts differ in width.
+
+   The line wraps rather than scrolls — five pairs at ~44px still fit a 300px
+   card, and on a narrow phone they fold to two rows instead of clipping. */
+.pp-agg {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--ds-space-1) var(--ds-space-3);
+  margin: 0;
+  padding: var(--ds-space-2) 0 0;
+  border-top: 1px solid var(--ds-border-faint);
+}
+.pp-agg-fig {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+.pp-agg-lbl {
+  font-size: var(--ds-fs-2xs);
+  line-height: 1.2;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ds-text-faint);
+  white-space: nowrap;
+}
+.pp-agg-val {
+  margin: 0;
+  font-family: var(--ds-font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--ds-fs-base);
+  line-height: 1.15;
+  font-weight: 600;
+  color: var(--ds-text-secondary);
+  white-space: nowrap;
+}
+/* The derived rate is the point of the line; it gets the size, the weight and
+   the only colour. It also gets pushed to the end with an auto margin so the
+   counts read left-to-right and the rate always lands on the right edge, in
+   the same place on every card. */
+.pp-agg-fig.is-lead {
+  margin-left: auto;
+  padding-left: var(--ds-space-2);
+  text-align: right;
+}
+.pp-agg-fig.is-lead .pp-agg-lbl { color: var(--ds-text-muted); }
+.pp-agg-fig.is-lead .pp-agg-val {
+  font-size: var(--ds-fs-lg);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+/* Scrimmage stat toggle: smaller than the view switcher above it, so the card
+   reads as a control INSIDE a panel rather than a second top-level tab bar. */
+.pp-seg-mini {
+  padding: 2px;
+  gap: 2px;
+  border-radius: var(--ds-radius-sm);
+}
+.pp-seg-mini .pp-seg-btn {
+  padding: 3px 9px;
+  font-size: var(--ds-fs-2xs);
+  letter-spacing: 0.02em;
+  border-radius: 4px;
+}
+.pp-scrim-seg {
+  align-self: flex-start;
+  margin-bottom: var(--ds-space-2);
+}
+
+/* Shown in place of a chart when a metric has no plottable RATE — distinct
+   from having no sessions, which keeps its own empty state. */
+.pp-tg-note {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  padding: var(--ds-space-4) var(--ds-space-2);
+  font-size: var(--ds-fs-xs);
+  line-height: 1.5;
+  color: var(--ds-text-muted);
+}
+
+@media (max-width: 520px) {
+  .pp-agg { gap: var(--ds-space-1) var(--ds-space-2); }
+  .pp-agg-fig.is-lead .pp-agg-val { font-size: var(--ds-fs-md); }
+}
+
+@media (max-width: 859px) {
+  .pp-tg-grid { grid-template-columns: minmax(0, 1fr); gap: var(--ds-space-3); }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   PRACTICEPAL — serving shows IN % and ACE % side by side
+   ───────────────────────────────────────────────────────────────────────────
+   Two figures per serving reading. The in % keeps the graduated shading; the
+   ace % stays uncoloured on purpose — it is a more-is-better stat with no
+   agreed good/bad thresholds, and tinting it would imply a judgement the
+   numbers cannot support. A unit label and a lighter weight separate them.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Team summary card ── */
+.pp-team-card-pair {
+  display: flex;
+  align-items: baseline;
+  gap: var(--ds-space-3);
+  flex-wrap: wrap;
+}
+.pp-team-card-fig { display: inline-flex; align-items: baseline; gap: 3px; }
+.pp-team-card-val-2 {
+  color: var(--ds-text-secondary);
+  font-size: var(--ds-fs-md);
+}
+.pp-team-card-unit {
+  font-size: var(--ds-fs-2xs);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--ds-text-muted);
+}
+
+/* ── Leaderboard row ── */
+.pp-team-val.is-lead small,
+.pp-team-val-ace small {
+  margin-left: 3px;
+  font-family: var(--ds-font);
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ds-text-muted);
+}
+.pp-team-val-ace {
+  font-family: var(--ds-font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--ds-fs-sm);
+  font-weight: 700;
+  color: var(--ds-text-secondary);
+  opacity: 1;
+}
+
+@media (max-width: 859px) {
+  .pp-team-card-pair { gap: var(--ds-space-2); }
+  .pp-team-card-val-2 { font-size: var(--ds-fs-base); }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   PRACTICEPAL — SCRIMMAGE ASPECT TOTALS
+   ───────────────────────────────────────────────────────────────────────────
+   A scrimmage carries every counter, so its trend card carries every angle:
+   passing, hitting, serving, defense, blocking and ball handling, under the
+   graph and its metric toggle.
+
+   Six groups will not fit as six cards inside a half-width column, so each
+   aspect is ONE LINE — a fixed label column on the left, its counts next, and
+   the derived rate flush right. That gives a column of rates down the right
+   edge that reads like a mini box score, and it stays legible when the card
+   is 300px wide.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.pp-asps {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin: 0;
+  padding: var(--ds-space-2) 0 0;
+  border-top: 1px solid var(--ds-border-faint);
+}
+.pp-asp {
+  display: grid;
+  grid-template-columns: 5.4em minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: var(--ds-space-2);
+  padding: 2px 0;
+  min-width: 0;
+}
+/* The active toggle's aspect is the one the graph above is drawing. Marking it
+   keeps the two connected without duplicating the number a third time. */
+.pp-asp.is-current .pp-asp-lbl { color: var(--ds-text-secondary); }
+.pp-asp.is-current .pp-asp-val { color: var(--ds-text-secondary); }
+
+.pp-asp-lbl {
+  margin: 0;
+  font-size: var(--ds-fs-2xs);
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--ds-text-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pp-asp-figs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 var(--ds-space-2);
+  margin: 0;
+  min-width: 0;
+}
+.pp-asp-fig { display: inline-flex; align-items: baseline; gap: 3px; min-width: 0; }
+.pp-asp-key {
+  font-size: var(--ds-fs-2xs);
+  font-weight: 600;
+  color: var(--ds-text-faint);
+  white-space: nowrap;
+}
+.pp-asp-val {
+  margin: 0;
+  font-family: var(--ds-font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--ds-fs-sm);
+  font-weight: 600;
+  color: var(--ds-text-muted);
+  white-space: nowrap;
+}
+/* The derived rate: its own column, so every aspect that has one lines up. */
+.pp-asp-rate {
+  margin: 0;
+  font-family: var(--ds-font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--ds-fs-base);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  text-align: right;
+  white-space: nowrap;
+  min-width: 4.2em;
+}
+/* An aspect that is only counts keeps the column empty rather than filling it
+   with a dash — there is no rate missing, there is simply no rate. */
+.pp-asp-rate-none { min-width: 4.2em; }
+
+@media (max-width: 859px) {
+  .pp-asp { grid-template-columns: 4.8em minmax(0, 1fr) auto; }
+}

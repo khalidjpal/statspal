@@ -31,7 +31,10 @@ export function ActBtn({ a, err, fid, fk, onClick, count = 0 }) {
   useEffect(() => () => { if (tm.current) clearTimeout(tm.current); }, []);
 
   const tone = a.tone || (err ? 'err' : 'ok');
-  const isRate = !!a.tone;                       // graded receive → violet/amber, never green/red
+  // A graded receive, specifically — not merely "has a tone". Attempt and
+  // Serve In carry tone:'neutral' precisely so they are NOT coloured as
+  // outcomes, and they must not inherit the graded flash and badge with it.
+  const isRate = /^r\d$/.test(tone);
   const flClass = fl
     ? (isRate ? (tone === 'r0' ? 'lv-ab-fl-amber' : 'lv-ab-fl-pass') : (err ? 'lv-ab-fl-err' : 'lv-ab-fl-ok'))
     : '';

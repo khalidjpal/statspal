@@ -1,17 +1,17 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef, useId } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useData } from '../contexts/DataContext';
 import { useToast } from '../contexts/ToastContext';
 import { sortByJersey } from '../utils/sort';
 import FullscreenButton from '../components/FullscreenButton';
 import {
-  IconArrowLeft, IconArrowRight, IconTrash, IconCheck,
+  IconArrowLeft, IconTrash, IconCheck, IconClipboard,
   IconReceive, IconAttack, IconServe, IconDrill, IconUsers,
 } from '../components/Icons';
 import { ConfirmDelete } from '../components/dashboard/EditModeKit';
 import PracticeLive from './PracticeLive';
 import PracticeScrimmage from './PracticeScrimmage';
-import PracticeTrends from './PracticeTrends';
+import PracticeTrends, { PlayerRail } from './PracticeTrends';
 import {
   DRILLS, DRILL_ORDER, drillOf, sessionDrillLabel, SIDES, setScoreLine,
   drillHeadline, drillBreakdown, sumPracticeRows, emptyPracticeRow,
@@ -39,6 +39,164 @@ const DRILL_ICONS = {
   custom: IconDrill,
   scrimmage: IconUsers,
 };
+
+// The drill starters, in the top banner: the primary actions of the screen, so
+// they are sized and tinted as such. A line icon and the drill's name, no blurb
+// and no header above them — the description belonged to the big cards, and a
+// row of five buttons named after drills does not need to be told it starts one.
+//
+// Each carries its own drill hue, the same one the session chips and the setup
+// banner use, so a drill reads as the same colour everywhere in PracticePal.
+//
+// Below 1180px the labels drop and the icons carry it, which is why every
+// button states its name to assistive tech and on hover regardless. Nothing
+// about the flow changes: each button calls the same openSetup() the panel did.
+// The drill's own label, except that "Custom Drill" says "Drill" twice in a
+// row of drill buttons. Only the one override, so the rest cannot drift.
+const LAUNCH_LABEL = { custom: 'Custom' };
+
+// The sessions list, as a banner dropdown.
+//
+// It lost its column because a coach opens a session occasionally and reads the
+// charts constantly — a permanently-open list was paying rent on a fifth of the
+// dashboard for an occasional visit. Everything it held comes with it: the
+// drill-type filters, the date grouping and the same chips.
+function SessionsMenu({
+  sessions, rowsBySession, loading, filter, onFilter, shown, byDay, openId, onOpen,
+}) {
+  const [open, setOpen] = useState(false);
+  const wrap = useRef(null);
+  const menuId = useId().replace(/:/g, '');
+
+  // Close on a click outside or on Escape — the two ways anyone expects a
+  // dropdown to go away. Bound only while it is open, so the page carries no
+  // listener the rest of the time.
+  useEffect(() => {
+    if (!open) return undefined;
+    const away = e => { if (wrap.current && !wrap.current.contains(e.target)) setOpen(false); };
+    const key = e => { if (e.key === 'Escape') setOpen(false); };
+    document.addEventListener('mousedown', away);
+    document.addEventListener('keydown', key);
+    return () => {
+      document.removeEventListener('mousedown', away);
+      document.removeEventListener('keydown', key);
+    };
+  }, [open]);
+
+  return (
+    <div className="pp-sessmenu" ref={wrap}>
+      <button
+        type="button"
+        className={`pp-sessbtn${open ? ' is-open' : ''}`}
+        onClick={() => setOpen(o => !o)}
+        aria-expanded={open}
+        aria-controls={menuId}
+      >
+        <IconClipboard size={14} />
+        <span className="pp-sessbtn-lbl">Sessions</span>
+        <span className="pp-sessbtn-n">{loading ? '' : sessions.length}</span>
+      </button>
+
+      {open && (
+        <div className="pp-sessdrop" id={menuId}>
+          <div className="pp-filters">
+            {SESSION_FILTERS.map(f => (
+              <button
+                key={f.key}
+                type="button"
+                className={`pp-filter${f.key === filter ? ' pp-filter-on' : ''}`}
+                onClick={() => onFilter(f.key)}
+                aria-pressed={f.key === filter}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
+
+          <div className="pp-sessdrop-body">
+            {loading ? (
+              <div className="pp-empty">Loading practice sessions…</div>
+            ) : shown.length === 0 ? (
+              <div className="pp-zero pp-zero-sm">
+                <div className="pp-zero-title">
+                  {filter === 'all'
+                    ? 'No sessions yet'
+                    : `No ${SESSION_FILTERS.find(f => f.key === filter).label.toLowerCase()} sessions yet`}
+                </div>
+                <p className="pp-zero-text">
+                  {sessions.length === 0
+                    ? 'Start a drill from the banner. Practice numbers stay in their own tables — they never touch match stats.'
+                    : 'Nothing tracked for this drill type. Pick another filter, or run one.'}
+                </p>
+              </div>
+            ) : (
+              <div className="pp-days">
+                {byDay.map(([date, daySessions]) => (
+                  <div key={date} className="pp-day">
+                    <div className="pp-day-hd">
+                      <span className="pp-day-date">{fmtDateLong(date)}</span>
+                      <span className="pp-day-count">{daySessions.length}</span>
+                    </div>
+                    <div className="pp-day-chips">
+                      {daySessions.map(s => {
+                        const rows = rowsBySession[s.id] || [];
+                        const head = drillHeadline(s.drill_type, sumPracticeRows(rows));
+                        const label = sessionDrillLabel(s);
+                        const hasLabel = !!s.name && s.name !== label;
+                        const detail = `${rows.length} player${rows.length !== 1 ? 's' : ''}, ${head.reps} ${head.repsLabel}`;
+                        return (
+                          <button
+                            key={s.id}
+                            type="button"
+                            className={`pp-schip pp-schip-${s.drill_type}${s.id === openId ? ' pp-schip-open' : ''}`}
+                            // Opening a session closes the menu: the detail is a
+                            // modal over the page, and leaving the dropdown open
+                            // behind it would put two layers on screen at once.
+                            onClick={() => { onOpen(s.id); setOpen(false); }}
+                            title={`${hasLabel ? s.name : label} — ${detail}`}
+                          >
+                            <span className="pp-schip-name">{hasLabel ? s.name : label}</span>
+                            <span className="pp-schip-val" style={{ color: head.color }}>
+                              {head.display}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DrillLauncher({ onPick }) {
+  return (
+    <nav className="pp-dl" aria-label="Start a drill">
+      {DRILL_ORDER.map(key => {
+        const d = DRILLS[key];
+        const Icon = DRILL_ICONS[key];
+        return (
+          <button
+            key={key}
+            type="button"
+            className={`pp-dl-btn pp-dl-${key}`}
+            onClick={() => onPick(key)}
+            title={d.label}
+            aria-label={`Start ${d.label}`}
+          >
+            <span className="pp-dl-ico"><Icon size={16} /></span>
+            <span className="pp-dl-lbl">{LAUNCH_LABEL[key] || d.label}</span>
+          </button>
+        );
+      })}
+    </nav>
+  );
+}
 
 // Filter chips for the sessions card. Ordered the way a coach scans them
 // rather than by DRILL_ORDER — the two ball-contact drills sit together.
@@ -83,7 +241,9 @@ function PracticeSetup({ drillType, roster, onCancel, onStart }) {
   const [customLabel, setCustomLabel] = useState('');
   const [name, setName] = useState('');
   const [sessionDate, setSessionDate] = useState(today());
-  const [picked, setPicked] = useState([]);
+  // The whole roster, selected. A coach marks who is SITTING OUT — that is one
+  // or two taps on a normal day, where checking eleven boxes is eleven.
+  const [picked, setPicked] = useState(() => roster.map(p => p.id));
 
   const isCustom = drillType === 'custom';
   const allPicked = picked.length === roster.length && roster.length > 0;
@@ -159,23 +319,30 @@ function PracticeSetup({ drillType, roster, onCancel, onStart }) {
       <section className="pp-card">
         <div className="pp-card-head">
           <h3>Players in the drill</h3>
-          <span className="pp-card-sub">{picked.length} of {roster.length} selected</span>
+          <span className="pp-card-sub">
+            Everyone is in by default — tap anyone sitting out.
+          </span>
         </div>
-        <div className="pp-seg pp-seg-inline">
-          <button
-            type="button"
-            className={`pp-seg-btn${allPicked ? ' on' : ''}`}
-            onClick={() => setPicked(roster.map(p => p.id))}
-          >
-            Whole roster
-          </button>
-          <button
-            type="button"
-            className={`pp-seg-btn${picked.length === 0 ? ' on' : ''}`}
-            onClick={() => setPicked([])}
-          >
-            Clear
-          </button>
+        <div className="pp-picktools">
+          <span className="pp-pickcount">
+            <b>{picked.length}</b> of {roster.length} selected
+          </span>
+          <span className="pp-seg pp-seg-mini">
+            <button
+              type="button"
+              className={`pp-seg-btn${allPicked ? ' on' : ''}`}
+              onClick={() => setPicked(roster.map(p => p.id))}
+            >
+              Whole roster
+            </button>
+            <button
+              type="button"
+              className={`pp-seg-btn${picked.length === 0 ? ' on' : ''}`}
+              onClick={() => setPicked([])}
+            >
+              Clear
+            </button>
+          </span>
         </div>
         {roster.length === 0 ? (
           <div className="pp-empty">This team has no players on its roster yet.</div>
@@ -191,9 +358,9 @@ function PracticeSetup({ drillType, roster, onCancel, onStart }) {
                   onClick={() => toggle(p.id)}
                   aria-pressed={on}
                 >
-                  <span className="pp-pick-check">{on ? <IconCheck size={12} /> : null}</span>
+                  <span className="pp-pick-check">{on ? <IconCheck size={11} /> : null}</span>
                   <span className="pp-pick-num">
-                    {p.jersey_number != null && p.jersey_number !== '' ? `#${p.jersey_number}` : '—'}
+                    {p.jersey_number != null && p.jersey_number !== '' ? p.jersey_number : '—'}
                   </span>
                   <span className="pp-pick-name">{p.name}</span>
                 </button>
@@ -758,6 +925,22 @@ export default function PracticePal({ team, onHome }) {
         </div>
 
         <div className="pp-topbar-right">
+          {!inSetup && (
+            <SessionsMenu
+              sessions={sessions}
+              rowsBySession={rowsBySession}
+              loading={loading}
+              filter={sessionFilter}
+              onFilter={setSessionFilter}
+              shown={shownSessions}
+              byDay={sessionsByDay}
+              openId={openSessionId}
+              onOpen={setOpenSessionId}
+            />
+          )}
+          {/* Only on the dashboard: during setup or a live drill the banner is
+              a way back out, not a way into another drill. */}
+          {!inSetup && canTrack && <DrillLauncher onPick={openSetup} />}
           <FullscreenButton className="pp-pill pp-pill-icon" size={14} />
         </div>
       </header>
@@ -784,81 +967,30 @@ export default function PracticePal({ team, onHome }) {
         <main className="pp-dash">
           {loadError && <div className="pp-dash-alert"><div className="pp-alert">{loadError}</div></div>}
 
-          {/* ══ LEFT — sessions ══ */}
-          <section className="pp-col pp-col-sessions">
+          {/* ══ LEFT — the roster ══ */}
+          {/* The rail is the only route into a player, and it stays visible
+              while the middle shows them — so the next player is one tap away
+              rather than a tap back and a tap in. */}
+          <section className="pp-col pp-col-players">
             <header className="pp-col-head">
-              <h2>Sessions</h2>
+              <h2>Players</h2>
               <span className="pp-col-count">
-                {loading ? '' : `${sessions.length} tracked`}
+                {focusPlayerId ? 'Tap to switch' : 'Tap for detail'}
               </span>
             </header>
-
             <div className="pp-col-body">
-            <div className="pp-filters">
-              {SESSION_FILTERS.map(f => (
-                <button
-                  key={f.key}
-                  type="button"
-                  className={`pp-filter${f.key === sessionFilter ? ' pp-filter-on' : ''}`}
-                  onClick={() => setSessionFilter(f.key)}
-                  aria-pressed={f.key === sessionFilter}
-                >
-                  {f.label}
-                </button>
-              ))}
-            </div>
-
-            {loading ? (
-              <div className="pp-empty">Loading practice sessions…</div>
-            ) : shownSessions.length === 0 ? (
-              <div className="pp-zero pp-zero-sm">
-                <div className="pp-zero-title">
-                  {sessionFilter === 'all'
-                    ? 'No sessions yet'
-                    : `No ${SESSION_FILTERS.find(f => f.key === sessionFilter).label.toLowerCase()} sessions yet`}
-                </div>
-                <p className="pp-zero-text">
-                  {sessions.length === 0
-                    ? 'Start a drill from “Start a drill”. Practice numbers stay in their own tables — they never touch match stats.'
-                    : 'Nothing tracked for this drill type. Pick another filter, or run one.'}
-                </p>
-              </div>
-            ) : (
-              <div className="pp-days">
-                {sessionsByDay.map(([date, daySessions]) => (
-                  <div key={date} className="pp-day">
-                    <div className="pp-day-hd">
-                      <span className="pp-day-date">{fmtDateLong(date)}</span>
-                      <span className="pp-day-count">{daySessions.length}</span>
-                    </div>
-                    <div className="pp-day-chips">
-                      {daySessions.map(s => {
-                        const rows = rowsBySession[s.id] || [];
-                        const head = drillHeadline(s.drill_type, sumPracticeRows(rows));
-                        const label = sessionDrillLabel(s);
-                        const hasLabel = !!s.name && s.name !== label;
-                        return (
-                          <button
-                            key={s.id}
-                            type="button"
-                            className={`pp-schip pp-schip-${s.drill_type}${s.id === openSessionId ? ' pp-schip-open' : ''}`}
-                            onClick={() => setOpenSessionId(s.id)}
-                            title={hasLabel
-                              ? `${s.name} — ${rows.length} player${rows.length !== 1 ? 's' : ''}, ${head.reps} ${head.repsLabel}`
-                              : `${label} — ${rows.length} player${rows.length !== 1 ? 's' : ''}, ${head.reps} ${head.repsLabel}`}
-                          >
-                            <span className="pp-schip-name">{hasLabel ? s.name : label}</span>
-                            <span className="pp-schip-val" style={{ color: head.color }}>
-                              {head.display}
-                            </span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
+              {loading ? (
+                <div className="pp-empty">Loading…</div>
+              ) : (
+                <PlayerRail
+                  team={team}
+                  players={players}
+                  sessions={sessions}
+                  practiceStats={practiceStats}
+                  playerId={focusPlayerId}
+                  onSelectPlayer={id => setFocusPlayerId(id === focusPlayerId ? null : id)}
+                />
+              )}
             </div>
           </section>
 
@@ -899,41 +1031,6 @@ export default function PracticePal({ team, onHome }) {
             </div>
           </section>
 
-          {/* ══ RIGHT — start a drill ══ */}
-          <aside className="pp-col pp-col-start">
-            <header className="pp-col-head">
-              <h2>Start a drill</h2>
-              <span className="pp-col-count">Pick players, then track</span>
-            </header>
-
-            <div className="pp-col-body">
-            {!canTrack ? (
-              <div className="pp-empty">Only a coach or admin can track practice.</div>
-            ) : (
-              <div className="pp-start-list">
-                {DRILL_ORDER.map(key => {
-                  const d = DRILLS[key];
-                  const Icon = DRILL_ICONS[key];
-                  return (
-                    <button
-                      key={key}
-                      type="button"
-                      className={`pp-start pp-tint-border-${key}`}
-                      onClick={() => openSetup(key)}
-                    >
-                      <span className={`pp-start-icon pp-tint-${key}`}><Icon size={20} /></span>
-                      <span className="pp-start-body">
-                        <span className="pp-start-title">{d.label}</span>
-                        <span className="pp-start-sub">{d.blurb}</span>
-                      </span>
-                      <span className="pp-start-arrow"><IconArrowRight size={14} /></span>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-            </div>
-          </aside>
         </main>
       )}
 

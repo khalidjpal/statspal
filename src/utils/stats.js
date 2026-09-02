@@ -137,7 +137,13 @@ export function n3(v) {
 }
 
 // Stat fields that belong in player_game_stats rows
-const STAT_FIELDS = ['kills', 'aces', 'digs', 'assists', 'blocks', 'errors', 'attempts', 'sets_played', 'block_assists', 'serve_errors', 'blocking_errors', 'digging_errors', 'ball_handling_errors', 'receives', 'pass_3', 'pass_2', 'pass_1', 'pass_0'];
+//
+// serve_attempts arrived with scripts/statspal_serve_attempts_migration.sql.
+// insertPlayerStats() drops it and retries if the column is not there yet, the
+// same way it already handles the graded-passing columns, so a project that has
+// not run the migration saves everything else rather than losing the match.
+export const SERVE_FIELDS = ['serve_attempts'];
+const STAT_FIELDS = ['kills', 'aces', 'digs', 'assists', 'blocks', 'errors', 'attempts', 'sets_played', 'block_assists', 'serve_errors', 'serve_attempts', 'blocking_errors', 'digging_errors', 'ball_handling_errors', 'receives', 'pass_3', 'pass_2', 'pass_1', 'pass_0'];
 
 // Extract only valid stat fields from an object, coerce to integer, default 0.
 // Use this before inserting into player_game_stats to prevent DB row field leaks

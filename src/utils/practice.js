@@ -28,13 +28,14 @@ export const DRILLS = {
     label: 'Serve-Receive',
     short: 'Passing',
     blurb: 'Grade every receive 0–3, same scale as StatsPal',
-    // Ascending 1·2·3 then 0, matching LiveGame's RECEIVE control exactly so
-    // the muscle memory carries over from game tracking.
+    // 0·1·2·3, which laid out two-across gives 0 top-left through 3
+    // bottom-right — the grade climbing left-to-right, top-to-bottom, the same
+    // direction the counts read everywhere else in PracticePal.
     actions: [
+      { key: 'pass_0', abbr: '0', label: 'Aced',    tone: 'r0', hist: 'Pass 0 (Aced)',    fields: { pass_0: 1, receives: 1 } },
       { key: 'pass_1', abbr: '1', label: 'Poor',    tone: 'r1', hist: 'Pass 1 (Poor)',    fields: { pass_1: 1, receives: 1 } },
       { key: 'pass_2', abbr: '2', label: 'Good',    tone: 'r2', hist: 'Pass 2 (Good)',    fields: { pass_2: 1, receives: 1 } },
       { key: 'pass_3', abbr: '3', label: 'Perfect', tone: 'r3', hist: 'Pass 3 (Perfect)', fields: { pass_3: 1, receives: 1 } },
-      { key: 'pass_0', abbr: '0', label: 'Aced',    tone: 'r0', hist: 'Pass 0 (Aced)',    fields: { pass_0: 1, receives: 1 } },
     ],
   },
   hitting: {
@@ -164,9 +165,14 @@ export function sumPracticeRows(rows) {
 // both data sets is what makes the practice-vs-game comparison meaningful.
 
 // Share of serves that landed in (aces included).
+// Derived from the two counters every tracker now keeps, rather than from
+// serves_in — which only the focused serving drill ever maintained. The two
+// definitions agree exactly wherever serves_in IS kept, because that drill
+// bumps serves_in and serve_errors on mutually exclusive presses, so
+// serves_in + serve_errors === serve_attempts by construction.
 export function serveInPct(s) {
   const a = s?.serve_attempts || 0;
-  return a > 0 ? (s.serves_in || 0) / a : null;
+  return a > 0 ? (a - (s.serve_errors || 0)) / a : null;
 }
 
 export function acePct(s) {
@@ -302,11 +308,14 @@ export function drillBreakdown(drillType, s) {
       ];
     case 'serve_receive':
     default:
+      // Ascending, matching drillAggregate(): the grade counts read the same
+      // direction everywhere they appear, so a session log row and the card
+      // above it cannot be read as two different orderings.
       return [
-        ['3', s.pass_3 || 0],
-        ['2', s.pass_2 || 0],
-        ['1', s.pass_1 || 0],
         ['0', s.pass_0 || 0],
+        ['1', s.pass_1 || 0],
+        ['2', s.pass_2 || 0],
+        ['3', s.pass_3 || 0],
         ['Rec', s.receives || 0],
       ];
   }
@@ -368,57 +377,19 @@ export function drillAggregate(metric, s) {
     case 'serve_receive':
     default: {
       const v = passAvg(s);
+      // Ascending, so the counts climb toward the average that follows them
+      // and the line reads the same direction as the 0–3 scale itself.
       return [
-        { key: 'p3', label: '3', value: c('pass_3') },
-        { key: 'p2', label: '2', value: c('pass_2') },
-        { key: 'p1', label: '1', value: c('pass_1') },
         { key: 'p0', label: '0', value: c('pass_0') },
+        { key: 'p1', label: '1', value: c('pass_1') },
+        { key: 'p2', label: '2', value: c('pass_2') },
+        { key: 'p3', label: '3', value: c('pass_3') },
         { key: 'avg', label: 'Avg', value: pfmt(v), raw: v, lead: true },
       ];
     }
   }
 }
 
-
-// ─── Scrimmage, every aspect ───────────────────────────────────────────────
-// A scrimmage carries the whole StatsPal counter set, so it can be read from
-// six angles. The three that have a derived rate reuse drillAggregate() rather
-// than re-deriving anything — that is what keeps the scrimmage board's passing
-// average identical to the one on the trend card. The other three are pure
-// counts, which need no helper and no shading.
-export function scrimmageAspects(s) {
-  const c = k => String(s?.[k] || 0);
-  return [
-    { key: 'passing', label: 'Passing', metric: 'serve_receive', figures: drillAggregate('serve_receive', s) },
-    { key: 'hitting', label: 'Hitting', metric: 'hitting', figures: drillAggregate('hitting', s) },
-    { key: 'serving', label: 'Serving', metric: 'serving', figures: drillAggregate('serving', s) },
-    {
-      key: 'defense',
-      label: 'Defense',
-      figures: [
-        { key: 'd', label: 'Digs', value: c('digs') },
-        { key: 'de', label: 'Err', value: c('digging_errors') },
-      ],
-    },
-    {
-      key: 'blocking',
-      label: 'Blocking',
-      figures: [
-        { key: 'bs', label: 'Solo', value: c('blocks') },
-        { key: 'ba', label: 'Assist', value: c('block_assists') },
-        { key: 'be', label: 'Err', value: c('blocking_errors') },
-      ],
-    },
-    {
-      key: 'setting',
-      label: 'Ball handling',
-      figures: [
-        { key: 'a', label: 'Assists', value: c('assists') },
-        { key: 'bhe', label: 'Err', value: c('ball_handling_errors') },
-      ],
-    },
-  ];
-}
 
 // ─── Persistence ───────────────────────────────────────────────────────────
 // A missing table means the migration has not been run. Detect it precisely so

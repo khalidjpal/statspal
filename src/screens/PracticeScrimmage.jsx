@@ -121,6 +121,7 @@ function deltasFor(action) {
   d[action.stat] = (d[action.stat] || 0) + 1;
   if (action.also) d[action.also] = (d[action.also] || 0) + 1;
   if (action.autoAtt) d.attempts = (d.attempts || 0) + 1;
+  if (action.autoSrv) d.serve_attempts = (d.serve_attempts || 0) + 1;
   return d;
 }
 
@@ -353,7 +354,7 @@ export default function PracticeScrimmage({ team, setup, currentUser, onExit, on
   };
 
   return (
-    <div className="lv">
+    <div className="lv pp-scrimlive">
       {/* ═══ TOP BAR ═══ */}
       <div className="lv-top">
         <div className="lv-sb">

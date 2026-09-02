@@ -246,6 +246,56 @@ Value takes a semantic or scale colour; the label never does.
 The jersey number and the stat are both fixed-width columns so a list of
 players reads as a clean table without being one.
 
+### Broadcast readout — `.pp-bc` (a whole-view pattern)
+
+Established by PracticePal's player development card. Where `.ds-stat` is one
+figure, this is the pattern for a **view whose entire job is to present a
+player's numbers** — a pro-sports stats readout rather than a dashboard.
+
+Four rules make it read that way. They matter more than the class names, and
+any screen adopting the pattern should keep all four.
+
+**1. One surface.** The container has a background, a `--ds-border` and
+`--ds-radius-xl`. *Nothing inside it does.* Sections are separated by a
+`--ds-border-faint` hairline and space — never by a nested tile with its own
+fill. Boxes inside boxes are what make a stats page read as an admin panel.
+
+**2. One spacing rhythm.** A single local custom property (`--bc-gap`: 28px,
+20px on a phone) is the card's padding *and* the margin and padding either
+side of every hairline. One number to change, and the rhythm cannot drift
+section to section.
+
+**3. Type carries the hierarchy.** The card works because of the distance
+between its two type poles, not because of chrome:
+
+```
+PASSING            ← 2xs, uppercase, +0.08em, muted        the label pole
+2.31               ← 40px mono tabular, 600, -0.03em       the value pole
+across 30 receives ← xs, muted, tabular                    the qualifier
+```
+
+The hero value is the one place a size above `--ds-fs-3xl` is right: it is
+deliberately outside the scale because it is the single largest thing on the
+screen, and the scale exists for dense UI. Do not reach for it anywhere else.
+Header name: 20px / 600 / `-0.02em`. Jersey: an **outlined** mono chip, never
+filled — it identifies, it does not shout.
+
+**4. Colour only on values.** Greys everywhere else. Each figure takes its
+graduated shade from the same `perfShade()` the charts draw with, so a number
+and the chart beside it always agree. A missing value is a muted `—` and is
+never shaded — shading a dash implies a judgement about data that is absent.
+
+**Layout.** Hero stats in `repeat(3, minmax(0, 1fr))`, no dividers between
+them: the numerals are already doing the separating. Comparison columns in the
+same three-track grid with the divider drawn as `border-left` **on the column**
+— a divider should not be an element. Both stack on a phone, and stacked
+columns swap the vertical rule for a horizontal one, since a vertical hairline
+needs width beside it to read as a divider rather than as an edge.
+
+Every figure in the card — hero, comparison, chart total, log — carries
+`tabular-nums` and `--ds-font-mono`, so columns align down the whole card
+without a table.
+
 ---
 
 ## 7. Do / don't
@@ -256,6 +306,10 @@ players reads as a clean table without being one.
 - Use one accent element per view.
 - Let cards be defined by their border; keep them flat.
 - Truncate long names with ellipsis rather than wrapping in a dense row.
+- Separate sections with a hairline and space. A nested tile with its own fill
+  is almost always the wrong answer.
+- Drive a block's whole spacing rhythm from one local custom property, so the
+  gaps either side of a divider cannot drift apart.
 
 **Don't**
 - Add a new hex to a component file. Add a token here first.
@@ -263,7 +317,11 @@ players reads as a clean table without being one.
   on a neutral card is noise).
 - Stack more than two surface levels.
 - Use emoji as an icon.
-- Set a font-size not in the scale.
+- Set a font-size not in the scale. The one sanctioned exception is a
+  broadcast hero value (see §6), which is deliberately larger than `3xl`
+  because it is the single largest thing on its screen.
+- Shade a missing value. A `—` stays muted: colouring it implies a judgement
+  about data that is not there.
 
 ---
 

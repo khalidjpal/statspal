@@ -268,7 +268,7 @@ export default function PracticeLive({ team, setup, currentUser, onExit, onSaved
                   })()}
                 </span>
               </div>
-              <div className={`pp-actions pp-actions-${drill.actions.length}`}>
+              <div className={`pp-actions pp-actions-${drill.actions.length} pp-actions-${setup.drillType}`}>
                 {drill.actions.map(a => (
                   <ActBtn
                     key={a.key}

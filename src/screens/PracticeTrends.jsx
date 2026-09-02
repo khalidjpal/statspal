@@ -1,13 +1,12 @@
-import { useMemo, useState, useId } from 'react';
+import { Fragment, useMemo, useState, useId } from 'react';
 // Number formatting comes from each drill's band definition (perfBands().fmt),
 // which is the same pfmt/n3/pctFmt the rest of the app uses.
 import { hpct, passAvg, playerTotals } from '../utils/stats';
 import {
   DRILL_ORDER, drillOf, drillHeadline, drillBreakdown,
   sumPracticeRows, sessionDrillLabel, emptyPracticeRow,
-  perfShade, perfBands, perfRampStops, perfRampTicks, serveInPct, acePct, pctFmt,
+  perfShade, perfBands, serveInPct, acePct, pctFmt,
   drillAggregate, SCRIM_METRICS, METRIC_LABEL,
-  scrimmageAspects,
 } from '../utils/practice';
 import { sortByJersey } from '../utils/sort';
 
@@ -17,8 +16,6 @@ import { sortByJersey } from '../utils/sort';
 // Game stats are read here and never written. They arrive as props straight
 // from DataContext's player_game_stats fetch; this screen has no Supabase
 // client of its own precisely so it cannot write to a game table by accident.
-
-const TIER_LABEL = { good: 'Good', ok: 'OK', bad: 'Needs work' };
 
 function fmtDate(d) {
   if (!d) return '';
@@ -161,38 +158,6 @@ function TrendChart({ points, domain, drillType }) {
   );
 }
 
-// The legend is the ramp itself, not a set of swatches — the point being made
-// is that the SHADE carries magnitude, which three flat chips cannot say. The
-// bar is built by sampling perfShade() across the same floor→ceil range the
-// chart shades against, so it can never drift from what the chart draws.
-function PerfLegend({ drillType }) {
-  const bands = perfBands(drillType);
-  const stops = perfRampStops(drillType);
-  const ticks = perfRampTicks(drillType);
-  const css = stops.map(s => `${s.color} ${s.pct.toFixed(1)}%`).join(', ');
-
-  return (
-    <div className="pp-legend">
-      <div className="pp-legend-row">
-        <span className="pp-legend-cap">{TIER_LABEL.bad}</span>
-        <span className="pp-legend-bar" style={{ background: `linear-gradient(90deg, ${css})` }}>
-          {ticks.map(t => (
-            <span key={t.key} className="pp-legend-tick" style={{ left: `${t.pct}%` }} />
-          ))}
-        </span>
-        <span className="pp-legend-cap">{TIER_LABEL.good}</span>
-      </div>
-      <div className="pp-legend-foot">
-        <span className="pp-legend-note">
-          Shade shows degree · <b>{bands.fmt(bands.ok)}</b> {TIER_LABEL.ok.toLowerCase()}
-          {' · '}<b>{bands.fmt(bands.good)}</b> {TIER_LABEL.good.toLowerCase()}
-        </span>
-        <span className="pp-legend-scale">{bands.scale}</span>
-      </div>
-    </div>
-  );
-}
-
 // ─── Practice vs Game ──────────────────────────────────────────────────────
 // Both sides are computed by the SAME function on the SAME column names — that
 // is the whole point of the shared schema — so the two numbers are directly
@@ -221,138 +186,242 @@ const CONTEXT_ORDER = [
   { key: 'game', tag: 'Game', cls: 'pp-cmp-game' },
 ];
 
-// `band` names the perfBands entry used to shade a value; null means the value
-// is a raw count with no good/bad scale, so it stays uncoloured.
+// ─── Broadcast card ────────────────────────────────────────────────────────
+// The player development view, styled as a broadcast stats readout: one
+// container, hairline dividers instead of nested boxes, and three hero numbers
+// that carry the whole card.
 //
-// `untracked` marks the case where a context CANNOT produce this stat rather
-// than merely having no reps yet — the difference between "nothing recorded"
-// and "this is not measurable here", which the coach deserves to be told.
-const COMPARE_SKILLS = [
+// Not one number is computed here. Every value comes from the same passAvg() /
+// hpct() / serveInPct() helpers the team view, the trend chart and the compare
+// grid already call, and the colour is the same perfShade() the chart draws
+// with — so the hero figure and the last dot on the line agree by construction.
+// Game numbers arrive as props from DataContext and are read, never written.
+
+// Positions are stored as full names ("Outside Hitter"), so they print as they
+// come. The short codes are only there for rosters imported with them.
+const POSITION_LABEL = {
+  S: 'Setter', OH: 'Outside Hitter', MB: 'Middle Blocker', MH: 'Middle Blocker',
+  RS: 'Right Side', OPP: 'Opposite', L: 'Libero', LIB: 'Libero',
+  DS: 'Defensive Specialist',
+};
+function positionLabel(position) {
+  const raw = String(position ?? '').trim();
+  if (!raw) return null;
+  return POSITION_LABEL[raw.toUpperCase()] || raw;
+}
+
+// The three hero stats, and the same three rows in each comparison column.
+// One definition drives both, so the big number and the DRILLS column beneath
+// it can never be computed two different ways.
+const HERO_STATS = [
   {
     key: 'passing',
     label: 'Passing',
-    rows: [{
-      key: 'pass_avg',
-      label: 'Passing average',
-      note: '0–3 scale',
-      band: 'serve_receive',
-      value: s => passAvg(s),
-      reps: s => s.receives || 0,
-      repsLabel: 'receives',
-    }],
+    abbr: 'Pass',
+    band: 'serve_receive',
+    value: s => passAvg(s),
+    sub: s => `across ${s.receives || 0} receive${(s.receives || 0) === 1 ? '' : 's'}`,
   },
   {
     key: 'hitting',
     label: 'Hitting',
-    rows: [{
-      key: 'hit_pct',
-      label: 'Hitting %',
-      note: '(kills − errors) ÷ attempts',
-      band: 'hitting',
-      value: s => hpct(s.kills, s.errors, s.attempts),
-      reps: s => s.attempts || 0,
-      repsLabel: 'attempts',
-    }],
+    abbr: 'Hit',
+    band: 'hitting',
+    value: s => ((s.attempts || 0) > 0 ? hpct(s.kills, s.errors, s.attempts) : null),
+    sub: s => `${s.kills || 0}K · ${s.errors || 0}E · ${s.attempts || 0} att`,
   },
   {
     key: 'serving',
     label: 'Serving',
-    rows: [
-      {
-        key: 'serve_in',
-        label: 'Serve-in %',
-        note: 'serves in ÷ serves taken',
-        band: 'serving',
-        value: s => serveInPct(s),
-        reps: s => s.serve_attempts || 0,
-        repsLabel: 'serves',
-        // StatsPal's live tracker records aces and serve errors but never the
-        // TOTAL serves taken — and the scrimmage shares that button set, as
-        // does player_game_stats. So the denominator only exists in the
-        // serving drill. Saying "not tracked" is honest; showing 0% would be a
-        // lie, and a blank would look like the player never served.
-        untracked: s => (s.serve_attempts || 0) === 0
-          && ((s.aces || 0) > 0 || (s.serve_errors || 0) > 0),
-      },
-      {
-        key: 'ace_pct',
-        label: 'Ace %',
-        note: 'aces ÷ serves taken',
-        band: null,
-        value: s => acePct(s),
-        fmt: v => pctFmt(v),
-        reps: s => s.serve_attempts || 0,
-        repsLabel: 'serves',
-        // Same denominator problem as serve-in %: a scrimmage and a match
-        // record aces but never the total serves, so the rate simply does not
-        // exist there. Say so rather than implying a 0%.
-        untracked: s => (s.serve_attempts || 0) === 0
-          && ((s.aces || 0) > 0 || (s.serve_errors || 0) > 0),
-      },
-      {
-        key: 'aces',
-        label: 'Aces',
-        note: 'count, with serve errors',
-        band: null,
-        value: s => ((s.aces || 0) + (s.serve_errors || 0) > 0 ? (s.aces || 0) : null),
-        fmt: v => String(v),
-        reps: s => s.serve_errors || 0,
-        repsLabel: 'serve errors',
-      },
-    ],
+    abbr: 'Serve',
+    band: 'serving',
+    value: s => serveInPct(s),
+    sub: s => `${s.serves_in || 0} of ${s.serve_attempts || 0} in · ${pctFmt(acePct(s))} ace`,
+    // A scrimmage and a match record aces but never the total serves taken, so
+    // the rate has no denominator there. That is "not measurable", which is a
+    // different thing from "no reps yet" — and the coach deserves the
+    // difference. Same predicate the compare grid uses.
+    untracked: s => (s.serve_attempts || 0) === 0
+      && ((s.aces || 0) > 0 || (s.serve_errors || 0) > 0),
   },
 ];
 
-function CompareCell({ row, stats, ctxKey }) {
-  const value = stats ? row.value(stats) : null;
-  const isUntracked = !!(stats && row.untracked && row.untracked(stats));
-  const has = value != null;
-  const fmt = row.fmt || perfBands(row.band || 'serve_receive').fmt;
-
+function HeroStat({ stat, totals }) {
+  const v = stat.value(totals);
+  const fmt = perfBands(stat.band).fmt;
+  const untracked = !!(stat.untracked && stat.untracked(totals));
   return (
-    <div className={`pp-cmp-cell${has ? '' : ' pp-cmp-cell-none'}`} data-ctx={ctxKey}>
+    <div className="pp-bc-stat">
+      <span className="pp-bc-stat-lbl">{stat.label}</span>
       <span
-        className="pp-cmp-cell-val"
-        style={row.band && has ? { color: perfShade(row.band, value) } : undefined}
+        className={`pp-bc-stat-val${v == null ? ' is-none' : ''}`}
+        style={v == null ? undefined : { color: perfShade(stat.band, v) }}
       >
-        {has ? fmt(value) : '—'}
+        {v == null ? '—' : fmt(v)}
       </span>
-      <span className="pp-cmp-cell-sub">
-        {has
-          ? `${row.reps(stats)} ${row.repsLabel}`
-          : isUntracked ? 'not tracked' : 'no data'}
+      <span className="pp-bc-stat-sub">
+        {v == null ? (untracked ? 'not tracked' : 'no reps yet') : stat.sub(totals)}
       </span>
     </div>
   );
 }
 
-function CompareGrid({ byContext }) {
+// The comparison, transposed against the old grid: a column per CONTEXT, three
+// skill rows inside it. Read down a column for "how did they do in matches",
+// across the columns for "does practice carry over" — which is the question
+// this card exists to answer.
+function ContextColumns({ byContext }) {
   return (
-    <div className="pp-cmp-grid">
-      {/* Column headers, stated once and repeated visually down every skill
-          block by keeping the grid columns identical. */}
-      <div className="pp-cmp-grid-head">
-        <span className="pp-cmp-corner" />
-        {CONTEXT_ORDER.map(c => (
-          <span key={c.key} className={`pp-cmp-ctx ${c.cls}`}>{c.tag}</span>
-        ))}
-      </div>
+    <div className="pp-bc-ctx">
+      {CONTEXT_ORDER.map(c => {
+        const totals = byContext[c.key];
+        return (
+          <div key={c.key} className="pp-bc-col" data-ctx={c.key}>
+            <div className="pp-bc-col-hd">{c.tag}</div>
+            {HERO_STATS.map(stat => {
+              const v = totals ? stat.value(totals) : null;
+              const fmt = perfBands(stat.band).fmt;
+              const untracked = !!(totals && stat.untracked && stat.untracked(totals));
+              return (
+                <div key={stat.key} className="pp-bc-row">
+                  <span className="pp-bc-row-lbl">{stat.label}</span>
+                  <span
+                    className={`pp-bc-row-val${v == null ? ' is-none' : ''}`}
+                    style={v == null ? undefined : { color: perfShade(stat.band, v) }}
+                    title={v == null && untracked ? 'not tracked in this context' : undefined}
+                  >
+                    {v == null ? '—' : fmt(v)}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
-      {COMPARE_SKILLS.map(skill => (
-        <div key={skill.key} className="pp-cmp-skill">
-          <div className="pp-cmp-skill-hd">{skill.label}</div>
-          {skill.rows.map(row => (
-            <div key={row.key} className="pp-cmp-metric">
-              <span className="pp-cmp-metric-lbl">
-                <span className="pp-cmp-metric-name">{row.label}</span>
-                <span className="pp-cmp-metric-note">{row.note}</span>
+function BroadcastHead({ player, sessionCount }) {
+  const pos = positionLabel(player.position);
+  const num = player.jersey_number;
+  const hasNum = num != null && num !== '';
+  return (
+    <header className="pp-bc-head">
+      {hasNum && <span className="pp-bc-jersey">#{num}</span>}
+      <h3 className="pp-bc-name">{player.name}</h3>
+      <span className="pp-bc-meta">
+        {[pos, `${sessionCount} session${sessionCount === 1 ? '' : 's'}`]
+          .filter(Boolean).join(' · ')}
+      </span>
+    </header>
+  );
+}
+
+// ─── Player cards ──────────────────────────────────────────────────────────
+// The Players tab: one card per player, the whole roster, wrapping to fill
+// whatever width the panel has.
+//
+// The three cells are HERO_STATS — the very same definitions the broadcast
+// card's big numbers come from — so a card and the view it opens cannot show
+// two different passing averages. Only the labels shorten.
+
+// Full names are what the roster stores ("Outside Hitter"); a 215px card wants
+// the code. Both directions resolve to the same six groups.
+const POSITION_SHORT = [
+  ['S', 'Setter', ['s', 'setter']],
+  ['OH', 'Outside Hitter', ['oh', 'outside hitter', 'outside']],
+  ['MB', 'Middle Blocker', ['mb', 'mh', 'middle blocker', 'middle hitter', 'middle']],
+  ['RS', 'Right Side', ['rs', 'opp', 'right side', 'opposite']],
+  ['L', 'Libero', ['l', 'lib', 'libero']],
+  ['DS', 'Defensive Specialist', ['ds', 'defensive specialist', 'defensive']],
+];
+function positionShort(position) {
+  const raw = String(position ?? '').trim().toLowerCase();
+  if (!raw) return null;
+  const hit = POSITION_SHORT.find(([, , words]) => words.includes(raw))
+    || POSITION_SHORT.find(([, , words]) => words.some(w => w.length > 2 && raw.includes(w)));
+  return hit ? { short: hit[0], full: hit[1] } : { short: String(position).trim(), full: String(position).trim() };
+}
+
+function PlayerCard({ player, totals, onPick, selected = false }) {
+  const num = player.jersey_number;
+  const hasNum = num != null && num !== '';
+  const pos = positionShort(player.position);
+  return (
+    <button
+      type="button"
+      className={`pp-pcard${selected ? ' is-on' : ''}`}
+      onClick={() => onPick(player.id)}
+      aria-pressed={selected}
+    >
+      <span className="pp-pcard-head">
+        <span className="pp-pcard-av">{hasNum ? num : '—'}</span>
+        <span className="pp-pcard-id">
+          <span className="pp-pcard-name">{player.name}</span>
+          <span className="pp-pcard-pos" title={pos ? pos.full : undefined}>
+            {pos ? pos.short : 'No position'}
+          </span>
+        </span>
+      </span>
+      <span className="pp-pcard-stats">
+        {HERO_STATS.map(stat => {
+          const v = stat.value(totals);
+          const fmt = perfBands(stat.band).fmt;
+          return (
+            <span key={stat.key} className="pp-pcard-stat">
+              <span className="pp-pcard-stat-lbl">{stat.abbr}</span>
+              <span
+                className={`pp-pcard-stat-val${v == null ? ' is-none' : ''}`}
+                style={v == null ? undefined : { color: perfShade(stat.band, v) }}
+              >
+                {v == null ? '—' : fmt(v)}
               </span>
-              {CONTEXT_ORDER.map(c => (
-                <CompareCell key={c.key} row={row} stats={byContext[c.key]} ctxKey={c.key} />
-              ))}
-            </div>
-          ))}
-        </div>
+            </span>
+          );
+        })}
+      </span>
+    </button>
+  );
+}
+
+// The left rail: the whole roster as compact cards, and the only route into a
+// player's development view.
+//
+// It computes its own per-player totals rather than taking them from the trends
+// panel beside it — the two are separate grid areas and cannot share a render.
+// Both call sumPracticeRows over the same rows, so the numbers are identical by
+// construction; what is duplicated is the arithmetic, not the definition.
+export function PlayerRail({ team, players, sessions, practiceStats, playerId, onSelectPlayer }) {
+  const roster = useMemo(
+    () => sortByJersey((players || []).filter(p => p.team_id === team?.id)),
+    [players, team?.id]
+  );
+
+  const totalsById = useMemo(() => {
+    const known = new Set((sessions || []).map(s => s.id));
+    const mine = (practiceStats || []).filter(r => known.has(r.practice_session_id));
+    const out = {};
+    for (const p of roster) {
+      out[p.id] = sumPracticeRows(mine.filter(r => r.player_id === p.id));
+    }
+    return out;
+  }, [roster, sessions, practiceStats]);
+
+  if (roster.length === 0) {
+    return <div className="pp-empty">This team has no players on its roster yet.</div>;
+  }
+
+  return (
+    <div className="pp-pcards pp-pcards-rail">
+      {roster.map(p => (
+        <PlayerCard
+          key={p.id}
+          player={p}
+          totals={totalsById[p.id] || emptyPracticeRow()}
+          onPick={onSelectPlayer}
+          selected={p.id === playerId}
+        />
       ))}
     </div>
   );
@@ -364,163 +433,215 @@ function CompareGrid({ byContext }) {
 // the graduated shading, the split-gradient segments and the band gridlines
 // are one implementation — a team chart and a player chart cannot drift.
 //
-// The four named drills always render, empty state included, so the panel
-// keeps a stable shape as a season fills in. Custom only appears once it has
-// data, because a permanently empty fifth card is noise — and because a
-// "Custom" series pools whatever different drills a coach invented, so it is
-// the one series that needs reading with care.
-const CORE_DRILLS = ['serve_receive', 'hitting', 'serving', 'scrimmage'];
+// All six cards always render, empty states included, so the panel keeps a
+// stable shape as a season fills in — and an empty scrimmage cell under a full
+// drill cell is itself information.
 
-// The totals line that sits where the threshold legend used to. The derived
-// rate is shaded with the very same perfShade() the chart draws with, so the
-// summary colour and the last dot on the line always agree; the raw counts
-// stay plain, because a count has no good or bad.
-function AggregateLine({ metric, row }) {
+// A drawn chevron rather than a glyph: the rest of the app uses line icons,
+// and a text arrow inherits the tabular font and sits off the baseline.
+function Chevron({ open }) {
+  return (
+    <svg
+      className={`pp-agg-chev${open ? ' is-open' : ''}`}
+      width="8" height="5" viewBox="0 0 8 5" aria-hidden="true" focusable="false"
+    >
+      <path
+        d="M0.8 0.9 L4 4.1 L7.2 0.9" fill="none" stroke="currentColor"
+        strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+// One session's figures, in the same order and from the same helper as the
+// total beneath them — so a column of session rows and the total it adds up to
+// can never be formatted, ordered or derived two different ways.
+function SessionRow({ metric, label, row, isTotal = false }) {
   const figures = drillAggregate(metric, row);
+  const lead = figures.find(f => f.lead) || null;
+  const counts = figures.filter(f => !f.lead);
   return (
-    <dl className="pp-agg">
-      {figures.map(f => (
-        <div key={f.key} className={`pp-agg-fig${f.lead ? ' is-lead' : ''}`}>
-          <dt className="pp-agg-lbl">{f.label}</dt>
-          <dd
-            className="pp-agg-val"
-            style={f.lead ? { color: perfShade(metric, f.raw) } : undefined}
-          >
-            {f.value}
-          </dd>
-        </div>
-      ))}
-    </dl>
-  );
-}
-
-// The scrimmage card's totals: every aspect of the game, one line each.
-//
-// It replaces the single-metric aggregate line the other cards use, because a
-// scrimmage is not one metric — and the three aspects that DO have a rate hand
-// straight off to the same drillAggregate() those cards call, so the passing
-// average here and the one under the passing graph cannot disagree.
-//
-// The rate sits in its own right-hand column so the aspects that have one line
-// up down the card; the three that are pure counts leave it empty rather than
-// printing a dash, since no rate is missing — there simply is not one.
-function AspectLines({ row, current }) {
-  return (
-    <dl className="pp-asps">
-      {scrimmageAspects(row).map(a => {
-        const lead = a.figures.find(f => f.lead) || null;
-        const counts = a.figures.filter(f => !f.lead);
-        return (
-          <div
-            key={a.key}
-            className={`pp-asp${a.metric === current ? ' is-current' : ''}`}
-          >
-            <dt className="pp-asp-lbl">{a.label}</dt>
-            <dd className="pp-asp-figs">
-              {counts.map(f => (
-                <span key={f.key} className="pp-asp-fig">
-                  <span className="pp-asp-key">{f.label}</span>
-                  <span className="pp-asp-val">{f.value}</span>
-                </span>
-              ))}
-            </dd>
-            {lead ? (
-              <dd className="pp-asp-rate" style={{ color: perfShade(a.metric, lead.raw) }}>
-                {lead.value}
-              </dd>
-            ) : <dd className="pp-asp-rate-none" />}
-          </div>
-        );
-      })}
-    </dl>
-  );
-}
-
-// A scrimmage is the one drill with several stories to tell, so its card gets
-// a metric toggle. Switching it swaps the SERIES, the shading bands and the
-// aggregate line together — all three come from the chosen metric, so the card
-// can never show a hitting line under a passing scale.
-function ScrimCard({ series, row, sessions }) {
-  const [metric, setMetric] = useState('serve_receive');
-  const pts = series[metric] || [];
-  const domain = drillHeadline(metric, emptyPracticeRow()).domain;
-  const segId = useId();
-
-  return (
-    <>
-      <div className="pp-seg pp-seg-mini pp-scrim-seg" role="group" aria-label="Scrimmage stat">
-        {SCRIM_METRICS.map(m => (
-          <button
-            key={m}
-            type="button"
-            id={`${segId}-${m}`}
-            className={`pp-seg-btn${m === metric ? ' on' : ''}`}
-            aria-pressed={m === metric}
-            onClick={() => setMetric(m)}
-          >
-            {METRIC_LABEL[m]}
-          </button>
+    <div className={`pp-agg-row${isTotal ? ' is-total' : ''}`}>
+      <dt className="pp-agg-row-lbl">{label}</dt>
+      <dd className="pp-agg-row-figs">
+        {counts.map(f => (
+          <span key={f.key} className="pp-agg-row-fig">
+            <span className="pp-agg-row-key">{f.label}</span>
+            <span className="pp-agg-row-val">{f.value}</span>
+          </span>
         ))}
+      </dd>
+      <dd
+        className="pp-agg-row-rate"
+        style={lead && lead.raw != null ? { color: perfShade(metric, lead.raw) } : undefined}
+      >
+        {lead ? lead.value : '—'}
+      </dd>
+    </div>
+  );
+}
+
+// The totals line that sits where the threshold legend used to, plus the way
+// into the sessions behind it.
+//
+// The merged total is what the card shows by default: the dashboard is a
+// glance, and four cards each unfolding a table by default would bury the
+// graphs. Expanding is the deliberate act of asking "which session".
+//
+// The derived rate is shaded with the very same perfShade() the chart draws
+// with, so the summary colour and the last dot on the line always agree; the
+// raw counts stay plain, because a count has no good or bad.
+// `headline` is off only on the scrimmage card, where the aspect lines above
+// already state this metric's total — printing it a second time directly
+// underneath would be the same number twice in three inches.
+function AggregateBlock({ metric, row, sessions, label = 'Total', headline = true }) {
+  const [open, setOpen] = useState(false);
+  const listId = useId().replace(/:/g, '');
+  const figures = drillAggregate(metric, row);
+  // One session IS the total, so there is nothing to expand into.
+  const rows = sessions || [];
+  const splittable = rows.length > 1;
+
+  return (
+    <div className="pp-aggwrap">
+      {splittable && (
+        <button
+          type="button"
+          className={`pp-agg-toggle${open ? ' is-open' : ''}`}
+          onClick={() => setOpen(o => !o)}
+          aria-expanded={open}
+          aria-controls={listId}
+        >
+          <Chevron open={open} />
+          <span>By session</span>
+          <span className="pp-agg-toggle-n">{rows.length}</span>
+        </button>
+      )}
+
+      {splittable && open && (
+        <dl className="pp-agg-rows" id={listId}>
+          {rows.map(s => (
+            <SessionRow key={s.id} metric={metric} label={s.label || s.dateLabel} row={s.row} />
+          ))}
+          <SessionRow metric={metric} label={label} row={row} isTotal />
+        </dl>
+      )}
+
+      {headline && <dl className="pp-agg">
+        {figures.map(f => (
+          <div key={f.key} className={`pp-agg-fig${f.lead ? ' is-lead' : ''}`}>
+            <dt className="pp-agg-lbl">{f.label}</dt>
+            <dd
+              className="pp-agg-val"
+              style={f.lead ? { color: perfShade(metric, f.raw) } : undefined}
+            >
+              {f.value}
+            </dd>
+          </div>
+        ))}
+      </dl>}
+    </div>
+  );
+}
+
+// One skill in one context: the chart, and the totals under it.
+//
+// Drill and scrimmage cards are the SAME component. That is the point of the
+// grid: a scrimmage passing card and the passing drill above it are computed,
+// shaded and laid out identically, so the only thing that differs between them
+// is the data — which is exactly the comparison the pairing exists to make.
+function TrendCard({ metric, context, points, row, sessions, perSession }) {
+  const domain = drillHeadline(metric, emptyPracticeRow()).domain;
+  const scrim = context === 'scrimmage';
+  return (
+    <section className={`pp-tg pp-tg-${scrim ? 'scrim' : 'drill'}`}>
+      <div className="pp-tg-head">
+        <h4 className="pp-tg-title">{drillOf(metric).label}</h4>
+        <span className={`pp-tg-tag${scrim ? ' is-scrim' : ''}`}>
+          {scrim ? 'Scrimmage' : 'Drill'}
+        </span>
+        <span className="pp-tg-meta">
+          {sessions === 0 ? 'none' : `${sessions} session${sessions !== 1 ? 's' : ''}`}
+        </span>
       </div>
-      {pts.length === 0 ? (
-        // The counts below are still real — it is only the RATE that cannot
-        // be derived, and for serving we know exactly why: scrimmage tracking
-        // logs aces and errors but never a total serve count, so there is no
-        // denominator. Say that, rather than drawing an empty chart.
-        <div className="pp-tg-note">
-          {metric === 'serving'
-            ? 'Serve-in % needs a total serve count, which scrimmage tracking does not record. The ace and error totals below are real.'
-            : `No ${METRIC_LABEL[metric].toLowerCase()} rate to plot across ${sessions === 1 ? 'this scrimmage' : 'these scrimmages'} yet.`}
+
+      {sessions === 0 ? (
+        <div className="pp-tg-empty">
+          {scrim
+            ? 'No scrimmages tracked yet. Their passing, hitting and serving appear here beside the drill above.'
+            : `Nothing tracked yet. Team progression appears here after the first ${drillOf(metric).short.toLowerCase()} session.`}
         </div>
       ) : (
-        <TrendChart points={pts} domain={domain} drillType={metric} />
+        <>
+          {points.length === 0 ? (
+            // The counts below are still real — it is the RATE that cannot be
+            // derived. For serving in a scrimmage we know exactly why.
+            <div className="pp-tg-note">
+              {scrim && metric === 'serving'
+                ? 'Serve-in % needs a total serve count, which scrimmage tracking does not record. The ace and error totals below are real.'
+                : 'Nothing to plot yet — the totals below are the reps logged so far.'}
+            </div>
+          ) : (
+            <TrendChart points={points} domain={domain} drillType={metric} />
+          )}
+          <AggregateBlock metric={metric} row={row} sessions={perSession} />
+        </>
       )}
-      <AspectLines row={row} current={metric} />
-    </>
+    </section>
   );
 }
 
-function TeamGraphs({ series, totals, counts, scrimSeries }) {
-  const shown = [...CORE_DRILLS, ...(counts?.custom ? ['custom'] : [])];
+// The team panel: three skills across, two contexts down.
+//
+// Cards are emitted PAIR-major — passing drill, passing scrimmage, hitting
+// drill, hitting scrimmage… — which is the order they should be read in, and
+// the order a narrow screen stacks them in. On a wide screen the grid flows
+// that same sequence down columns instead, which puts each scrimmage card
+// directly under its drill without reordering the markup to do it.
+function TeamGraphs({ series, totals, counts, scrimSeries, perSession }) {
+  const scrimSessions = counts?.scrimmage || 0;
   return (
-    <div className="pp-tg-grid">
-      {shown.map(d => {
-        const pts = series[d] || [];
-        const domain = drillHeadline(d, emptyPracticeRow()).domain;
-        const total = counts?.[d] || 0;
-        const row = totals?.[d] || emptyPracticeRow();
-        return (
-          <section key={d} className="pp-tg">
-            <div className="pp-tg-head">
-              <h4 className="pp-tg-title">{drillOf(d).label}</h4>
-              <span className="pp-tg-meta">
-                {total === 0 ? 'no sessions' : `${total} session${total !== 1 ? 's' : ''}`}
-              </span>
-            </div>
-            {total === 0 ? (
-              <div className="pp-tg-empty">
-                Nothing tracked yet. Team progression appears here after the
-                first {drillOf(d).short.toLowerCase()} session.
-              </div>
-            ) : d === 'scrimmage' ? (
-              <ScrimCard series={scrimSeries || {}} row={row} sessions={total} />
-            ) : (
-              <>
-                {pts.length === 0 ? (
-                  <div className="pp-tg-note">
-                    Nothing to plot yet — the totals below are the reps logged
-                    so far.
-                  </div>
-                ) : (
-                  <TrendChart points={pts} domain={domain} drillType={d} />
-                )}
-                <AggregateLine metric={d} row={row} />
-              </>
-            )}
-          </section>
-        );
-      })}
-    </div>
+    <>
+      <div className="pp-tg-grid pp-tg-paired">
+        {SCRIM_METRICS.map(m => (
+          <Fragment key={m}>
+            <TrendCard
+              metric={m}
+              context="drill"
+              points={series?.[m] || []}
+              row={totals?.[m] || emptyPracticeRow()}
+              sessions={counts?.[m] || 0}
+              perSession={perSession?.[m]}
+            />
+            <TrendCard
+              metric={m}
+              context="scrimmage"
+              points={scrimSeries?.[m] || []}
+              // Every scrimmage card reads the SAME summed scrimmage row; the
+              // metric decides which counters it takes from it.
+              row={totals?.scrimmage || emptyPracticeRow()}
+              sessions={scrimSessions}
+              perSession={perSession?.scrimmage}
+            />
+          </Fragment>
+        ))}
+      </div>
+
+      {/* Custom drills have no scrimmage counterpart, so they sit outside the
+          pairing rather than distorting it into a fourth column. */}
+      {counts?.custom > 0 && (
+        <div className="pp-tg-grid pp-tg-extra">
+          <TrendCard
+            metric="custom"
+            context="drill"
+            points={series?.custom || []}
+            row={totals?.custom || emptyPracticeRow()}
+            sessions={counts.custom}
+            perSession={perSession?.custom}
+          />
+        </div>
+      )}
+    </>
   );
 }
 
@@ -533,46 +654,16 @@ function TeamGraphs({ series, totals, counts, scrimSeries }) {
 // Sums are taken over RAW COUNTERS before any rate is derived (sumPracticeRows
 // then drillHeadline), never by averaging per-session rates — so a player who
 // took 40 receives in one session and 4 in another is weighted correctly.
-const METRIC_ABBR = {
-  serve_receive: 'Pass', hitting: 'Hit', serving: 'Srv', custom: 'Custom', scrimmage: 'Scrim',
-};
-
-function TeamStats({ roster, practiceStats, sessionById, onPick }) {
-  const [sortDrill, setSortDrill] = useState(null);
-  // The graphs are the default view. The player list stays one tap away —
-  // removing it outright would have left no route into a player at all, since
-  // the leaderboard is the only way in now that the chip row is gone.
-  const [view, setView] = useState('team');
-
-  const { teamMetrics, perPlayer, drills, series, totals, counts, scrimSeries } = useMemo(() => {
+function TeamStats({ practiceStats, sessionById }) {
+  const {
+    hasData, series, totals, counts, scrimSeries, perSession,
+  } = useMemo(() => {
     // Only rows whose session still resolves, grouped by drill and by player.
     const rows = (practiceStats || [])
       .map(r => ({ r, s: sessionById[r.practice_session_id] }))
       .filter(x => x.s);
 
     const present = DRILL_ORDER.filter(d => rows.some(x => x.s.drill_type === d));
-
-    const headline = (drill, subset) => {
-      if (subset.length === 0) return null;
-      const summed = sumPracticeRows(subset);
-      const h = drillHeadline(drill, summed);
-      // `row` rides along so serving can show a second figure (ace %) derived
-      // from the very same aggregate, instead of summing again somewhere else.
-      return h.value == null ? null : { drill, ...h, row: summed };
-    };
-
-    const team = present
-      .map(d => headline(d, rows.filter(x => x.s.drill_type === d).map(x => x.r)))
-      .filter(Boolean);
-
-    const byPlayer = {};
-    for (const p of roster) {
-      const mine = rows.filter(x => x.r.player_id === p.id);
-      const metrics = present
-        .map(d => headline(d, mine.filter(x => x.s.drill_type === d).map(x => x.r)))
-        .filter(Boolean);
-      if (metrics.length > 0) byPlayer[p.id] = metrics;
-    }
 
     // Team progression: one point per SESSION, aggregated across everyone who
     // took part. Summing the counters and deriving the rate once is what makes
@@ -632,27 +723,53 @@ function TeamStats({ roster, practiceStats, sessionById, onPick }) {
       }
     }
 
+    // The same sessions again, this time keeping each one's summed counters so
+    // a card can be expanded into a row per session. One row per session per
+    // drill, aggregated across everyone who took part — exactly the rows the
+    // chart plots, which is what keeps an expanded table and the line above it
+    // telling the same story.
+    const perSession = {};
+    for (const { s: sess, rs } of bySession.values()) {
+      (perSession[sess.drill_type] ||= []).push({
+        id: sess.id,
+        row: sumPracticeRows(rs),
+        dateLabel: fmtDate(sess.session_date),
+        name: sess.name || '',
+        _d: String(sess.session_date || ''),
+        _c: String(sess.created_at || ''),
+      });
+    }
+
     // Chronological, oldest first — a progression reads left to right.
     const chrono = (a, b) => a._d.localeCompare(b._d) || a._c.localeCompare(b._c);
+    for (const k of Object.keys(perSession)) perSession[k].sort(chrono);
+
+    // Two sessions of one drill in an afternoon is normal, and three rows all
+    // labelled "8/31" cannot be told apart. Number a date only where it
+    // repeats, in the order the sessions were run, so the common case stays a
+    // plain date.
+    for (const list of Object.values(perSession)) {
+      const seen = {};
+      for (const x of list) seen[x._d] = (seen[x._d] || 0) + 1;
+      const n = {};
+      for (const x of list) {
+        if (seen[x._d] < 2) { x.label = x.dateLabel; continue; }
+        n[x._d] = (n[x._d] || 0) + 1;
+        x.label = `${x.dateLabel}·${n[x._d]}`;
+      }
+    }
     for (const k of Object.keys(series)) series[k].sort(chrono);
     for (const k of Object.keys(scrimSeries)) scrimSeries[k].sort(chrono);
 
-    return { teamMetrics: team, perPlayer: byPlayer, drills: present, series, totals, counts, scrimSeries };
-  }, [roster, practiceStats, sessionById]);
+    return {
+      // Just whether there is anything at all — the four derived headlines
+      // this used to return existed only for the summary cards.
+      hasData: present.length > 0,
+      series, totals, counts, scrimSeries, perSession,
+    };
+  }, [practiceStats, sessionById]);
 
-  const activeSort = drills.includes(sortDrill) ? sortDrill : drills[0];
-
-  // Players holding the sorted metric come first, best to worst; everyone else
-  // keeps roster order underneath rather than being dropped.
-  const ordered = useMemo(() => {
-    const valueOf = p => perPlayer[p.id]?.find(m => m.drill === activeSort)?.value;
-    const withVal = roster.filter(p => valueOf(p) != null)
-      .sort((a, b) => valueOf(b) - valueOf(a));
-    const without = roster.filter(p => valueOf(p) == null);
-    return [...withVal, ...without];
-  }, [roster, perPlayer, activeSort]);
-
-  if (teamMetrics.length === 0) {
+  if (!hasData) {
     return (
       <div className="pp-zero pp-zero-sm">
         <div className="pp-zero-title">No practice data yet</div>
@@ -666,140 +783,19 @@ function TeamStats({ roster, practiceStats, sessionById, onPick }) {
 
   return (
     <div className="pp-team">
-      <div className="pp-team-cards">
-        {teamMetrics.map(m => (
-          // Labelled by DRILL, not by metric: a scrimmage and the hitting
-          // drill both headline on hitting %, and two cards reading
-          // "Hitting %" would be indistinguishable.
-          <div key={m.drill} className="pp-team-card">
-            <span className="pp-team-card-lbl">{drillOf(m.drill).short}</span>
-            {m.drill === 'serving' ? (
-              // Serving is the one drill with two figures worth showing side by
-              // side: how often the serve landed, and how often it was an ace.
-              <span className="pp-team-card-pair">
-                <span className="pp-team-card-fig">
-                  <span className="pp-team-card-val" style={{ color: perfShade(m.drill, m.value) }}>
-                    {m.display}
-                  </span>
-                  <span className="pp-team-card-unit">in</span>
-                </span>
-                <span className="pp-team-card-fig">
-                  <span className="pp-team-card-val pp-team-card-val-2">{pctFmt(acePct(m.row))}</span>
-                  <span className="pp-team-card-unit">ace</span>
-                </span>
-              </span>
-            ) : (
-              <span className="pp-team-card-val" style={{ color: perfShade(m.drill, m.value) }}>
-                {m.display}
-              </span>
-            )}
-            <span className="pp-team-card-sub">{m.reps} {m.repsLabel}</span>
-          </div>
-        ))}
-      </div>
-
-      {/* Team trends are the default; the ranked player list is one tap away
-          and is the route into an individual player's development view —
-          without it there would be no way to open a player at all, now that
-          the chip row is gone. */}
-      <div className="pp-seg pp-seg-inline pp-view-seg">
-        <button
-          type="button"
-          className={`pp-seg-btn${view === 'team' ? ' on' : ''}`}
-          onClick={() => setView('team')}
-        >
-          Team trends
-        </button>
-        <button
-          type="button"
-          className={`pp-seg-btn${view === 'players' ? ' on' : ''}`}
-          onClick={() => setView('players')}
-        >
-          Players
-        </button>
-      </div>
-
-      {view === 'team' ? (
-        <TeamGraphs series={series} totals={totals} counts={counts} scrimSeries={scrimSeries} />
-      ) : (
-        <>
-      {drills.length > 1 && (
-        <div className="pp-seg pp-seg-inline">
-          {drills.map(d => (
-            <button
-              key={d}
-              type="button"
-              className={`pp-seg-btn${d === activeSort ? ' on' : ''}`}
-              onClick={() => setSortDrill(d)}
-            >
-              {drillOf(d).short}
-            </button>
-          ))}
-        </div>
-      )}
-
-      <div className="pp-team-list">
-        {ordered.map(p => {
-          const metrics = perPlayer[p.id] || [];
-          // Only the sorted metric is shown; `others` is how many more drills
-          // this player has data in.
-          const lead = metrics.find(m => m.drill === activeSort) || null;
-          const others = metrics.filter(m => m.drill !== activeSort).length;
-          return (
-            <button
-              key={p.id}
-              type="button"
-              className="pp-team-row"
-              onClick={() => onPick(p.id)}
-            >
-              <span className="pp-team-row-num">
-                {p.jersey_number != null && p.jersey_number !== '' ? p.jersey_number : '—'}
-              </span>
-              <span className="pp-team-row-name">{p.name}</span>
-              {/* ONE number per row: the metric the list is sorted by. The
-                  row used to carry every metric the player had, in shrinking
-                  type — four numbers to compare down a column when only one of
-                  them is the one being ranked. The rest are a tap away in the
-                  player's own view. */}
-              <span className="pp-team-row-vals">
-                {lead ? (
-                  <span
-                    className="pp-team-val is-lead"
-                    style={{ color: perfShade(lead.drill, lead.value) }}
-                  >
-                    {lead.display}
-                    {lead.drill === 'serving' && <small>in</small>}
-                  </span>
-                ) : (
-                  <span className="pp-team-row-none">—</span>
-                )}
-                {/* Ace % sits beside the in %, deliberately UNCOLOURED: it is a
-                    more-is-better stat with no agreed good/bad thresholds, and
-                    inventing bands just to tint it would imply a judgement the
-                    numbers do not support. Weight and label carry it instead. */}
-                {lead && lead.drill === 'serving' && (
-                  <span className="pp-team-val pp-team-val-ace">
-                    {pctFmt(acePct(lead.row))}
-                    <small>ace</small>
-                  </span>
-                )}
-                {/* A quiet count of the other drills they have data in, so the
-                    row still says "there is more here" without spelling it out. */}
-                {others > 0 && <span className="pp-team-row-more">+{others}</span>}
-              </span>
-            </button>
-          );
-        })}
-      </div>
-        </>
-      )}
+      <TeamGraphs
+        series={series} totals={totals} counts={counts}
+        scrimSeries={scrimSeries} perSession={perSession}
+      />
     </div>
   );
 }
 
+// The middle panel: the team trend charts, or one player's development view
+// when the rail beside it has a selection. Selecting is the rail's job now, so
+// this component reads playerId and never sets it.
 export default function PracticeTrends({
-  team, players, sessions, practiceStats, playerGameStats,
-  playerId, onSelectPlayer,
+  team, players, sessions, practiceStats, playerGameStats, playerId,
 }) {
   const roster = useMemo(
     () => sortByJersey((players || []).filter(p => p.team_id === team?.id)),
@@ -886,6 +882,17 @@ export default function PracticeTrends({
     [playerGameStats, playerId]
   );
 
+  // The hero line is this player across EVERY practice rep, drills and
+  // scrimmages together — the context block underneath is what splits them.
+  const practiceAll = useMemo(
+    () => sumPracticeRows(myPractice.map(x => x.row)),
+    [myPractice]
+  );
+  const sessionCount = useMemo(
+    () => new Set(myPractice.map(x => x.session.id)).size,
+    [myPractice]
+  );
+
   const player = roster.find(p => p.id === playerId) || null;
 
   if (roster.length === 0) {
@@ -901,86 +908,94 @@ export default function PracticeTrends({
           picked by clicking their row, and left by the header's back button. */}
 
       {!player ? (
-        <TeamStats
-          roster={roster}
-          practiceStats={practiceStats}
-          sessionById={sessionById}
-          onPick={onSelectPlayer}
-        />
+        <TeamStats practiceStats={practiceStats} sessionById={sessionById} />
       ) : (
-        <>
-          {/* Deliberately understated: the selector chip above is already lit
-              for this player, so a hero block with an avatar would say the same
-              thing twice and push the chart below the fold. */}
-          <div className="pp-sel-player">
-            {player.name}
-            {player.jersey_number != null && player.jersey_number !== '' && (
-              <span className="pp-sel-player-num"> (#{player.jersey_number})</span>
-            )}
+        // ONE container. Header, hero numbers, the context comparison and the
+        // trend all live inside it, separated by hairlines and space rather
+        // than by nested cards with their own backgrounds.
+        <section className="pp-bc">
+          <BroadcastHead player={player} sessionCount={sessionCount} />
+
+          {/* The hero: this player across every practice rep they have. The
+              breakdown by context is the block directly beneath, so the top
+              line is deliberately the whole picture. */}
+          <div className="pp-bc-hero">
+            {HERO_STATS.map(stat => (
+              <HeroStat key={stat.key} stat={stat} totals={practiceAll} />
+            ))}
+          </div>
+
+          <div className="pp-bc-sect">
+            <div className="pp-bc-sect-hd">
+              <span className="pp-bc-sect-ttl">By context</span>
+              <span className="pp-bc-sect-sub">Game data is read-only</span>
+            </div>
+            <ContextColumns
+              byContext={{ drills: practiceDrills, scrimmage, game: gameTotals }}
+            />
           </div>
 
           {myPractice.length === 0 ? (
-            <div className="pp-zero pp-zero-sm">
-              <div className="pp-zero-title">No practice reps yet</div>
-              <p className="pp-zero-text">
+            <div className="pp-bc-sect">
+              <div className="pp-bc-empty">
                 {player.name} has not been tracked in a drill yet. Start one from
                 &ldquo;Start a drill&rdquo; and the trend appears here.
-              </p>
+              </div>
             </div>
           ) : (
-            <section className="pp-block">
-              <div className="pp-block-head">
-                <h3>Practice trend</h3>
-                <span className="pp-block-sub">
-                  {drillRows.length} {drillOf(activeDrill).short.toLowerCase()} session{drillRows.length !== 1 ? 's' : ''} over time
+            <div className="pp-bc-sect">
+              <div className="pp-bc-sect-hd">
+                <span className="pp-bc-sect-ttl">Trend</span>
+                <span className="pp-bc-sect-sub">
+                  {drillRows.length} {drillOf(activeDrill).short.toLowerCase()} session{drillRows.length !== 1 ? 's' : ''}
+                  {' · '}{drillTotalHead.reps} {drillTotalHead.repsLabel}
                 </span>
               </div>
 
-              {drillsWithData.length > 1 && (
-                <div className="pp-seg">
-                  {drillsWithData.map(d => (
-                    <button
-                      key={d}
-                      type="button"
-                      className={`pp-seg-btn${d === activeDrill ? ' on' : ''}`}
-                      onClick={() => setDrillType(d)}
-                    >
-                      {drillOf(d).short}
-                    </button>
-                  ))}
-                </div>
-              )}
-
-              <div className="pp-trend-total">
-                <span
-                  className="pp-trend-total-val"
-                  style={{ color: perfShade(activeDrill, drillTotalHead.value) }}
-                >
-                  {drillTotalHead.display}
-                </span>
-                <span className="pp-trend-total-lbl">
-                  {drillTotalHead.label} across all {drillOf(activeDrill).short.toLowerCase()} sessions
-                  {' '}({drillTotalHead.reps} {drillTotalHead.repsLabel})
+              <div className="pp-bc-trendbar">
+                {drillsWithData.length > 1 && (
+                  <div className="pp-seg pp-seg-mini">
+                    {drillsWithData.map(d => (
+                      <button
+                        key={d}
+                        type="button"
+                        className={`pp-seg-btn${d === activeDrill ? ' on' : ''}`}
+                        onClick={() => setDrillType(d)}
+                      >
+                        {drillOf(d).short}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                <span className="pp-bc-trendbar-val">
+                  <span
+                    className="pp-bc-trendbar-num"
+                    style={{ color: perfShade(activeDrill, drillTotalHead.value) }}
+                  >
+                    {drillTotalHead.display}
+                  </span>
+                  <span className="pp-bc-trendbar-lbl">{drillTotalHead.label}</span>
                 </span>
               </div>
 
               <TrendChart points={points} domain={drillTotalHead.domain} drillType={activeDrill} />
-              <PerfLegend drillType={activeDrill} />
 
-              <div className="pp-trend-list">
+              <div className="pp-bc-log">
                 {drillRows.slice().reverse().map(({ row, session }) => {
                   const head = drillHeadline(activeDrill, row);
                   return (
-                    <div key={session.id} className="pp-trend-item">
-                      <span className="pp-trend-item-date">{fmtDate(session.session_date)}</span>
-                      <span className="pp-trend-item-name">{session.name || sessionDrillLabel(session)}</span>
-                      <span className="pp-trend-item-break">
+                    <div key={session.id} className="pp-bc-logrow">
+                      <span className="pp-bc-log-date">{fmtDate(session.session_date)}</span>
+                      <span className="pp-bc-log-name">{session.name || sessionDrillLabel(session)}</span>
+                      <span className="pp-bc-log-break">
                         {drillBreakdown(activeDrill, row).map(([abbr, v]) => (
-                          <span key={abbr} className="pp-pair"><b>{v}</b><span>{abbr}</span></span>
+                          <span key={abbr} className="pp-bc-pair">
+                            <b>{v}</b><span>{abbr}</span>
+                          </span>
                         ))}
                       </span>
                       <span
-                        className="pp-trend-item-val"
+                        className="pp-bc-log-val"
                         style={{ color: perfShade(activeDrill, head.value) }}
                       >
                         {head.display}
@@ -989,38 +1004,17 @@ export default function PracticeTrends({
                   );
                 })}
               </div>
-            </section>
+            </div>
           )}
 
-          {/* Rendered whenever a player is selected, NOT only when they have
-              practice reps: a player with match history and no drills yet
-              should still see the game side, with the practice side saying so
-              explicitly rather than the whole block vanishing. */}
-          <section className="pp-block">
-            <div className="pp-block-head">
-              <h3>Drills vs Scrimmage vs Game</h3>
-              <span className="pp-block-sub">
-                Every value from the same shared helpers — game data is read-only
-              </span>
-            </div>
-
-            <CompareGrid
-              byContext={{
-                drills: practiceDrills,
-                scrimmage,
-                game: gameTotals,
-              }}
-            />
-
-            <p className="pp-cmp-foot">
-              Practice reps are stored in their own tables and are never counted
-              towards a player&rsquo;s match statistics. A serve-in&nbsp;% needs
-              the total serves taken, which only the serving drill records —
-              scrimmages and matches log aces and serve errors but not every
-              serve, so that row reads &ldquo;not tracked&rdquo; there.
-            </p>
-          </section>
-        </>
+          <p className="pp-bc-foot">
+            Practice reps are stored in their own tables and are never counted
+            towards a player&rsquo;s match statistics. A serve-in&nbsp;% needs the
+            total serves taken, which only the serving drill records — scrimmages
+            and matches log aces and serve errors but not every serve, so serving
+            reads &ldquo;—&rdquo; in those columns.
+          </p>
+        </section>
       )}
     </div>
   );

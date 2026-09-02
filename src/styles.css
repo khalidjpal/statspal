@@ -14213,9 +14213,7 @@ td.trn-railtable-player {
   grid-template-areas: "alert alert alert" "sessions player start";
 }
 .pp-dash-alert { grid-area: alert; }
-.pp-col-sessions { grid-area: sessions; }
 .pp-col-player   { grid-area: player; }
-.pp-col-start    { grid-area: start; }
 
 /* Laptop / small desktop: the drill buttons stretch across the top as a row,
    sessions and player development share the width beneath. */
@@ -14251,17 +14249,6 @@ td.trn-railtable-player {
   font-weight: 600;
   text-align: right;
   min-width: 0;
-}
-
-/* The session list is the one column that can grow without bound, so on a
-   desktop it scrolls inside its own column rather than stretching the page
-   past the other two. */
-@media (min-width: 1180px) {
-  .pp-col-sessions .pp-list {
-    max-height: calc(100dvh - 190px);
-    overflow-y: auto;
-    padding-right: 4px;
-  }
 }
 
 /* ── LEFT: session cards ───────────────────────────────────────────────── */
@@ -14313,43 +14300,6 @@ td.trn-railtable-player {
 
 
 /* ── RIGHT: start a drill ──────────────────────────────────────────────── */
-/* auto-fit is what lets the same markup be a vertical stack in the 300px
-   right-hand column and a four-across row when the column spans the page. */
-.pp-start-list {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
-  gap: 9px;
-}
-.pp-start {
-  display: flex;
-  align-items: center;
-  gap: 11px;
-  padding: 13px 13px;
-  border-radius: var(--radius-sm);
-  background: var(--card);
-  border: 1px solid var(--border);
-  color: var(--text);
-  text-align: left;
-  min-height: 62px;
-  transition: border-color 0.15s, background 0.15s, transform 0.08s;
-}
-.pp-start:hover { background: var(--card-hover); }
-.pp-start:active { transform: scale(0.985); }
-.pp-start-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 38px;
-  height: 38px;
-  border-radius: 10px;
-  flex-shrink: 0;
-}
-.pp-start-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.pp-start-title { font-size: 14px; font-weight: 800; }
-.pp-start-sub { font-size: 11px; color: var(--text-secondary); line-height: 1.4; }
-.pp-start-arrow { color: var(--text-muted); flex-shrink: 0; transition: transform 0.15s, color 0.15s; }
-.pp-start:hover .pp-start-arrow { color: var(--text); transform: translateX(3px); }
-
 /* Per-drill tints. Same four hues as the session-type pills, so a drill reads
    the same colour everywhere it appears on the page. */
 .pp-tint-serve_receive { background: rgba(167, 139, 250, 0.14); color: #a78bfa; border: 1px solid rgba(167, 139, 250, 0.3); }
@@ -14511,9 +14461,7 @@ td.trn-railtable-player {
 /* The list is the one part that can grow without bound, so on a desktop it
    scrolls inside its own card rather than stretching the row. */
 @media (min-width: 1180px) {
-  .pp-col-sessions .pp-col-body { max-height: calc(100dvh - 190px); overflow-y: auto; }
   /* supersedes the earlier rule that scrolled .pp-list directly */
-  .pp-col-sessions .pp-list { max-height: none; overflow-y: visible; padding-right: 0; }
 }
 
 /* ── Sessions: filter chips ────────────────────────────────────────────── */
@@ -14540,23 +14488,6 @@ td.trn-railtable-player {
   background: var(--pp-dim);
   border-color: var(--pp-line);
   color: var(--pp);
-}
-
-/* ── Sessions: rows become list rows, not nested cards ─────────────────── */
-.pp-col-sessions .pp-list { gap: 0; }
-.pp-col-sessions .pp-sess {
-  background: transparent;
-  border: none;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-  border-radius: 0;
-  padding: 11px 6px;
-  margin: 0 -6px;
-}
-.pp-col-sessions .pp-sess:last-child { border-bottom: none; }
-.pp-col-sessions .pp-sess:hover { background: rgba(255, 255, 255, 0.035); }
-.pp-col-sessions .pp-sess-open {
-  background: var(--pp-dim);
-  box-shadow: inset 2px 0 0 var(--pp);
 }
 
 /* ── Player development: inner blocks are dividers, not nested cards ───── */
@@ -14735,101 +14666,6 @@ td.trn-railtable-player {
 .pp-col-back:hover { filter: brightness(1.15); }
 
 .pp-team { display: flex; flex-direction: column; gap: 12px; }
-
-/* ── Squad averages ────────────────────────────────────────────────────── */
-.pp-team-cards {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-  gap: 8px;
-}
-.pp-team-card {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: 11px 12px;
-  border-radius: var(--radius-sm);
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.07);
-  min-width: 0;
-}
-.pp-team-card-lbl {
-  font-size: 9.5px;
-  font-weight: 800;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--text-muted);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.pp-team-card-val { font-size: 24px; font-weight: 800; font-family: var(--mono); line-height: 1.05; }
-.pp-team-card-sub { font-size: 10.5px; color: var(--text-muted); }
-
-/* ── Player breakdown ──────────────────────────────────────────────────── */
-.pp-team-list { display: flex; flex-direction: column; }
-.pp-team-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  padding: 9px 6px;
-  margin: 0 -6px;
-  background: transparent;
-  border: none;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-  border-radius: 6px;
-  text-align: left;
-  color: var(--text);
-  transition: background 0.15s;
-}
-.pp-team-row:last-child { border-bottom: none; }
-.pp-team-row:hover { background: rgba(255, 255, 255, 0.045); }
-.pp-team-row:active { transform: scale(0.997); }
-.pp-team-row-num {
-  font-family: var(--mono);
-  font-size: 11px;
-  color: var(--text-muted);
-  width: 22px;
-  flex-shrink: 0;
-  text-align: right;
-}
-.pp-team-row-name {
-  flex: 1;
-  min-width: 0;
-  font-size: 13px;
-  font-weight: 600;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.pp-team-row-vals { display: flex; align-items: baseline; gap: 10px; flex-shrink: 0; }
-.pp-team-row-none { font-size: 11px; color: var(--text-muted); font-style: italic; }
-.pp-team-val {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 3px;
-  font-family: var(--mono);
-  font-size: 12px;
-  font-weight: 700;
-  opacity: 0.62;
-}
-/* The metric the list is sorted by leads each row and is the one meant to be
-   compared down the column, so it stays at full strength. */
-.pp-team-val.is-lead { font-size: 14.5px; font-weight: 800; opacity: 1; }
-.pp-team-val small {
-  font-family: var(--font, inherit);
-  font-size: 9px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--text-muted);
-}
-
-@media (max-width: 859px) {
-  .pp-team-cards { grid-template-columns: repeat(auto-fit, minmax(104px, 1fr)); }
-  .pp-team-card-val { font-size: 21px; }
-  .pp-team-row { padding: 11px 6px; }
-}
 
 /* ═══════════════════════════════════════════════════════════════════════════
    PRACTICEPAL — SCRIMMAGE
@@ -16297,13 +16133,6 @@ td.trn-railtable-player {
 /* ── Middle card: room to breathe ──────────────────────────────────────── */
 .pp-team { gap: var(--ds-space-5); }
 
-/* Summary cards: smaller and quieter, so the leaderboard is what the eye
-   lands on rather than four competing hero numbers. */
-.pp-team-cards { gap: var(--ds-space-2); grid-template-columns: repeat(auto-fit, minmax(104px, 1fr)); }
-.pp-team-card { padding: var(--ds-space-2) var(--ds-space-3); gap: 0; }
-.pp-team-card-val { font-size: var(--ds-fs-lg); letter-spacing: -0.01em; }
-.pp-team-card-sub { font-size: var(--ds-fs-2xs); }
-
 /* The metric control is a proper segmented control now. */
 .pp-team .pp-seg {
   margin-bottom: 0;
@@ -16317,22 +16146,6 @@ td.trn-railtable-player {
   color: var(--ds-text);
   box-shadow: var(--ds-shadow-sm);
 }
-
-/* Leaderboard rows: one number each, more air between them. */
-.pp-team-row { padding: var(--ds-space-2) var(--ds-space-2); gap: var(--ds-space-3); }
-.pp-team-row-vals { gap: var(--ds-space-2); align-items: baseline; }
-.pp-team-row-vals .pp-team-val.is-lead {
-  font-size: var(--ds-fs-md);
-  font-weight: 800;
-  opacity: 1;
-}
-.pp-team-row-more {
-  font-family: var(--ds-font-mono);
-  font-size: var(--ds-fs-2xs);
-  font-weight: 700;
-  color: var(--ds-text-faint);
-}
-.pp-team-row-none { color: var(--ds-text-faint); font-style: normal; }
 
 @media (max-width: 859px) {
   .pp-dash { padding-left: var(--ds-space-3); padding-right: var(--ds-space-3); }
@@ -16396,9 +16209,6 @@ td.trn-railtable-player {
     background: rgba(255, 255, 255, 0.12);
     border-radius: 4px;
   }
-  /* Superseded: the sessions body no longer needs its own height cap now that
-     every panel is bounded by the grid row. */
-  .pp-col-sessions .pp-col-body { max-height: none; }
 
   /* The setup screen still scrolls as one page, but full width. */
   .pp-page .pp-main {
@@ -16437,7 +16247,6 @@ td.trn-railtable-player {
    is room, one where there is not.
    ═══════════════════════════════════════════════════════════════════════════ */
 
-.pp-view-seg { align-self: flex-start; }
 
 .pp-tg-grid {
   display: grid;
@@ -16589,106 +16398,97 @@ td.trn-railtable-player {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   PRACTICEPAL — serving shows IN % and ACE % side by side
+   PRACTICEPAL — AGGREGATE TOTALS, SPLIT BY SESSION
    ───────────────────────────────────────────────────────────────────────────
-   Two figures per serving reading. The in % keeps the graduated shading; the
-   ace % stays uncoloured on purpose — it is a more-is-better stat with no
-   agreed good/bad thresholds, and tinting it would imply a judgement the
-   numbers cannot support. A unit label and a lighter weight separate them.
+   The merged total stays the card's default: a dashboard is a glance, and four
+   cards each unfolding a table would bury the graphs they sit under. The
+   toggle is the deliberate act of asking "which session".
+
+   Session rows use the same three-track grid as the scrimmage aspect lines —
+   label, counts, rate — so the rates stack into one column down the card and
+   the total row lands directly under the sessions that make it up.
    ═══════════════════════════════════════════════════════════════════════════ */
 
-/* ── Team summary card ── */
-.pp-team-card-pair {
+.pp-aggwrap {
   display: flex;
-  align-items: baseline;
-  gap: var(--ds-space-3);
-  flex-wrap: wrap;
+  flex-direction: column;
+  padding-top: var(--ds-space-2);
+  border-top: 1px solid var(--ds-border-faint);
 }
-.pp-team-card-fig { display: inline-flex; align-items: baseline; gap: 3px; }
-.pp-team-card-val-2 {
-  color: var(--ds-text-secondary);
-  font-size: var(--ds-fs-md);
-}
-.pp-team-card-unit {
-  font-size: var(--ds-fs-2xs);
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.07em;
-  color: var(--ds-text-muted);
-}
+/* The rule above belongs to the wrapper now, or the total line would draw a
+   second one directly beneath the expanded table. */
+.pp-aggwrap .pp-agg { border-top: none; padding-top: 0; }
 
-/* ── Leaderboard row ── */
-.pp-team-val.is-lead small,
-.pp-team-val-ace small {
-  margin-left: 3px;
-  font-family: var(--ds-font);
-  font-size: 9px;
-  font-weight: 700;
+.pp-agg-toggle {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  gap: 5px;
+  margin-bottom: var(--ds-space-2);
+  padding: 2px 6px 2px 4px;
+  border: none;
+  border-radius: var(--ds-radius-sm);
+  background: none;
+  font: inherit;
+  font-size: var(--ds-fs-2xs);
+  font-weight: 600;
+  letter-spacing: 0.05em;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--ds-text-muted);
+  color: var(--ds-text-faint);
+  cursor: pointer;
+  transition: color 0.12s ease, background 0.12s ease;
 }
-.pp-team-val-ace {
+.pp-agg-toggle:hover { color: var(--ds-text-secondary); background: rgba(255, 255, 255, 0.03); }
+.pp-agg-toggle.is-open { color: var(--ds-text-secondary); }
+.pp-agg-chev { flex: none; transition: transform 0.15s ease; }
+.pp-agg-chev.is-open { transform: rotate(180deg); }
+.pp-agg-toggle-n {
   font-family: var(--ds-font-mono);
   font-variant-numeric: tabular-nums;
-  font-size: var(--ds-fs-sm);
-  font-weight: 700;
-  color: var(--ds-text-secondary);
-  opacity: 1;
+  letter-spacing: 0;
+  color: var(--ds-text-faint);
+  opacity: 0.75;
 }
 
-@media (max-width: 859px) {
-  .pp-team-card-pair { gap: var(--ds-space-2); }
-  .pp-team-card-val-2 { font-size: var(--ds-fs-base); }
-}
-
-/* ═══════════════════════════════════════════════════════════════════════════
-   PRACTICEPAL — SCRIMMAGE ASPECT TOTALS
-   ───────────────────────────────────────────────────────────────────────────
-   A scrimmage carries every counter, so its trend card carries every angle:
-   passing, hitting, serving, defense, blocking and ball handling, under the
-   graph and its metric toggle.
-
-   Six groups will not fit as six cards inside a half-width column, so each
-   aspect is ONE LINE — a fixed label column on the left, its counts next, and
-   the derived rate flush right. That gives a column of rates down the right
-   edge that reads like a mini box score, and it stays legible when the card
-   is 300px wide.
-   ═══════════════════════════════════════════════════════════════════════════ */
-
-.pp-asps {
+.pp-agg-rows {
   display: flex;
   flex-direction: column;
   gap: 1px;
-  margin: 0;
-  padding: var(--ds-space-2) 0 0;
-  border-top: 1px solid var(--ds-border-faint);
+  margin: 0 0 var(--ds-space-2);
 }
-.pp-asp {
+.pp-agg-row {
   display: grid;
-  grid-template-columns: 5.4em minmax(0, 1fr) auto;
+  grid-template-columns: 3.6em minmax(0, 1fr) auto;
   align-items: baseline;
   gap: var(--ds-space-2);
   padding: 2px 0;
   min-width: 0;
 }
-/* The active toggle's aspect is the one the graph above is drawing. Marking it
-   keeps the two connected without duplicating the number a third time. */
-.pp-asp.is-current .pp-asp-lbl { color: var(--ds-text-secondary); }
-.pp-asp.is-current .pp-asp-val { color: var(--ds-text-secondary); }
-
-.pp-asp-lbl {
+/* The total is the row the others add up to, so it sits under a rule and
+   carries the weight — the only emphasis in the table. */
+.pp-agg-row.is-total {
+  margin-top: 3px;
+  padding-top: 5px;
+  border-top: 1px solid var(--ds-border-faint);
+}
+.pp-agg-row-lbl {
   margin: 0;
+  font-family: var(--ds-font-mono);
+  font-variant-numeric: tabular-nums;
   font-size: var(--ds-fs-2xs);
-  font-weight: 700;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
   color: var(--ds-text-faint);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.pp-asp-figs {
+.pp-agg-row.is-total .pp-agg-row-lbl {
+  font-family: inherit;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--ds-text-muted);
+}
+.pp-agg-row-figs {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
@@ -16696,15 +16496,14 @@ td.trn-railtable-player {
   margin: 0;
   min-width: 0;
 }
-.pp-asp-fig { display: inline-flex; align-items: baseline; gap: 3px; min-width: 0; }
-.pp-asp-key {
+.pp-agg-row-fig { display: inline-flex; align-items: baseline; gap: 3px; min-width: 0; }
+.pp-agg-row-key {
   font-size: var(--ds-fs-2xs);
   font-weight: 600;
   color: var(--ds-text-faint);
   white-space: nowrap;
 }
-.pp-asp-val {
-  margin: 0;
+.pp-agg-row-val {
   font-family: var(--ds-font-mono);
   font-variant-numeric: tabular-nums;
   font-size: var(--ds-fs-sm);
@@ -16712,22 +16511,1043 @@ td.trn-railtable-player {
   color: var(--ds-text-muted);
   white-space: nowrap;
 }
-/* The derived rate: its own column, so every aspect that has one lines up. */
-.pp-asp-rate {
+.pp-agg-row.is-total .pp-agg-row-val { color: var(--ds-text-secondary); }
+.pp-agg-row-rate {
   margin: 0;
   font-family: var(--ds-font-mono);
   font-variant-numeric: tabular-nums;
-  font-size: var(--ds-fs-base);
-  font-weight: 700;
+  font-size: var(--ds-fs-sm);
+  font-weight: 600;
   letter-spacing: -0.01em;
   text-align: right;
   white-space: nowrap;
   min-width: 4.2em;
+  color: var(--ds-text-faint);
 }
-/* An aspect that is only counts keeps the column empty rather than filling it
-   with a dash — there is no rate missing, there is simply no rate. */
-.pp-asp-rate-none { min-width: 4.2em; }
+.pp-agg-row.is-total .pp-agg-row-rate { font-size: var(--ds-fs-base); font-weight: 700; }
 
-@media (max-width: 859px) {
-  .pp-asp { grid-template-columns: 4.8em minmax(0, 1fr) auto; }
+@media (max-width: 520px) {
+  .pp-agg-row { grid-template-columns: 3.2em minmax(0, 1fr) auto; }
+  .pp-agg-row-rate { min-width: 3.8em; }
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   PRACTICEPAL — PLAYER CARDS (the Players tab)
+   ───────────────────────────────────────────────────────────────────────────
+   The roster as cards, replacing the ranked row list. A row list answers "who
+   is best at the one thing I sorted by"; a card answers "how is this player
+   doing", which is the question the tab exists for — and it carries all three
+   skills at once instead of one plus a "+2" hint.
+
+   auto-fill rather than auto-fit: the tab is the wide panel now, and auto-fit
+   would stretch two cards across 1200px. auto-fill keeps the card its own size
+   and lets the row breathe instead.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.pp-pcards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(215px, 1fr));
+  gap: var(--ds-space-3);
+  align-content: start;
+}
+
+.pp-pcard {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ds-space-3);
+  padding: var(--ds-space-3);
+  min-width: 0;
+  text-align: left;
+  border: 1px solid var(--ds-border-faint);
+  border-radius: var(--ds-radius-xl);
+  background:
+    linear-gradient(160deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0) 62%),
+    var(--ds-surface-2);
+  color: var(--ds-text);
+  cursor: pointer;
+  transition: transform 0.14s ease, border-color 0.14s ease, box-shadow 0.14s ease;
+}
+.pp-pcard:hover {
+  transform: translateY(-2px);
+  border-color: var(--ds-border-strong);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.28);
+}
+.pp-pcard:active { transform: translateY(0); }
+.pp-pcard:focus-visible { outline: 2px solid var(--ds-text-muted); outline-offset: 2px; }
+
+.pp-pcard-head { display: flex; align-items: center; gap: var(--ds-space-3); min-width: 0; }
+/* A jersey tile, not a photo: a radial highlight gives it enough form to read
+   as an avatar slot without pretending to be one. */
+.pp-pcard-av {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--ds-radius-md);
+  border: 1px solid var(--ds-border-faint);
+  background:
+    radial-gradient(120% 120% at 30% 20%, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0) 70%),
+    var(--ds-surface-3);
+  font-family: var(--ds-font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--ds-fs-md);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--ds-text-secondary);
+}
+.pp-pcard-id { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.pp-pcard-name {
+  font-size: var(--ds-fs-base);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--ds-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pp-pcard-pos {
+  font-size: var(--ds-fs-2xs);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ds-text-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Three equal cells, so the same skill sits in the same place on every card
+   and a column of cards can be read down. */
+.pp-pcard-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--ds-space-2);
+  padding-top: var(--ds-space-3);
+  border-top: 1px solid var(--ds-border-faint);
+}
+.pp-pcard-stat { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.pp-pcard-stat-lbl {
+  font-size: var(--ds-fs-2xs);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ds-text-faint);
+}
+.pp-pcard-stat-val {
+  font-family: var(--ds-font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--ds-fs-lg);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+  color: var(--ds-text);
+}
+/* A missing value stays grey. Shading a dash would imply a judgement about
+   data that is not there. */
+.pp-pcard-stat-val.is-none { color: var(--ds-text-faint); font-weight: 500; }
+
+@media (max-width: 520px) {
+  .pp-pcards { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: var(--ds-space-2); }
+  .pp-pcard { padding: var(--ds-space-2) var(--ds-space-3); gap: var(--ds-space-2); }
+  .pp-pcard-av { width: 34px; height: 34px; font-size: var(--ds-fs-base); }
+  .pp-pcard-stats { padding-top: var(--ds-space-2); }
+  .pp-pcard-stat-val { font-size: var(--ds-fs-md); }
+}
+
+/* Pointer-less devices get no hover lift — a sticky :hover after a tap reads
+   as a stuck card. */
+@media (hover: none) {
+  .pp-pcard:hover { transform: none; box-shadow: none; }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   PRACTICEPAL — SERVE-RECEIVE RATING PAD
+   ───────────────────────────────────────────────────────────────────────────
+   Four grades as a 2x2: 0 top-left through 3 bottom-right, the grade climbing
+   left-to-right and top-to-bottom. Two rows of two give each button roughly
+   twice the area four stacked rows did, which is what a courtside tap needs.
+
+   Solid fills, not tinted outlines: at arm's length on a sideline the colour
+   IS the button, and a wash of it reads as grey. Three of the four hues are
+   the app's own PERF_RAMP anchors, so a 3 on this pad is the same green a 3.00
+   average is shaded elsewhere.
+
+   The fourth is deepened: the ramp's #12a05a carries white text at only
+   3.39:1, under AA. #0d8047 measures 5.01:1 and stays clearly darker than the
+   light green above it, so the pair still reads as two distinct greens.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.pp-actions-serve_receive {
+  grid-template-columns: repeat(2, 1fr);
+  grid-template-rows: repeat(2, 1fr);
+}
+
+.pp-ab-r0 { background: #cf2b20; color: #ffffff; }
+.pp-ab-r1 { background: #f0832f; color: #1b1004; }
+.pp-ab-r2 { background: #8fe3a0; color: #04240f; }
+.pp-ab-r3 { background: #0d8047; color: #ffffff; }
+
+/* The grade is the button: give the numeral the room a 2x2 affords it, and
+   drop the label to a quiet caption underneath. */
+.pp-actions-serve_receive .pp-ab-abbr { font-size: clamp(30px, 7vw, 58px); }
+.pp-actions-serve_receive .pp-ab-label { opacity: 0.78; letter-spacing: 0.1em; }
+.pp-ab-r1 .pp-ab-label,
+.pp-ab-r2 .pp-ab-label { opacity: 0.72; }
+
+/* A translucent-black badge disappears on the light fills; give each button a
+   badge that contrasts with the fill it sits on. */
+.pp-ab-r1 .pp-ab-badge,
+.pp-ab-r2 .pp-ab-badge { background: rgba(0, 0, 0, 0.24); color: inherit; }
+.pp-ab-r0 .pp-ab-badge,
+.pp-ab-r3 .pp-ab-badge { background: rgba(0, 0, 0, 0.32); color: #ffffff; }
+
+/* The press flash is a brightness lift, which barely moves an already-light
+   fill. Ring it instead so all four confirm a tap equally. */
+.pp-ab-r1.pp-ab-lit,
+.pp-ab-r2.pp-ab-lit {
+  filter: brightness(1.12);
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.75);
+}
+
+
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   PRACTICEPAL — DRILL SETUP, POLISHED
+   ───────────────────────────────────────────────────────────────────────────
+   Brought onto the design system: one spacing rhythm, the broadcast card's
+   section-header treatment, and a player picker that reads as a grid of
+   selectable cards rather than a row of checkboxes.
+
+   The picker is the screen's real work, so it gets the room: cards are wide
+   enough for a full name at 15 characters, and the jersey number sits in its
+   own fixed-width slot so the names line up down the column.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.pp-setup {
+  --setup-gap: 20px;
+  gap: var(--setup-gap);
+  max-width: 940px;
+}
+
+/* Cards are surfaces, not outlines-within-outlines. */
+.pp-setup .pp-card {
+  padding: var(--setup-gap);
+  border-radius: var(--ds-radius-xl);
+  border: 1px solid var(--ds-border);
+  background: var(--ds-surface-2);
+}
+.pp-setup .pp-card-head {
+  margin-bottom: var(--ds-space-4);
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.pp-setup .pp-card-head h3 {
+  margin: 0;
+  font-size: var(--ds-fs-2xs);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ds-text-muted);
+}
+.pp-setup .pp-card-sub {
+  font-size: var(--ds-fs-xs);
+  line-height: 1.5;
+  color: var(--ds-text-faint);
+}
+
+/* ── Fields ────────────────────────────────────────────────────────────── */
+.pp-setup .pp-field-row { gap: var(--ds-space-3); margin-top: var(--ds-space-3); }
+.pp-setup .pp-field-row:first-child { margin-top: 0; }
+.pp-setup .pp-field { gap: var(--ds-space-2); }
+.pp-setup .pp-field-lbl {
+  font-size: var(--ds-fs-2xs);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ds-text-faint);
+}
+.pp-setup .pp-opt {
+  margin-left: 5px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  text-transform: none;
+  opacity: 0.7;
+}
+.pp-setup .pp-input {
+  height: 40px;
+  padding: 0 var(--ds-space-3);
+  border-radius: var(--ds-radius-md);
+  border: 1px solid var(--ds-border);
+  background: var(--ds-surface);
+  font-size: var(--ds-fs-base);
+  color: var(--ds-text);
+  transition: border-color 0.13s ease, background 0.13s ease, box-shadow 0.13s ease;
+}
+.pp-setup .pp-input::placeholder { color: var(--ds-text-faint); }
+.pp-setup .pp-input:hover { border-color: var(--ds-border-strong); }
+.pp-setup .pp-input:focus {
+  border-color: var(--pp);
+  background: var(--ds-surface);
+  box-shadow: 0 0 0 3px rgba(74, 222, 128, 0.13);
+}
+.pp-setup .pp-input[type="date"] { font-family: var(--ds-font-mono); font-variant-numeric: tabular-nums; }
+
+/* ── Picker tools ──────────────────────────────────────────────────────── */
+.pp-picktools {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--ds-space-3);
+  margin-bottom: var(--ds-space-3);
+}
+.pp-pickcount { font-size: var(--ds-fs-xs); color: var(--ds-text-faint); }
+.pp-pickcount b {
+  font-family: var(--ds-font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--ds-fs-base);
+  font-weight: 700;
+  color: var(--ds-text-secondary);
+}
+.pp-picktools .pp-seg { margin-bottom: 0; }
+.pp-picktools .pp-seg-btn { padding: 5px var(--ds-space-3); font-size: var(--ds-fs-2xs); }
+
+/* ── Player cards ──────────────────────────────────────────────────────── */
+/* 190px fits "Elijah Douangchith" without an ellipsis, which was the widest
+   name on the roster this was built against. */
+.pp-setup .pp-pickgrid {
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: var(--ds-space-2);
+}
+.pp-setup .pp-pick {
+  gap: var(--ds-space-3);
+  padding: var(--ds-space-3);
+  min-height: 52px;
+  border-radius: var(--ds-radius-lg);
+  border: 1px solid var(--ds-border-faint);
+  background: var(--ds-surface);
+  color: var(--ds-text-muted);
+  font-size: var(--ds-fs-base);
+  font-weight: 500;
+  cursor: pointer;
+  transition: transform 0.1s ease, border-color 0.13s ease,
+              background 0.13s ease, color 0.13s ease;
+}
+.pp-setup .pp-pick:hover { border-color: var(--ds-border-strong); color: var(--ds-text-secondary); }
+.pp-setup .pp-pick:active { transform: scale(0.985); }
+.pp-setup .pp-pick:focus-visible { outline: 2px solid var(--pp); outline-offset: 2px; }
+/* Selected is the resting state here, so it reads as calm confirmation rather
+   than as an alert: a tinted surface and an accent border, not a filled block. */
+.pp-setup .pp-pick-on {
+  border-color: rgba(74, 222, 128, 0.45);
+  background: rgba(74, 222, 128, 0.09);
+  color: var(--ds-text);
+  font-weight: 600;
+}
+.pp-setup .pp-pick-check {
+  width: 18px;
+  height: 18px;
+  border-radius: var(--ds-radius-sm);
+  border: 1px solid var(--ds-border-strong);
+  background: transparent;
+}
+.pp-setup .pp-pick-on .pp-pick-check { background: var(--pp); border-color: var(--pp); color: #04240f; }
+/* A fixed-width numeral slot, so the names start on the same x down a column. */
+.pp-setup .pp-pick-num {
+  min-width: 2.1ch;
+  text-align: right;
+  font-family: var(--ds-font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--ds-fs-sm);
+  font-weight: 600;
+  color: var(--ds-text-faint);
+}
+.pp-setup .pp-pick-on .pp-pick-num { color: var(--pp); }
+.pp-setup .pp-pick-name { flex: 1; min-width: 0; }
+
+/* ── Actions ───────────────────────────────────────────────────────────── */
+.pp-setup .pp-setup-actions {
+  gap: var(--ds-space-3);
+  padding-top: var(--ds-space-1);
+}
+.pp-setup .pp-btn {
+  height: 42px;
+  padding: 0 var(--ds-space-5);
+  border-radius: var(--ds-radius-md);
+  font-size: var(--ds-fs-base);
+  font-weight: 700;
+}
+.pp-setup .pp-btn-ghost { border: 1px solid var(--ds-border); }
+
+@media (max-width: 640px) {
+  .pp-setup { --setup-gap: 14px; }
+  .pp-setup .pp-pickgrid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+  .pp-setup .pp-setup-actions { flex-direction: row-reverse; }
+  .pp-setup .pp-setup-actions .pp-btn { flex: 1; }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   PRACTICEPAL — ROSTER RAIL + SESSIONS DROPDOWN
+   ───────────────────────────────────────────────────────────────────────────
+   The dashboard is two regions now: the roster down the left, and a middle
+   that is either the team trends or one player. Sessions moved into the banner
+   because a coach opens one occasionally and reads the charts constantly — a
+   permanently-open list was paying rent on a fifth of the screen for an
+   occasional visit.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.pp-col-players { grid-area: players; }
+
+.pp-dash {
+  grid-template-areas:
+    "alert alert"
+    "players player";
+  grid-template-columns: minmax(230px, 290px) minmax(0, 1fr);
+}
+@media (min-width: 860px) {
+  .pp-dash {
+    grid-template-columns: minmax(230px, 290px) minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+}
+@media (min-width: 1700px) {
+  .pp-dash { grid-template-columns: minmax(250px, 330px) minmax(0, 1fr); }
+}
+@media (max-width: 859px) {
+  .pp-dash {
+    grid-template-areas:
+      "alert"
+      "players"
+      "player";
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* ── The rail ──────────────────────────────────────────────────────────── */
+/* One card per row: the column is ~250px of usable width, which is one card,
+   and a 2-across grid there would squeeze the three stat cells to nothing. */
+.pp-pcards-rail {
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--ds-space-2);
+}
+.pp-pcards-rail .pp-pcard {
+  gap: var(--ds-space-2);
+  padding: var(--ds-space-2) var(--ds-space-3);
+  border-radius: var(--ds-radius-lg);
+}
+.pp-pcards-rail .pp-pcard-av { width: 34px; height: 34px; font-size: var(--ds-fs-base); }
+.pp-pcards-rail .pp-pcard-stats { padding-top: var(--ds-space-2); gap: var(--ds-space-1); }
+.pp-pcards-rail .pp-pcard-stat-val { font-size: var(--ds-fs-md); }
+/* A rail card lifts less than a free-standing one: 2px of travel inside a
+   scrolling column reads as jitter when the pointer runs down the list. */
+.pp-pcards-rail .pp-pcard:hover { transform: none; border-color: var(--ds-border-strong); }
+
+/* The selected player, held while the middle shows them. */
+.pp-pcard.is-on {
+  border-color: rgba(74, 222, 128, 0.5);
+  background:
+    linear-gradient(160deg, rgba(74, 222, 128, 0.1), rgba(255, 255, 255, 0) 62%),
+    var(--ds-surface-2);
+}
+.pp-pcard.is-on .pp-pcard-name { color: var(--pp); }
+.pp-pcard.is-on .pp-pcard-av { border-color: rgba(74, 222, 128, 0.4); color: var(--pp); }
+
+/* ── The sessions dropdown ─────────────────────────────────────────────── */
+.pp-sessmenu { position: relative; display: inline-flex; }
+.pp-sessbtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 38px;
+  padding: 0 12px;
+  border-radius: var(--ds-radius-md);
+  border: 1px solid var(--ds-border-faint);
+  background: var(--ds-surface-2);
+  color: var(--ds-text-secondary);
+  font-size: var(--ds-fs-base);
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color 0.12s ease, border-color 0.12s ease, background 0.12s ease;
+}
+.pp-sessbtn:hover { background: var(--ds-surface-3); border-color: var(--ds-border-strong); color: var(--ds-text); }
+.pp-sessbtn.is-open { background: var(--ds-surface-3); border-color: var(--ds-border-strong); color: var(--ds-text); }
+.pp-sessbtn-n {
+  font-family: var(--ds-font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--ds-fs-2xs);
+  font-weight: 700;
+  color: var(--ds-text-faint);
+}
+
+.pp-sessdrop {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 40;
+  width: min(340px, calc(100vw - 24px));
+  max-height: min(70vh, 560px);
+  display: flex;
+  flex-direction: column;
+  padding: var(--ds-space-3);
+  gap: var(--ds-space-3);
+  border: 1px solid var(--ds-border-strong);
+  border-radius: var(--ds-radius-lg);
+  background: var(--ds-surface-2);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
+}
+/* The list scrolls inside the panel; the filters stay put above it. */
+.pp-sessdrop .pp-filters { flex: none; margin: 0; }
+.pp-sessdrop-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.14) transparent;
+}
+.pp-sessdrop-body::-webkit-scrollbar { width: 6px; }
+.pp-sessdrop-body::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.12); border-radius: 4px; }
+
+@media (max-width: 639px) {
+  /* The banner already wraps its right-hand group onto its own row here, so
+     anchor the panel to the viewport rather than to a button that has moved. */
+  .pp-sessdrop { right: auto; left: 0; width: min(340px, calc(100vw - 28px)); }
+  .pp-sessbtn-lbl { display: none; }
+  .pp-sessbtn { padding: 0 10px; }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   PRACTICEPAL — PAIRED TREND GRID
+   ───────────────────────────────────────────────────────────────────────────
+   Three skills across, two contexts down: the drill on top, the same skill in
+   a scrimmage directly beneath it. Reading down a column answers the question
+   the panel exists for — does what they do in a drill survive a match.
+
+   The cards are emitted PAIR-major, so a narrow screen stacks each drill with
+   its own scrimmage instead of separating them by three cards. On a wide one
+   `grid-auto-flow: column` flows that same sequence down the columns, which
+   builds the alignment without reordering the markup to fake it.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.pp-tg-paired {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-rows: auto auto;
+  grid-auto-flow: column;
+  align-items: start;
+}
+.pp-tg-extra { margin-top: var(--ds-space-4); }
+
+/* The scrimmage row reads as the quieter half of each pair: same card, one
+   step back, so the drill above it stays the reference. */
+.pp-tg-scrim { background: rgba(255, 255, 255, 0.012); }
+
+.pp-tg-head { align-items: center; }
+.pp-tg-title { flex: none; }
+.pp-tg-tag {
+  flex: none;
+  padding: 2px 6px;
+  border-radius: var(--ds-radius-sm);
+  border: 1px solid var(--ds-border-faint);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  line-height: 1.4;
+  color: var(--ds-text-faint);
+}
+/* Scrimmage takes the tint it already carries everywhere else in PracticePal. */
+.pp-tg-tag.is-scrim {
+  border-color: rgba(56, 189, 248, 0.32);
+  background: rgba(56, 189, 248, 0.1);
+  color: #38bdf8;
+}
+.pp-tg-meta { margin-left: auto; }
+
+/* Two across keeps each pair side by side rather than splitting it. */
+@media (max-width: 1179px) {
+  .pp-tg-paired {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-rows: none;
+    grid-auto-flow: row;
+  }
+}
+
+/* One column: pair-major DOM order means a drill and its scrimmage stay
+   adjacent all the way down. */
+@media (max-width: 859px) {
+  .pp-tg-paired {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: none;
+    grid-auto-flow: row;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   PRACTICEPAL — BROADCAST CARD (player development)
+   ───────────────────────────────────────────────────────────────────────────
+   A pro-sports stats readout. The rules that make it read that way:
+
+   ONE surface. The card has a background and a border; nothing inside it
+   does. Sections are separated by a 1px hairline and a 28px rhythm — never by
+   a nested tile with its own fill, which is what made the old view read as
+   boxes-in-boxes.
+
+   Type carries the hierarchy, not chrome. Labels are 10px, uppercase, tracked
+   +0.08em and muted; numbers are large, mono and bright. The gap between
+   those two extremes is what makes a figure read as a headline.
+
+   Colour is spent only on values. One accent, greys everywhere else, and the
+   graduated perfShade() ramp on the numbers themselves — so the eye lands on
+   the stat, then on how good it is, and nowhere else.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.pp-bc {
+  --bc-gap: 28px;
+  display: flex;
+  flex-direction: column;
+  padding: var(--bc-gap);
+  border: 1px solid var(--ds-border);
+  border-radius: var(--ds-radius-xl);
+  background: var(--ds-surface-2);
+  min-width: 0;
+}
+
+/* ── Header ────────────────────────────────────────────────────────────── */
+.pp-bc-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--ds-space-3);
+  min-width: 0;
+}
+/* An outlined chip, not a filled badge: it identifies, it does not shout. */
+.pp-bc-jersey {
+  flex: none;
+  padding: 2px 7px;
+  border: 1px solid var(--ds-border-strong);
+  border-radius: var(--ds-radius-sm);
+  font-family: var(--ds-font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--ds-fs-xs);
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--ds-text-muted);
+}
+.pp-bc-name {
+  margin: 0;
+  min-width: 0;
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+  color: var(--ds-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pp-bc-meta {
+  flex: none;
+  margin-left: auto;
+  font-size: var(--ds-fs-xs);
+  color: var(--ds-text-muted);
+  white-space: nowrap;
+}
+
+/* ── Hero stats ────────────────────────────────────────────────────────── */
+/* Three equal columns. No dividers here — the size of the numerals is already
+   doing the separating, and hairlines between them would cage each figure. */
+.pp-bc-hero {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--ds-space-4);
+  margin-top: var(--bc-gap);
+}
+.pp-bc-stat { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.pp-bc-stat-lbl {
+  font-size: var(--ds-fs-2xs);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ds-text-muted);
+}
+.pp-bc-stat-val {
+  font-family: var(--ds-font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 40px;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  line-height: 1;
+  /* The value is shaded inline by perfShade(); this is only the fallback for
+     a figure that has no value to shade. */
+  color: var(--ds-text);
+}
+.pp-bc-stat-val.is-none { color: var(--ds-text-faint); }
+.pp-bc-stat-sub {
+  font-size: var(--ds-fs-xs);
+  line-height: 1.4;
+  color: var(--ds-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Sections ──────────────────────────────────────────────────────────── */
+/* The hairline IS the separator. One rule, one rhythm, no nested surfaces. */
+.pp-bc-sect {
+  margin-top: var(--bc-gap);
+  padding-top: var(--bc-gap);
+  border-top: 1px solid var(--ds-border-faint);
+  min-width: 0;
+}
+.pp-bc-sect-hd {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--ds-space-3);
+  margin-bottom: var(--ds-space-4);
+}
+.pp-bc-sect-ttl {
+  font-size: var(--ds-fs-2xs);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ds-text-muted);
+}
+.pp-bc-sect-sub { font-size: var(--ds-fs-xs); color: var(--ds-text-faint); }
+.pp-bc-empty { font-size: var(--ds-fs-sm); line-height: 1.6; color: var(--ds-text-muted); }
+
+/* ── Context columns ───────────────────────────────────────────────────── */
+/* Vertical hairlines, drawn as borders on the columns themselves rather than
+   as elements — a divider should not be a box. */
+.pp-bc-ctx {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.pp-bc-col { min-width: 0; padding: 0 var(--ds-space-4); }
+.pp-bc-col:first-child { padding-left: 0; }
+.pp-bc-col:last-child { padding-right: 0; }
+.pp-bc-col + .pp-bc-col { border-left: 1px solid var(--ds-border-faint); }
+.pp-bc-col-hd {
+  margin-bottom: var(--ds-space-2);
+  font-size: var(--ds-fs-2xs);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ds-text-faint);
+}
+.pp-bc-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--ds-space-2);
+  padding: 3px 0;
+  min-width: 0;
+}
+.pp-bc-row-lbl {
+  font-size: var(--ds-fs-xs);
+  color: var(--ds-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pp-bc-row-val {
+  flex: none;
+  font-family: var(--ds-font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--ds-fs-base);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--ds-text);
+}
+.pp-bc-row-val.is-none { color: var(--ds-text-faint); font-weight: 500; }
+
+/* ── Trend ─────────────────────────────────────────────────────────────── */
+.pp-bc-trendbar {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--ds-space-3);
+  flex-wrap: wrap;
+  margin-bottom: var(--ds-space-3);
+}
+.pp-bc-trendbar-val { display: inline-flex; align-items: baseline; gap: var(--ds-space-2); }
+.pp-bc-trendbar-num {
+  font-family: var(--ds-font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--ds-fs-xl);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+.pp-bc-trendbar-lbl {
+  font-size: var(--ds-fs-2xs);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ds-text-faint);
+}
+/* The chart sits on the card's own surface — no framing, no inner panel. */
+.pp-bc .pp-chart { margin: 0; }
+
+/* ── Session log ───────────────────────────────────────────────────────── */
+/* Rows separated by hairlines only, and the last one carries none so the list
+   ends on space rather than on a line. */
+.pp-bc-log { margin-top: var(--ds-space-3); }
+.pp-bc-logrow {
+  display: grid;
+  grid-template-columns: 4.2em minmax(0, 1fr) auto auto;
+  align-items: baseline;
+  gap: var(--ds-space-3);
+  padding: var(--ds-space-2) 0;
+  border-top: 1px solid var(--ds-border-faint);
+  min-width: 0;
+}
+.pp-bc-log-date {
+  font-family: var(--ds-font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--ds-fs-xs);
+  color: var(--ds-text-faint);
+}
+.pp-bc-log-name {
+  font-size: var(--ds-fs-sm);
+  color: var(--ds-text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pp-bc-log-break {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0 var(--ds-space-2);
+  justify-content: flex-end;
+}
+.pp-bc-pair {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 2px;
+  font-size: var(--ds-fs-2xs);
+  color: var(--ds-text-faint);
+  white-space: nowrap;
+}
+.pp-bc-pair b {
+  font-family: var(--ds-font-mono);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: var(--ds-text-muted);
+}
+.pp-bc-log-val {
+  font-family: var(--ds-font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--ds-fs-base);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  text-align: right;
+  min-width: 4em;
+}
+
+.pp-bc-foot {
+  margin: var(--bc-gap) 0 0;
+  padding-top: var(--ds-space-4);
+  border-top: 1px solid var(--ds-border-faint);
+  font-size: var(--ds-fs-xs);
+  line-height: 1.6;
+  color: var(--ds-text-faint);
+}
+
+/* ── Responsive ────────────────────────────────────────────────────────── */
+/* Narrow: the hero drops to two columns with serving on its own row, keeping
+   the numerals big rather than shrinking all three to fit. */
+@media (max-width: 720px) {
+  .pp-bc { --bc-gap: 20px; padding: var(--ds-space-4); }
+  .pp-bc-hero { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--ds-space-4); }
+  .pp-bc-stat-val { font-size: 34px; }
+  .pp-bc-logrow { grid-template-columns: 3.8em minmax(0, 1fr) auto; }
+  .pp-bc-log-break { display: none; }
+}
+
+/* Phone: everything stacks. The context columns become stacked blocks with a
+   horizontal hairline between them, since a vertical rule needs width to read
+   as a divider rather than as an edge. */
+@media (max-width: 520px) {
+  .pp-bc-head { flex-wrap: wrap; }
+  .pp-bc-meta { margin-left: 0; width: 100%; }
+  .pp-bc-hero { grid-template-columns: minmax(0, 1fr); gap: var(--ds-space-4); }
+  .pp-bc-stat-val { font-size: 38px; }
+  .pp-bc-ctx { grid-template-columns: minmax(0, 1fr); }
+  .pp-bc-col { padding: var(--ds-space-3) 0; }
+  .pp-bc-col:first-child { padding-top: 0; }
+  .pp-bc-col:last-child { padding-bottom: 0; }
+  .pp-bc-col + .pp-bc-col {
+    border-left: none;
+    border-top: 1px solid var(--ds-border-faint);
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   PRACTICEPAL — DRILL LAUNCHER IN THE BANNER
+   ───────────────────────────────────────────────────────────────────────────
+   The five drill starters, in the top row. Tinted rather than solid-filled: a
+   row of five saturated buttons would fight each other and the brand beside
+   them. Each hue is the one that drill already carries on the session chips
+   and the setup banner.
+
+   Below 1180px the labels drop and the icons carry it, so every button names
+   itself to assistive tech and on hover either way.
+   ═══════════════════════════════════════════════════════════════════════════ */
+.pp-dl {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+
+/* Each drill's own hue, as raw channels so one rule can mix every state from
+   it. These are the same five already used by the session chips and the setup
+   banner — a drill is the same colour everywhere in PracticePal. */
+.pp-dl-serve_receive { --dh: 167, 139, 250; }
+.pp-dl-hitting       { --dh: 63, 185, 80; }
+.pp-dl-serving       { --dh: 88, 166, 255; }
+.pp-dl-custom        { --dh: 240, 165, 0; }
+.pp-dl-scrimmage     { --dh: 56, 189, 248; }
+
+/* Tinted rather than solid-filled. A row of five saturated buttons would fight
+   both each other and the brand beside them; a 16% wash with the hue as the
+   text reads as a primary action while leaving the banner calm. */
+.pp-dl-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  height: 38px;
+  padding: 0 14px;
+  border-radius: var(--ds-radius-md);
+  border: 1px solid rgba(var(--dh), 0.32);
+  background: rgba(var(--dh), 0.16);
+  color: rgb(var(--dh));
+  font-size: var(--ds-fs-base);
+  font-weight: 600;
+  letter-spacing: -0.005em;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.13s ease, border-color 0.13s ease,
+              box-shadow 0.13s ease, transform 0.08s ease;
+}
+/* The label goes white on hover and press, and not for emphasis: the hue as
+   text on a 26% wash of itself measures 4.4:1 for the violet, under AA. The
+   deeper the fill, the closer the two get — so the fill takes the hue and the
+   label steps off it. White on these washes measures 9:1 and up, which also
+   makes the hover state unmistakable. */
+.pp-dl-btn:hover {
+  background: rgba(var(--dh), 0.26);
+  border-color: rgba(var(--dh), 0.55);
+  box-shadow: 0 0 0 1px rgba(var(--dh), 0.14);
+  color: var(--ds-text);
+}
+.pp-dl-btn:active {
+  transform: scale(0.97);
+  background: rgba(var(--dh), 0.34);
+  color: var(--ds-text);
+}
+.pp-dl-btn:focus-visible {
+  outline: 2px solid rgb(var(--dh));
+  outline-offset: 2px;
+}
+.pp-dl-ico {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  /* inherits the button's hue — no chip of its own inside a tinted button */
+}
+.pp-dl-lbl { min-width: 0; }
+
+/* Laptop and below: icons alone, still full-size targets. Five 38px squares
+   are ~220px, which fits beside the brand where five labelled ones do not. */
+@media (max-width: 1179px) {
+  .pp-dl-lbl { display: none; }
+  .pp-dl-btn { width: 38px; padding: 0; }
+}
+
+/* Phone: the launcher takes its own row under the brand and spreads across it,
+   which keeps every drill one tap away instead of behind a menu. */
+@media (max-width: 639px) {
+  .pp-topbar-right { flex: 1 0 100%; justify-content: space-between; }
+  .pp-dl { flex: 1; gap: 6px; }
+  .pp-dl-btn { flex: 1; width: auto; max-width: 68px; }
+}
+
+
+/* The accent rule under a panel title. */
+.pp-col-head h2::after {
+  content: "";
+  display: block;
+  width: 22px;
+  height: 2px;
+  margin-top: 6px;
+  border-radius: 2px;
+  background: var(--pp);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   LIVE TRACKERS — RECEIVE GRADE SCALE, AND THE NEUTRAL TALLIES
+   ───────────────────────────────────────────────────────────────────────────
+   Every graded-receive button, in StatsPal's game tracker, PracticePal's
+   scrimmage and PracticePal's serve-receive drill. One component and one
+   scale, so a 2 looks like a 2 wherever a coach grades a pass.
+
+   Built the way the app's other stat buttons already are — a dark tinted fill
+   with the hue as the text — rather than as four saturated blocks. Solid fills
+   fought each other and the dark UI around them; a tint at this depth sits in
+   the palette and still separates cleanly at arm's length.
+
+     0  soft red      5.70:1     2  pale green    8.95:1
+     1  muted amber   7.43:1     3  brand green   8.84:1
+
+   One thing the brief asked for reads backwards on a dark ground: a literally
+   DARKER green for 3 would look worse than the lighter 2, not better. So the
+   progression is carried by the FILL — 3 sits on the deepest, richest green of
+   the four — while its text is the app's own accent, the brightest of the set.
+   Bad to good still reads left to right; it is just the saturation climbing
+   rather than the lightness falling.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.lv-ab-r0 { background: #231110; color: #e8695c; }
+.lv-ab-r1 { background: #241a08; color: #e79a45; }
+.lv-ab-r2 { background: #11251a; color: #7ed39a; }
+.lv-ab-r3 { background: #0c2a1b; color: #4ade80; }
+
+.pp-ab-r0 { background: #231110; color: #e8695c; border-color: rgba(232, 105, 92, 0.28); }
+.pp-ab-r1 { background: #241a08; color: #e79a45; border-color: rgba(231, 154, 69, 0.28); }
+.pp-ab-r2 { background: #11251a; color: #7ed39a; border-color: rgba(126, 211, 154, 0.26); }
+.pp-ab-r3 { background: #0c2a1b; color: #4ade80; border-color: rgba(74, 222, 128, 0.34); }
+
+/* A tinted fill takes a brightness lift well, so the flash goes back to the
+   app's own glow — in the grade's own hue rather than the old violet. */
+.lv-ab-rate.lv-ab-fl-pass,
+.lv-ab-rate.lv-ab-fl-amber {
+  filter: brightness(1.7);
+  box-shadow: 0 0 18px rgba(255, 255, 255, 0.14);
+}
+.pp-actions-serve_receive .pp-ab-lit {
+  filter: brightness(1.7);
+  box-shadow: 0 0 20px rgba(255, 255, 255, 0.14);
+}
+/* The badge sits on a dark fill now, so one quiet chip works for all four. */
+.lv-ab-rate .lv-ab-badge {
+  background: rgba(255, 255, 255, 0.14);
+  color: inherit;
+}
+.pp-actions-serve_receive .pp-ab-badge { background: rgba(255, 255, 255, 0.12); color: inherit; }
+
+/* ── The neutral tallies ───────────────────────────────────────────────────
+   Attempt and Serve In count a thing that happened; they are not a good
+   outcome. Green said otherwise. Grey is the same neutral the serve-receive
+   drill's own In button has always used. */
+.lv-ab-neutral { background: #161b22; color: #9aa4b2; }
+.lv-ab-neutral.lv-ab-fl-ok {
+  filter: brightness(1.6);
+  box-shadow: 0 0 18px rgba(154, 164, 178, 0.35);
+}
+.lv-ab-neutral .lv-ab-badge { background: rgba(255, 255, 255, 0.16); color: #e6edf3; }

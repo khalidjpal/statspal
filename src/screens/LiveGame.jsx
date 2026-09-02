@@ -159,6 +159,7 @@ export default function LiveGame({ team, gameInfo, onEndMatch, onAbandon, resume
       actionStat: action.stat,
       actionAlso: action.also || null,
       actionAutoAtt: !!action.autoAtt,
+      actionAutoSrv: !!action.autoSrv,
       actionErr: !!action.err,
       prevOverall: { ...ps.overall },
       prevSetStats: { ...(ps.sets[currentSet] || EMPTY_SET_STATS()) },
@@ -169,10 +170,12 @@ export default function LiveGame({ team, gameInfo, onEndMatch, onAbandon, resume
       newOverall[action.stat] = (newOverall[action.stat] || 0) + 1;
       if (action.also) newOverall[action.also] = (newOverall[action.also] || 0) + 1;
       if (action.autoAtt) newOverall.attempts = (newOverall.attempts || 0) + 1;
+      if (action.autoSrv) newOverall.serve_attempts = (newOverall.serve_attempts || 0) + 1;
       const newSet = { ...(cur.sets[currentSet] || EMPTY_SET_STATS()) };
       newSet[action.stat] = (newSet[action.stat] || 0) + 1;
       if (action.also) newSet[action.also] = (newSet[action.also] || 0) + 1;
       if (action.autoAtt) newSet.attempts = (newSet.attempts || 0) + 1;
+      if (action.autoSrv) newSet.serve_attempts = (newSet.serve_attempts || 0) + 1;
       return {
         ...prev,
         [selectedPlayer]: { ...cur, overall: newOverall, sets: { ...cur.sets, [currentSet]: newSet } },

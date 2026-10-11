@@ -7391,7 +7391,7 @@ td.dash-stand-team .dash-stand-name {
   /* Rails compress on a small laptop instead of pushing the court off the
      right edge; they stop growing once there's plenty of room. */
   grid-template-columns:
-    clamp(170px, 15vw, 232px)
+    clamp(200px, 18vw, 280px)
     minmax(0, 1fr)
     clamp(250px, 24vw, 352px);
   gap: clamp(10px, 1.2vw, 16px);
@@ -11226,6 +11226,181 @@ td.dash-stand-team .dash-stand-name {
   color: #0d1117;
 }
 [data-theme="light"] .gpb-roster-hint, [data-theme="light"] .gpb-court-hint { color: #8b949e; }
+
+/* ── Playground roster sheet ──
+   The left roster rail reads as a plain team sheet: one list, 1px dividers,
+   jersey · name · role, a flat 3px marker in the player's court colour, and
+   status icons only when one applies. No cards, glows or caps labels.
+   Scoped to .gpb-col-roster so the Gameplan aside is unchanged. */
+.gpb-roster-head .gpb-roster-title { text-transform: uppercase; }
+.gpb-col-roster {
+  font-family: 'Archivo', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  font-variant-numeric: tabular-nums;
+  color: var(--md-sys-color-on-surface);
+  border-color: var(--md-sys-color-outline-variant);
+}
+.gpb-col-roster .gpb-roster-head {
+  padding: 14px 16px 10px;
+  color: var(--md-sys-color-on-surface);
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+.gpb-col-roster .gpb-roster-head .gpb-roster-title { text-transform: none; }
+.gpb-col-roster .gpb-roster-count {
+  color: var(--md-sys-color-on-surface-variant);
+  font-size: 13px;
+  font-weight: 400;
+  letter-spacing: 0;
+}
+.gpb-col-roster .gpb-roster-list {
+  flex-direction: column;
+  flex-wrap: nowrap;
+  overflow-x: visible;
+  gap: 0;
+  padding: 0 0 8px;
+}
+.gpb-col-roster .gpb-roster-group {
+  gap: 6px;
+  padding: 16px 16px 8px;
+  border-bottom: 1px solid var(--md-sys-color-outline-variant);
+  color: var(--md-sys-color-on-surface);
+  font-size: 13.5px;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+}
+.gpb-col-roster .gpb-roster-group:first-child { padding-top: 6px; }
+.gpb-col-roster .gpb-roster-group-count {
+  margin-left: 0;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 400;
+  letter-spacing: 0;
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+/* One row: [marker] jersey | name | role | status */
+.gpb-col-roster .gpb-bench-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1.75rem minmax(0, 1fr) 2.25rem 20px;
+  align-items: center;
+  column-gap: 8px;
+  width: auto;
+  min-height: 44px;
+  padding: 0 10px 0 16px;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: 0;
+  box-shadow: none;
+  opacity: 1;
+  filter: none;
+  animation: none;
+  transition: background-color 0.15s cubic-bezier(0.2, 0, 0, 1);
+}
+.gpb-col-roster .gpb-bench-row:hover {
+  background: color-mix(in srgb, var(--md-sys-color-on-surface) 5%, transparent);
+  border-color: var(--md-sys-color-outline-variant);
+}
+.gpb-col-roster .gpb-bench-row.on-court { cursor: default; }
+.gpb-col-roster .gpb-bench-row.on-court:hover { background: transparent; opacity: 1; }
+.gpb-col-roster .gpb-bench-row.selected,
+.gpb-col-roster .gpb-bench-row.selected:hover {
+  background: color-mix(in srgb, var(--md-sys-color-primary) 14%, transparent);
+  border-color: var(--md-sys-color-outline-variant);
+  box-shadow: none;
+  animation: none;
+}
+.gpb-col-roster .gpb-bench-row.selected .gpb-bench-name { color: var(--md-sys-color-on-surface); font-weight: 500; }
+.gpb-col-roster .gpb-bench-row.is-dragging-row { opacity: 0; }
+.gpb-col-roster .gpb-bench-row:focus-visible {
+  outline: 2px solid var(--md-sys-color-primary);
+  outline-offset: -2px;
+}
+
+/* Flat court-colour marker. Bench players have no court colour, so no
+   marker; a libero keeps their gold wherever they are. */
+.gpb-col-roster .gpb-bench-dot {
+  position: absolute;
+  left: 0;
+  top: 8px;
+  bottom: 8px;
+  width: 3px;
+  height: auto;
+  border-radius: 0 2px 2px 0;
+  background: var(--bubble-solid, transparent);
+  box-shadow: none;
+}
+.gpb-col-roster .gpb-bench-row:not(.on-court):not(.libero) .gpb-bench-dot { background: transparent; }
+
+.gpb-col-roster .gpb-bench-num {
+  min-width: 0;
+  height: auto;
+  padding: 0;
+  background: none;
+  border: 0;
+  border-radius: 0;
+  justify-content: flex-start;
+  color: var(--md-sys-color-on-surface);
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0;
+}
+.gpb-col-roster .gpb-bench-name {
+  color: var(--md-sys-color-on-surface);
+  font-size: 14.5px;
+  font-weight: 400;
+  line-height: 1.3;
+}
+.gpb-col-roster .gpb-bench-role {
+  color: var(--md-sys-color-on-surface-variant);
+  font-size: 13px;
+  font-weight: 500;
+  text-align: left;
+  white-space: nowrap;
+}
+
+/* Can't enter right now (blocked) or already used this set: muted text.
+   The reason is in the row's title (hover) and read out by screen readers. */
+.gpb-col-roster .gpb-bench-row.is-blocked { cursor: not-allowed; }
+.gpb-col-roster .gpb-bench-row.is-blocked:hover { background: transparent; }
+.gpb-col-roster .gpb-bench-row:is(.is-blocked, .is-locked) :is(.gpb-bench-num, .gpb-bench-name, .gpb-bench-role) {
+  color: color-mix(in srgb, var(--md-sys-color-on-surface) 45%, transparent);
+}
+.gpb-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+/* Status: small, flat, outline-only icons. Shape carries the meaning. */
+.gpb-col-roster .gpb-roster-list .gpb-substatus[role="img"] {
+  width: 20px;
+  height: 20px;
+  border-radius: 0;
+  background: none;
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.gpb-col-roster .gpb-roster-legend {
+  gap: 6px 14px;
+  margin-top: 4px;
+  padding: 12px 16px 4px;
+  border-top: 0;
+  color: var(--md-sys-color-on-surface-variant);
+  font-size: 12.5px;
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+}
+.gpb-col-roster .gpb-roster-legend-item { gap: 4px; }
+.gpb-col-roster .gpb-roster-empty { color: var(--md-sys-color-on-surface-variant); font-size: 14px; }
 
 /* =============================================================================
    RotationPal — minimal 3-card dashboard (Gameplan / Schemes / Playground)

@@ -78,19 +78,20 @@ function clampToSafe(p) {
 // Liberos take the darker variant of the player they're paired with (set up
 // via the sub-pair UI). Unpaired liberos default to gold.
 const PAIR_PALETTE = [
-  { bg: 'linear-gradient(135deg, #38bdf8 0%, #0369a1 100%)', glow: 'rgba(56,189,248,0.55)',  edge: 'rgba(186,230,253,0.55)', label: 'Pair 1' },
-  { bg: 'linear-gradient(135deg, #34d399 0%, #047857 100%)', glow: 'rgba(52,211,153,0.55)',  edge: 'rgba(167,243,208,0.55)', label: 'Pair 2' },
-  { bg: 'linear-gradient(135deg, #c084fc 0%, #7e22ce 100%)', glow: 'rgba(192,132,252,0.55)', edge: 'rgba(233,213,255,0.55)', label: 'Pair 3' },
+  { bg: 'linear-gradient(135deg, #38bdf8 0%, #0369a1 100%)', glow: 'rgba(56,189,248,0.55)',  edge: 'rgba(186,230,253,0.55)', solid: '#0284c7', label: 'Pair 1' },
+  { bg: 'linear-gradient(135deg, #34d399 0%, #047857 100%)', glow: 'rgba(52,211,153,0.55)',  edge: 'rgba(167,243,208,0.55)', solid: '#059669', label: 'Pair 2' },
+  { bg: 'linear-gradient(135deg, #c084fc 0%, #7e22ce 100%)', glow: 'rgba(192,132,252,0.55)', edge: 'rgba(233,213,255,0.55)', solid: '#9333ea', label: 'Pair 3' },
 ];
 const PAIR_PALETTE_DARK = [
-  { bg: 'linear-gradient(135deg, #075985 0%, #082f49 100%)', glow: 'rgba(7,89,133,0.65)',   edge: 'rgba(56,189,248,0.45)' },
-  { bg: 'linear-gradient(135deg, #064e3b 0%, #022c22 100%)', glow: 'rgba(6,78,59,0.65)',    edge: 'rgba(52,211,153,0.45)' },
-  { bg: 'linear-gradient(135deg, #581c87 0%, #2e1065 100%)', glow: 'rgba(88,28,135,0.65)',  edge: 'rgba(192,132,252,0.45)' },
+  { bg: 'linear-gradient(135deg, #075985 0%, #082f49 100%)', glow: 'rgba(7,89,133,0.65)',   edge: 'rgba(56,189,248,0.45)', solid: '#0369a1' },
+  { bg: 'linear-gradient(135deg, #064e3b 0%, #022c22 100%)', glow: 'rgba(6,78,59,0.65)',    edge: 'rgba(52,211,153,0.45)', solid: '#047857' },
+  { bg: 'linear-gradient(135deg, #581c87 0%, #2e1065 100%)', glow: 'rgba(88,28,135,0.65)',  edge: 'rgba(192,132,252,0.45)', solid: '#7e22ce' },
 ];
 const LIBERO_DEFAULT = {
   bg: 'linear-gradient(135deg, #fbbf24 0%, #b45309 100%)',
   glow: 'rgba(251,191,36,0.65)',
   edge: 'rgba(254,240,138,0.65)',
+  solid: '#d97706',
 };
 
 function isLibero(player) {
@@ -142,6 +143,8 @@ function colorVarsFor(player, arrayIdx, plan) {
     '--bubble-bg':   c.bg,
     '--bubble-glow': c.glow,
     '--bubble-edge': c.edge,
+    // Flat version of the bubble colour, for the roster sheet's row marker.
+    '--bubble-solid': c.solid,
   };
 }
 
@@ -413,6 +416,22 @@ function rowLabelFor(pid, effLineup, rotation, playerById) {
 // neutral word so a player with no position set still reads cleanly.
 function roleTagFor(player) {
   return (player?.position || '').trim().toUpperCase() || 'PLAYER';
+}
+
+// The roster sheet's role column: always one of the standard abbreviations
+// (S, OH, MB, OPP, L, DS), so it never needs truncating. Display only.
+const ROLE_ABBR = {
+  S: 'S', SETTER: 'S',
+  OH: 'OH', OUTSIDE: 'OH', 'OUTSIDE HITTER': 'OH',
+  MB: 'MB', MIDDLE: 'MB', 'MIDDLE BLOCKER': 'MB',
+  RS: 'OPP', OPP: 'OPP', OPPOSITE: 'OPP', 'RIGHT SIDE': 'OPP',
+  L: 'L', LIBERO: 'L',
+  DS: 'DS', 'DEFENSIVE SPECIALIST': 'DS',
+};
+function roleAbbrFor(player, libero) {
+  if (libero) return 'L';
+  const raw = (player?.position || '').trim().toUpperCase();
+  return ROLE_ABBR[raw] || (raw.length <= 3 ? raw : '');
 }
 
 // Detect pending subs when we move from rotation `from` to rotation `to`.
@@ -3742,7 +3761,7 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
 
               const rosterHead = (
                 <div className="gpb-roster-head">
-                  <span>ROSTER</span>
+                  <span className="gpb-roster-title">Roster</span>
                   <span className="gpb-roster-count">{onCourtIds.size}/6 in plan</span>
                 </div>
               );
@@ -3964,8 +3983,7 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
                     {onCourtRoster.length > 0 && (
                       <>
                         <div className="gpb-roster-group">
-                          <span className="gpb-roster-group-dot is-oncourt" aria-hidden="true" />
-                          On Court
+                          On court
                           <span className="gpb-roster-group-count">{onCourtRoster.length}</span>
                         </div>
                         {onCourtRoster.map(renderRosterRow)}
@@ -3974,7 +3992,6 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
                     {benchRoster.length > 0 && (
                       <>
                         <div className="gpb-roster-group">
-                          <span className="gpb-roster-group-dot is-bench" aria-hidden="true" />
                           Bench
                           <span className="gpb-roster-group-count">{benchRoster.length}</span>
                         </div>
@@ -3984,16 +4001,13 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
                     {showStatusLegend && (
                       <div className="gpb-roster-legend">
                         <span className="gpb-roster-legend-item">
-                          <SubStatusIcon status={{ kind: 'paired', pairType: 'fb', label: 'Front/Back pair' }} /> pair
+                          <SubStatusIcon status={{ kind: 'paired', pairType: 'fb', label: 'Front/Back pair' }} /> Pair
                         </span>
                         <span className="gpb-roster-legend-item">
-                          <SubStatusIcon status={{ kind: 'paired', pairType: 'sub', label: 'Manual sub pair' }} /> sub
+                          <SubStatusIcon status={{ kind: 'paired', pairType: 'sub', label: 'Manual sub pair' }} /> Sub
                         </span>
                         <span className="gpb-roster-legend-item">
-                          <SubStatusIcon status={{ kind: 'locked', label: 'Already used this set' }} /> used
-                        </span>
-                        <span className="gpb-roster-legend-item">
-                          <SubStatusIcon status={{ kind: 'available', label: 'Available' }} /> free
+                          <SubStatusIcon status={{ kind: 'locked', label: 'Already used this set' }} /> Used this set
                         </span>
                       </div>
                     )}
@@ -4461,7 +4475,13 @@ function SubStatusIcon({ status }) {
                 fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
         </svg>
       )}
-      {kind === 'paired' && (
+      {kind === 'paired' && status?.pairType === 'sub' && (
+        <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
+          <path d="M4 8h14m0 0-3.5-3.5M18 8l-3.5 3.5M20 16H6m0 0 3.5-3.5M6 16l3.5 3.5"
+                fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      )}
+      {kind === 'paired' && status?.pairType !== 'sub' && (
         <svg viewBox="0 0 24 24" width="12" height="12" aria-hidden="true">
           <path d="M10 14a4.5 4.5 0 0 0 6.4 0l2.6-2.6a4.5 4.5 0 0 0-6.4-6.4L11.4 6.2"
                 fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
@@ -4484,7 +4504,6 @@ function BenchRow({
     data: { kind: 'bench', playerId: player.id, player },
     disabled: isOnCourt || !!blockedReason,
   });
-  const dn = useDisplayName();
   const libero = isLiberoIn(plan, player);
   const colorVars = colorVarsFor(player, arrayIdx, plan);
   // 1:N pair model — collect every partner of this player so we can render a
@@ -4524,8 +4543,17 @@ function BenchRow({
     >
       <span className="gpb-bench-dot" aria-hidden="true" />
       <div className="gpb-bench-num">{player.jersey_number || '?'}</div>
+      {showStatus ? (
+        <>
+          <div className="gpb-bench-name" title={player.name}>{player.name}</div>
+          <div className="gpb-bench-role" title={player.position || undefined}>{roleAbbrFor(player, libero)}</div>
+          {blockedReason && <span className="gpb-visually-hidden">{blockedReason}</span>}
+          {subStatus && subStatus.kind !== 'available' && <SubStatusIcon status={subStatus} />}
+        </>
+      ) : (
+      <>
       <div className="gpb-bench-mid">
-        <div className="gpb-bench-name">{showStatus ? dn(player) : player.name}</div>
+        <div className="gpb-bench-name">{player.name}</div>
         <div className="gpb-bench-meta">
           {/* Playground says the status in words as well as by colour. */}
           {showStatus && (
@@ -4565,8 +4593,9 @@ function BenchRow({
           libero has no "L" in their roster position, so this glyph is the
           only thing saying they're the one who auto-swaps. */}
       {libero && <div className="gpb-bench-libero" title="Libero">L</div>}
-      {!showStatus && isOnCourt && <div className="gpb-bench-check" title="On court">✓</div>}
-      {showStatus && <SubStatusIcon status={subStatus} />}
+      {isOnCourt && <div className="gpb-bench-check" title="On court">✓</div>}
+      </>
+      )}
       {!isOnCourt && canSubIn && (
         <button
           type="button"

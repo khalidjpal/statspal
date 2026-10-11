@@ -1,11 +1,22 @@
 import { useEffect, useRef, useState } from 'react';
-import VolleyballMark from '../components/landing/VolleyballMark';
 import SignInCard, { USERNAME_INPUT_ID } from '../components/landing/SignInCard';
 import { StatsMockup, RotationMockup, PracticeMockup } from '../components/landing/Mockups';
+import StandingsWidget from '../components/dashboard/StandingsWidget';
+import ScheduleWidget from '../components/dashboard/ScheduleWidget';
+import RosterPositionWidget from '../components/dashboard/RosterPositionWidget';
+import {
+  IconChart, IconRotate, IconClipboard, IconUsers, IconPin, IconPlay, IconBolt, IconList, IconHome, IconCheck,
+} from '../components/Icons';
+import {
+  SAMPLE_TEAM, SAMPLE_PLAYERS, SAMPLE_SCHEDULE, SAMPLE_COMPLETED_GAMES,
+  SAMPLE_LEAGUE_TEAMS, SAMPLE_LEAGUE_RESULTS,
+} from '../components/landing/sampleData';
 import './Login.css';
 
-// The signed-out screen: a product page with sign-in built in. Every claim
-// here is something the app does today; keep it that way when editing copy.
+// The signed-out screen: a product page with sign-in built in, dressed in the
+// team dashboard's own design system (.dash-page, .dash-widget, .dash-module,
+// .ds-*) so it reads as the same app. Every claim here is something the app
+// does today; keep it that way when editing copy.
 
 const NAV = [
   { href: '#features', label: 'Features' },
@@ -139,6 +150,15 @@ const FAQ = [
   },
 ];
 
+// Dashboard tool tiles: same classes, icons and tool colours as TeamLaunch.
+const TOOL_TILE = {
+  statspal: { cls: 'dash-module-stats', Icon: IconChart },
+  rotationpal: { cls: 'dash-module-rotation', Icon: IconRotate },
+  practicepal: { cls: 'dash-module-practice', Icon: IconClipboard },
+};
+
+const ROLE_ICON = { Coaches: IconClipboard, Players: IconUsers, Admins: IconPin };
+
 const prefersReducedMotion = () =>
   typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 
@@ -149,6 +169,14 @@ function goToSignIn(e) {
   const input = document.getElementById(USERNAME_INPUT_ID);
   card?.scrollIntoView({ behavior: prefersReducedMotion() ? 'auto' : 'smooth', block: 'center' });
   input?.focus({ preventScroll: true });
+}
+
+function Wordmark() {
+  return (
+    <span className="vp-home-brand-name">
+      Volleyball<span className="vp-home-brand-accent">Pal</span>
+    </span>
+  );
 }
 
 function TopBar() {
@@ -168,35 +196,32 @@ function TopBar() {
   }, [open]);
 
   return (
-    <header className="lp-top">
-      <div className="lp-top__inner">
-        <a className="lp-brand" href="#top" aria-label="VolleyballPal, back to top">
-          <VolleyballMark />
-          <span className="lp-wordmark">Volleyball<span>Pal</span></span>
-        </a>
+    <header className="vp-home-topbar dash-topbar lp-top">
+      <a className="vp-home-brand dash-topbar-brand lp-brand" href="#top" aria-label="VolleyballPal, back to top">
+        <Wordmark />
+      </a>
 
-        <nav className="lp-top__nav" aria-label="Page sections">
-          {NAV.map(n => <a key={n.href} className="lp-top__link" href={n.href}>{n.label}</a>)}
-        </nav>
+      <nav className="lp-top__nav" aria-label="Page sections">
+        {NAV.map(n => <a key={n.href} className="vp-tl-topbar-btn lp-top__link" href={n.href}>{n.label}</a>)}
+      </nav>
 
-        <div className="lp-top__actions">
-          <a href="#sign-in" className="md-button md-button--filled lp-top__signin" onClick={goToSignIn}>Sign in</a>
-          <button
-            ref={menuButton}
-            type="button"
-            className="lp-top__menu"
-            aria-expanded={open}
-            aria-controls="lp-menu"
-            aria-label={open ? 'Close menu' : 'Open menu'}
-            onClick={() => setOpen(o => !o)}
-          >
-            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-              {open
-                ? <path d="M6.4 19 5 17.6 10.6 12 5 6.4 6.4 5 12 10.6 17.6 5 19 6.4 13.4 12 19 17.6 17.6 19 12 13.4z" />
-                : <path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z" />}
-            </svg>
-          </button>
-        </div>
+      <div className="lp-top__actions">
+        <a href="#sign-in" className="ds-btn ds-btn-primary lp-top__signin" onClick={goToSignIn}>Sign in</a>
+        <button
+          ref={menuButton}
+          type="button"
+          className="vp-tl-topbar-btn lp-top__menu"
+          aria-expanded={open}
+          aria-controls="lp-menu"
+          aria-label={open ? 'Close menu' : 'Open menu'}
+          onClick={() => setOpen(o => !o)}
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            {open
+              ? <path d="M6.4 19 5 17.6 10.6 12 5 6.4 6.4 5 12 10.6 17.6 5 19 6.4 13.4 12 19 17.6 17.6 19 12 13.4z" />
+              : <path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z" />}
+          </svg>
+        </button>
       </div>
 
       <nav id="lp-menu" className="lp-menu" aria-label="Page sections" hidden={!open}>
@@ -208,37 +233,56 @@ function TopBar() {
   );
 }
 
-// Small line icons for the three tools: a bar chart, a court, a stopwatch.
-const TOOL_ICONS = {
-  statspal: 'M4 20V10h3v10H4Zm6.5 0V4h3v16h-3ZM17 20v-7h3v7h-3Z',
-  rotationpal: 'M3 4h18v16H3V4Zm2 2v5h14V6H5Zm0 7v5h14v-5H5Zm4.5-6.5h1.5v4H9.5v-4Zm3.5 0h1.5v4H13v-4Zm-3.5 7h1.5v4H9.5v-4Zm3.5 0h1.5v4H13v-4Z',
-  practicepal: 'M9 1h6v2H9V1Zm2 8h2v5h-2V9Zm8.03-1.39 1.42-1.42-1.41-1.41-1.42 1.42A8.96 8.96 0 0 0 12 4a9 9 0 1 0 7.03 3.61ZM12 20a7 7 0 1 1 0-14 7 7 0 0 1 0 14Z',
-};
+function Check() {
+  return <IconCheck size={15} className="lp-check" />;
+}
 
-function ToolIcon({ id }) {
+// A dashboard panel: .dash-widget with the icon + small label header.
+function Panel({ icon: Icon, title, meta, className = '', bodyClass = '', children, ...rest }) {
   return (
-    <svg className="lp-tool-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-      <path d={TOOL_ICONS[id]} />
-    </svg>
+    <section className={`dash-widget lp-panel ${className}`} {...rest}>
+      <header className="dash-widget-head">
+        <span className="dash-widget-title">{Icon && <Icon size={13} />} {title}</span>
+        {meta && <span className="dash-widget-meta">{meta}</span>}
+      </header>
+      <div className={`dash-widget-body ${bodyClass}`}>{children}</div>
+    </section>
   );
 }
 
-function Check() {
+// Static preview of the team dashboard, rendered through the real widgets with
+// fictional data. `inert` keeps its buttons out of the tab order and inactive.
+function DashboardPreview() {
   return (
-    <svg className="lp-check" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-      <path d="M9 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z" />
-    </svg>
+    <figure className="lp-preview" aria-labelledby="lp-preview-caption">
+      <div className="lp-preview__grid" inert>
+        <StandingsWidget
+          team={SAMPLE_TEAM}
+          leagueTeams={SAMPLE_LEAGUE_TEAMS}
+          leagueResults={SAMPLE_LEAGUE_RESULTS}
+        />
+        <ScheduleWidget
+          team={SAMPLE_TEAM}
+          schedule={SAMPLE_SCHEDULE}
+          completedGames={SAMPLE_COMPLETED_GAMES}
+        />
+        <RosterPositionWidget team={SAMPLE_TEAM} players={SAMPLE_PLAYERS} />
+      </div>
+      <figcaption id="lp-preview-caption" className="lp-preview__caption">
+        The team dashboard: standings, schedule and roster. Sample teams and players are fictional.
+      </figcaption>
+    </figure>
   );
 }
 
 export default function Login() {
   return (
-    <div className="lp md-scope" id="top">
+    <div className="dash-page lp" id="top">
       <a className="lp-skip" href="#sign-in" onClick={goToSignIn}>Skip to sign in</a>
       <TopBar />
 
-      <main>
-        {/* ── Hero ── */}
+      <main className="lp-main">
+        {/* ── Hero: copy and tools left, sign-in panel right ── */}
         <section className="lp-hero" aria-labelledby="lp-hero-title">
           <div className="lp-hero__copy">
             <h1 id="lp-hero-title" className="lp-hero__title">
@@ -248,59 +292,80 @@ export default function Login() {
               VolleyballPal tracks every touch courtside, plans your rotations before the first
               serve, and measures practice the way you measure games.
             </p>
-            <ul className="lp-hero__tools" aria-label="The three tools">
-              {TOOLS.map(t => (
-                <li key={t.id}>
-                  <ToolIcon id={t.id} />
-                  <a href={`#${t.id}`}><strong>{t.name}</strong></a>
-                  <span>{t.summary}</span>
+          </div>
+
+          <SignInCard id="sign-in" />
+
+          <ul className="dash-modules lp-tiles" aria-label="The three tools">
+            {TOOLS.map(t => {
+              const { cls, Icon } = TOOL_TILE[t.id];
+              return (
+                <li key={t.id} className={`dash-module ${cls} lp-tile`}>
+                  <span className="dash-module-icon"><Icon size={24} /></span>
+                  <span className="dash-module-body">
+                    <a className="dash-module-title lp-tile__link" href={`#${t.id}`}>{t.name}</a>
+                    <span className="dash-module-sub">{t.summary}</span>
+                  </span>
                 </li>
-              ))}
-            </ul>
-          </div>
-          <div className="lp-hero__panel">
-            <SignInCard id="sign-in" />
-          </div>
+              );
+            })}
+          </ul>
+        </section>
+
+        {/* ── Dashboard preview ── */}
+        <section className="lp-section" aria-label="Dashboard preview">
+          <DashboardPreview />
         </section>
 
         {/* ── The three tools ── */}
-        <section id="features" className="lp-section lp-tools" aria-labelledby="lp-features-title">
+        <section id="features" className="lp-section" aria-labelledby="lp-features-title">
           <div className="lp-section__head">
             <h2 id="lp-features-title" className="lp-h2">Three tools, one team.</h2>
             <p className="lp-section__lede">Game day, game plan and practice, with the same 0–3 passing scale in StatsPal and PracticePal.</p>
           </div>
 
-          {TOOLS.map((tool, i) => (
-            <article key={tool.id} id={tool.id} className={`lp-tool${i % 2 ? ' lp-tool--flip' : ''}`} aria-labelledby={`${tool.id}-title`}>
-              <div className="lp-tool__copy">
-                <p className="lp-tool__name"><ToolIcon id={tool.id} />{tool.name}</p>
-                <h3 id={`${tool.id}-title`} className="lp-h3">{tool.title}</h3>
-                <ul className="lp-list">
-                  {tool.benefits.map(b => <li key={b}><Check />{b}</li>)}
-                </ul>
-              </div>
-              <div className="lp-tool__visual">
-                <tool.Mockup />
-              </div>
-            </article>
-          ))}
+          <div className="lp-stack">
+            {TOOLS.map(tool => {
+              const { cls, Icon } = TOOL_TILE[tool.id];
+              return (
+                <Panel
+                  key={tool.id}
+                  id={tool.id}
+                  icon={Icon}
+                  title={tool.name}
+                  className={`lp-tool ${cls}`}
+                  bodyClass="lp-tool__body"
+                  aria-labelledby={`${tool.id}-title`}
+                >
+                  <div className="lp-tool__copy">
+                    <h3 id={`${tool.id}-title`} className="lp-h3">{tool.title}</h3>
+                    <ul className="lp-list">
+                      {tool.benefits.map(b => <li key={b}><Check />{b}</li>)}
+                    </ul>
+                  </div>
+                  <div className="lp-tool__visual">
+                    <tool.Mockup />
+                  </div>
+                </Panel>
+              );
+            })}
+          </div>
         </section>
 
         {/* ── Roles ── */}
-        <section className="lp-section lp-roles" aria-labelledby="lp-roles-title">
+        <section className="lp-section" aria-labelledby="lp-roles-title">
           <div className="lp-section__head">
             <h2 id="lp-roles-title" className="lp-h2">Built for your whole team.</h2>
             <p className="lp-section__lede">Everyone signs in to the same app and sees what their role needs.</p>
           </div>
-          <div className="lp-roles__grid">
+          <div className="lp-grid-3">
             {ROLES.map(r => (
-              <article key={r.role} className="lp-card">
-                <h3 className="lp-h3">{r.role}</h3>
-                <p className="lp-card__lede">{r.lede}</p>
+              <Panel key={r.role} icon={ROLE_ICON[r.role]} title={r.role} aria-label={r.role}>
+                <h3 className="lp-h4">{r.lede}</h3>
                 <ul className="lp-list lp-list--compact">
                   {r.can.map(c => <li key={c}><Check />{c}</li>)}
                 </ul>
-              </article>
+              </Panel>
             ))}
           </div>
         </section>
@@ -310,73 +375,73 @@ export default function Login() {
           <div className="lp-section__head">
             <h2 id="lp-how-title" className="lp-h2">From setup to game day in three steps.</h2>
           </div>
-          <ol className="lp-steps">
+          <ol className="lp-grid-3 lp-steps">
             {STEPS.map((s, i) => (
-              <li key={s.title} className="lp-step">
-                <span className="lp-step__num" aria-hidden="true">{i + 1}</span>
-                <h3 className="lp-h3">{s.title}</h3>
-                <p>{s.body}</p>
+              <li key={s.title}>
+                <Panel icon={IconPlay} title={`Step ${i + 1}`} className="lp-step">
+                  <h3 className="lp-h4">{s.title}</h3>
+                  <p className="lp-muted">{s.body}</p>
+                </Panel>
               </li>
             ))}
           </ol>
         </section>
 
         {/* ── Courtside-ready ── */}
-        <section className="lp-section lp-courtside" aria-labelledby="lp-courtside-title">
-          <div className="lp-courtside__panel">
-            <div className="lp-section__head">
-              <h2 id="lp-courtside-title" className="lp-h2">Made for a loud gym and a quick timeout.</h2>
-            </div>
+        <section className="lp-section" aria-labelledby="lp-courtside-title">
+          <div className="lp-section__head">
+            <h2 id="lp-courtside-title" className="lp-h2">Made for a loud gym and a quick timeout.</h2>
+          </div>
+          <Panel icon={IconBolt} title="Courtside-ready" meta={`${COURTSIDE.length} details`} bodyClass="lp-courtside">
             <ul className="lp-courtside__grid">
               {COURTSIDE.map(c => (
                 <li key={c.title}>
                   <h3 className="lp-h4">{c.title}</h3>
-                  <p>{c.body}</p>
+                  <p className="lp-muted">{c.body}</p>
                 </li>
               ))}
             </ul>
-          </div>
+          </Panel>
         </section>
 
         {/* ── FAQ ── */}
-        <section id="faq" className="lp-section lp-faq" aria-labelledby="lp-faq-title">
-          <div className="lp-faq__inner">
-            <div className="lp-section__head">
-              <h2 id="lp-faq-title" className="lp-h2">Questions, answered.</h2>
-            </div>
-            <div className="lp-faq__list">
-              {FAQ.map(f => (
-                <details key={f.q} className="lp-faq__item">
-                  <summary><h3 className="lp-h4">{f.q}</h3></summary>
-                  <p>{f.a}</p>
-                </details>
-              ))}
-            </div>
+        <section id="faq" className="lp-section" aria-labelledby="lp-faq-title">
+          <div className="lp-section__head">
+            <h2 id="lp-faq-title" className="lp-h2">Questions, answered.</h2>
           </div>
+          <Panel icon={IconList} title="FAQ" meta={`${FAQ.length} questions`} bodyClass="lp-faq">
+            {FAQ.map(f => (
+              <details key={f.q} className="lp-faq__item">
+                <summary><h3 className="lp-h4">{f.q}</h3></summary>
+                <p className="lp-muted">{f.a}</p>
+              </details>
+            ))}
+          </Panel>
         </section>
 
         {/* ── Final call to action ── */}
-        <section className="lp-cta" aria-labelledby="lp-cta-title">
-          <div className="lp-cta__inner">
-            <h2 id="lp-cta-title" className="lp-h2">Ready for game day?</h2>
-            <p>Sign in to track your next match, check the plan, or see your numbers.</p>
-            <a href="#sign-in" className="md-button md-button--filled lp-cta__button" onClick={goToSignIn}>Sign in</a>
-            <p className="lp-cta__help">Need an account? Ask your coach or club admin.</p>
-          </div>
+        <section className="lp-section" aria-labelledby="lp-cta-title">
+          <Panel icon={IconHome} title="VolleyballPal" bodyClass="lp-cta">
+            <div>
+              <h2 id="lp-cta-title" className="lp-h2">Ready for game day?</h2>
+              <p className="lp-muted">Sign in to track your next match, check the plan, or see your numbers.</p>
+            </div>
+            <div className="lp-cta__actions">
+              <a href="#sign-in" className="ds-btn ds-btn-primary ds-btn-lg lp-cta__button" onClick={goToSignIn}>Sign in</a>
+              <p className="lp-cta__help">Need an account? Ask your coach or club admin.</p>
+            </div>
+          </Panel>
         </section>
       </main>
 
       <footer className="lp-footer">
-        <div className="lp-footer__inner">
-          <a className="lp-brand" href="#top" aria-label="VolleyballPal, back to top">
-            <VolleyballMark />
-            <span className="lp-wordmark">Volleyball<span>Pal</span></span>
-          </a>
-          <nav aria-label="Footer">
-            {NAV.map(n => <a key={n.href} className="lp-top__link" href={n.href}>{n.label}</a>)}
-          </nav>
-          <p className="lp-footer__copy">© 2026 VolleyballPal</p>
-        </div>
+        <a className="vp-home-brand dash-topbar-brand lp-brand" href="#top" aria-label="VolleyballPal, back to top">
+          <Wordmark />
+        </a>
+        <nav aria-label="Footer">
+          {NAV.map(n => <a key={n.href} className="vp-tl-topbar-btn lp-top__link" href={n.href}>{n.label}</a>)}
+        </nav>
+        <p className="lp-footer__copy">© 2026 VolleyballPal</p>
       </footer>
     </div>
   );

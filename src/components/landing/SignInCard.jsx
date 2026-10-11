@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
+import { IconLock } from '../Icons';
 
 // Friendlier wording for the messages AuthContext and this form produce.
 function friendlyError(error, { usernameMissing, passwordMissing }) {
@@ -27,6 +28,8 @@ function ErrorIcon() {
 
 export const USERNAME_INPUT_ID = 'login-username';
 
+// The sign-in form as a dashboard panel: .dash-widget with a panel header,
+// the app's .ds-input fields and a .ds-btn-primary button.
 export default function SignInCard({ id }) {
   const { login, loading, error, setError } = useAuth();
   const [username, setUsername] = useState('');
@@ -56,17 +59,20 @@ export default function SignInCard({ id }) {
   };
 
   return (
-    <section id={id} className="lp-signin" aria-labelledby="lp-signin-title">
-      <h2 id="lp-signin-title" className="lp-signin__title">Sign in</h2>
-      <p className="lp-signin__subtitle">Use the login your coach or admin gave you.</p>
+    <section id={id} className="dash-widget lp-signin" aria-labelledby="lp-signin-title">
+      <header className="dash-widget-head">
+        <h2 id="lp-signin-title" className="dash-widget-title"><IconLock size={13} /> Sign in</h2>
+      </header>
 
-      <form className="lp-signin__form" onSubmit={handleSubmit} noValidate aria-busy={loading}>
-        <div className={`md-field${usernameInvalid ? ' md-field--error' : ''}`}>
-          <label className="md-field__label" htmlFor={USERNAME_INPUT_ID}>Username</label>
-          <div className="md-field__control">
+      <div className="dash-widget-body lp-signin__body">
+        <p className="lp-signin__subtitle">Use the login your coach or admin gave you.</p>
+
+        <form className="lp-signin__form" onSubmit={handleSubmit} noValidate aria-busy={loading}>
+          <div className={`lp-field${usernameInvalid ? ' is-error' : ''}`}>
+            <label className="lp-field__label" htmlFor={USERNAME_INPUT_ID}>Username</label>
             <input
               id={USERNAME_INPUT_ID}
-              className="md-field__input"
+              className="ds-input lp-field__input"
               type="text"
               value={username}
               onChange={edit(setUsername)}
@@ -78,61 +84,61 @@ export default function SignInCard({ id }) {
               aria-describedby={usernameInvalid ? 'login-error' : undefined}
             />
           </div>
-        </div>
 
-        <div className={`md-field${passwordInvalid ? ' md-field--error' : ''}`}>
-          <label className="md-field__label" htmlFor="login-password">Password</label>
-          <div className="md-field__control">
-            <input
-              id="login-password"
-              className="md-field__input"
-              type={showPassword ? 'text' : 'password'}
-              value={password}
-              onChange={edit(setPassword)}
-              autoComplete="current-password"
-              autoCapitalize="none"
-              autoCorrect="off"
-              spellCheck={false}
-              aria-invalid={passwordInvalid || undefined}
-              aria-describedby={passwordInvalid ? 'login-error' : undefined}
-            />
-            <button
-              type="button"
-              className="md-field__trailing"
-              aria-controls="login-password"
-              onClick={() => setShowPassword(v => !v)}
-            >
-              {showPassword ? 'Hide' : 'Show'}
-              <span className="lp-visually-hidden"> password</span>
-            </button>
+          <div className={`lp-field${passwordInvalid ? ' is-error' : ''}`}>
+            <label className="lp-field__label" htmlFor="login-password">Password</label>
+            <div className="lp-field__wrap">
+              <input
+                id="login-password"
+                className="ds-input lp-field__input"
+                type={showPassword ? 'text' : 'password'}
+                value={password}
+                onChange={edit(setPassword)}
+                autoComplete="current-password"
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
+                aria-invalid={passwordInvalid || undefined}
+                aria-describedby={passwordInvalid ? 'login-error' : undefined}
+              />
+              <button
+                type="button"
+                className="lp-field__toggle"
+                aria-controls="login-password"
+                onClick={() => setShowPassword(v => !v)}
+              >
+                {showPassword ? 'Hide' : 'Show'}
+                <span className="lp-visually-hidden"> password</span>
+              </button>
+            </div>
           </div>
-        </div>
 
-        <div className="lp-signin__error-slot">
-          {message && (
-            <p id="login-error" className="lp-signin__error" role="alert">
-              <ErrorIcon />
-              <span>{message}</span>
-            </p>
-          )}
-        </div>
+          <div className="lp-signin__error-slot">
+            {message && (
+              <p id="login-error" className="lp-signin__error" role="alert">
+                <ErrorIcon />
+                <span>{message}</span>
+              </p>
+            )}
+          </div>
 
-        <button
-          type="submit"
-          className="md-button md-button--filled lp-signin__submit"
-          disabled={loading}
-          data-loading={loading || undefined}
-        >
-          {loading && (
-            <svg className="md-spinner" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-              <circle cx="12" cy="12" r="9" />
-            </svg>
-          )}
-          {loading ? 'Signing in…' : 'Sign in'}
-        </button>
-      </form>
+          <button
+            type="submit"
+            className="ds-btn ds-btn-primary ds-btn-lg lp-signin__submit"
+            disabled={loading}
+            data-loading={loading || undefined}
+          >
+            {loading && (
+              <svg className="lp-spinner" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <circle cx="12" cy="12" r="9" />
+              </svg>
+            )}
+            {loading ? 'Signing in…' : 'Sign in'}
+          </button>
+        </form>
 
-      <p className="lp-signin__help">Need an account? Ask your coach or club admin.</p>
+        <p className="lp-signin__help">Need an account? Ask your coach or club admin.</p>
+      </div>
     </section>
   );
 }

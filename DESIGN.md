@@ -7,16 +7,13 @@ and get a consistent result.
 data. Dark, tight, quiet — colour earns its place instead of decorating. Numbers
 are first-class: crisp, aligned, tabular.
 
-**Status:** two layers exist.
-- **Dashboard system (`--ds-*`)**, §1–8: implemented in `src/styles.css` (the
-  `DESIGN SYSTEM` block at the end of the file) and applied to the **team
-  dashboard** (`src/screens/TeamLaunch.jsx`, `src/components/dashboard/*`).
-- **Material You layer (`--md-*`)**, §9: seed-generated colour roles plus shared
-  components, used by the signed-out landing page (`src/screens/Login.jsx`) and
-  intended for every screen redesigned from here on.
-
-Every other screen still uses the older ad-hoc styles and is scheduled for a
-later pass.
+**Status:** one system, the `--ds-*` tokens and components in `src/styles.css`
+(the `DESIGN SYSTEM` block at the end of the file). It is applied to the **team
+dashboard** (`src/screens/TeamLaunch.jsx`, `src/components/dashboard/*`) and the
+**signed-out landing page** (`src/screens/Login.jsx`, §9), which reuses the
+dashboard's own classes so the two read as one app. Every other screen still
+uses the older ad-hoc styles and is scheduled for a later pass; when it moves,
+it moves onto this system. There is no second design layer.
 
 **§0 overrides everything else in this file.** Where an older section disagrees
 with it, §0 wins.
@@ -25,8 +22,8 @@ with it, §0 wins.
 
 ## 0. House rules (override every section below)
 
-These exist because the first Material You pass drifted toward a generic
-"AI-generated" look. They apply to every screen, in both design layers.
+These exist because an earlier landing-page pass drifted toward a generic
+"AI-generated" look. They apply to every screen.
 
 **No effects. Solid, flat colour only.**
 - No gradients of any kind (linear, radial or conic), on backgrounds, text,
@@ -38,44 +35,48 @@ These exist because the first Material You pass drifted toward a generic
   layer that genuinely floats above the page (a modal or popover), never on
   cards, panels, buttons or hover states. Focus rings are not shadows and are
   required.
-- Separate things with **1px borders** (`--md-sys-color-outline-variant` /
-  `--ds-border`) and space, not with depth.
+- Separate things with **1px borders** (`--ds-border`, `--ds-border-faint` between rows) and space, not with depth.
 
 **Plain, not generic.**
-- No small all-caps tracked "eyebrow" labels above headings ("FEATURES", "FOR
-  HIGH SCHOOL AND CLUB VOLLEYBALL"). A heading stands on its own; if context is
-  truly needed, use one normal sentence-case line. Uppercase micro-labels are
-  allowed only as *data* labels inside dense stat UI (§3, §6), never as
-  marketing decoration.
+- No small all-caps tracked "eyebrow" labels above page headings ("FEATURES",
+  "FOR HIGH SCHOOL AND CLUB VOLLEYBALL"). A heading stands on its own. The
+  uppercase micro-label is reserved for **panel headers** (`.dash-widget-title`
+  / `.ds-card-title`: small icon + label) and *data* labels inside dense stat
+  UI (§3, §6).
 - No pill-shaped chips used as decoration. Short lists are plain lines,
   optionally with a small line icon.
 - Buttons are **8px-radius rectangles**, 48px tall for primary actions. Pills
   (`999px`) are for avatars and status badges only.
-- Floating rounded "cards" are not a default container. Prefer full-width
-  sections divided by hairlines, or one bordered block split by internal
-  dividers.
+- Content sits in **panels**: `.dash-widget` / `.ds-card` — `--ds-surface`,
+  1px `--ds-border`, `--ds-radius-lg` (12px), a header row of icon + micro-label,
+  no shadow. Rows inside a panel are divided by `--ds-border-faint`.
 
 **Layout.**
-- Use the full width. Page sections span the viewport; their content runs up to
-  **1440px** with **64px** side padding on desktop (40px tablet, **20px** phone).
-  No narrow centred column.
-- A sign-in screen is a split view: product copy on the left (~60%), a
-  full-height sign-in panel on the right (~40%) on a solid surface, divided by a
-  single 1px border. On phones the panel stacks directly under the copy.
+- Use the full width, on the dashboard's grid: `--ds-space-5` (20px) page
+  padding (16px on phones) and `--ds-space-4` (16px) between panels. No narrow
+  centred column.
+- Sign-in is a panel, not a separate surface: on desktop it sits to the right
+  of the product copy; on phones it comes directly after the headline.
 
-**Accent.**
-- Deep and muted, never neon. The brand seed is `#2A6F6B` (deep "Court
-  Teal"), which resolves to `#076a65` (light) / `#84d4cf` (dark) as primary.
-- Use it sparingly: the main button, links, focus rings and the wordmark's
-  "Pal". Icons, checkmarks and dividers stay neutral.
+**Accent: blue.**
+- The visible accent is the team colour, `--tc`. With no team (the signed-out
+  page) it is the default team colour, **`#58a6ff`**, set as `--ds-accent` on
+  that page.
+- Use it sparingly: the primary button, links, focus rings, the selected row.
+  Icons, checkmarks and dividers stay neutral; tools keep their category
+  colours (§2).
+- A filled accent button uses dark ink (`--ds-accent-ink`) for its label —
+  white on `#58a6ff` fails WCAG AA.
 
 **Forms.**
-- Outlined inputs: a visible label *above* the field, 1px border, 8px radius,
-  48px tall, and a clear focus ring (primary border plus a 3px translucent
-  ring). No filled or floating-label fields.
+- `.ds-input` with a visible label *above* it (`--ds-fs-sm`, 600,
+  `--ds-text-secondary`), 8px radius, and a clear focus ring (accent border
+  plus a 3px `--ds-accent-subtle` ring). 44px tall and 16px text on touch
+  screens. No filled or floating-label fields.
 - Password fields have a "Show"/"Hide" text toggle inside the right edge.
 
-**Type.** Archivo everywhere, see §3.
+**Type.** The dashboard's stacks, see §3: system UI font, Space Grotesk for the
+wordmark only, monospace for numbers and small data labels. No other webfonts.
 
 ---
 
@@ -125,9 +126,11 @@ Four levels, each a step lighter. Never nest more than two deep.
 | `--ds-text-faint` | `#4b5563` | Placeholders, disabled, em-dashes |
 
 ### Accent — exactly one
-`--ds-accent` `#6366f1` (indigo), with `--ds-accent-hover` `#7c81f5`,
-`--ds-accent-subtle` `rgba(99,102,241,0.12)`, `--ds-accent-border`
-`rgba(99,102,241,0.34)`.
+The visible accent is the **team colour** `--tc`; with no team it is
+`#58a6ff` (blue). See §0. `--ds-accent` (`#6366f1` in the base tokens) is the
+fallback for small UI states on team screens; the landing page points it at
+`#58a6ff` with `--ds-accent-hover` `#79b8ff`, `--ds-accent-subtle`
+`rgba(88,166,255,0.12)` and `--ds-accent-border` `rgba(88,166,255,0.34)`.
 
 **Use it for:** the primary button on a screen, the active tab or toggle, a
 focus ring, one selected row.
@@ -161,25 +164,16 @@ Team colour stays available as `--tc`, set per team.
 
 ## 3. Typography
 
-**Typeface: Archivo.** Loaded from Google Fonts in `index.html` as the variable
-font (`wght` 100–900, `wdth` 62–125) with `display=swap`; exposed as
-`--md-ref-typeface` in `src/theme/md3.css`.
-- **Headings:** Archivo SemiBold (600) or Bold (700), tracking `-0.02em`
-  (`--md-sys-heading-tracking`).
-- **The big hero headline only:** Bold, `font-stretch: 110%`. No other text is
-  widened.
-- **Body:** Archivo Regular (400) at normal width.
-- **Numbers:** always `font-variant-numeric: tabular-nums` (`.md-scope` sets it
-  for the whole screen; `.ds-num` in the dashboard layer).
-- Do not reintroduce Roboto or Space Grotesk on redesigned screens.
-
-**Legacy stacks** (dashboard screens not yet migrated; move them to Archivo
-when they are next touched):
+**Stacks** — the only fonts in the app.
 - `--ds-font`: system-first (`-apple-system, BlinkMacSystemFont, 'Segoe UI',
-  Roboto, 'Helvetica Neue', Arial, sans-serif`).
-- `--ds-font-display`: `'Space Grotesk'` — the old wordmark.
+  Roboto, 'Helvetica Neue', Arial, sans-serif`). No webfont to wait on.
+- `--ds-font-display`: `'Space Grotesk'` — the VolleyballPal wordmark only.
 - `--ds-font-mono`: `ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas,
-  monospace` — dense stat tables and IDs.
+  monospace` — numbers in stat tables, scores, records, counts and IDs.
+
+**Headings.** System font, 700, `-0.015em` to `-0.025em`. The one large size is a
+page hero headline, 48–56px (`clamp(2.125rem, 1.3rem + 2.2vw, 3.5rem)`); section
+headings use `--ds-fs-2xl`. Do not add display or marketing fonts.
 
 **Numbers.** Any element showing a statistic gets `.ds-num`, which applies
 `font-variant-numeric: tabular-nums`. Use `--ds-font-mono` as well when digits
@@ -415,42 +409,21 @@ without a table.
 
 ---
 
-## 9. Material You layer (`--md-*`)
+## 9. Signed-out landing page
 
-The layer every redesigned screen builds on. §0 overrides its MD3 defaults.
+`src/screens/Login.jsx` + `Login.css` is a product page with sign-in built in,
+built from the dashboard rather than beside it:
 
-**Files**
-- `src/theme/md3.js` — colour. `schemeFromSeed(seed, dark)` turns one hex seed
-  into the full MD3 role set (primary, on-primary, containers, secondary,
-  tertiary, error, surface and surface-container levels, outline, inverse).
-  Tones are CIELAB L* so contrast pairings hold for any seed; hue and chroma
-  are OKLCH so blues don't drift purple. `BRAND_SEED` is the default.
-- `src/theme/md3.css` — everything seed-independent: Archivo type scale, shape,
-  motion, state-layer opacities, and the shared components below.
-- `src/main.jsx` calls `applySeed(BRAND_SEED)` at startup, writing light and
-  dark role sets keyed off `<html data-theme>`.
-
-**Re-seeding for a team.** Every team screen should use the team's colour as the
-seed: `applySeed(team.color)` for the whole app,
-`applySeed(team.color, { selector: '.team-scope' })` for a subtree, or
-`style={seedStyle(team.color, dark)}` inline. Never hard-code a role colour.
-
-**Tokens:** `--md-sys-color-<role>` (e.g. `primary`, `on-primary`,
-`surface-container-low`, `outline-variant`), `--md-sys-typescale-*`,
-`--md-sys-shape-corner-*` (`small` = 8px is the default radius),
-`--md-sys-motion-easing-standard` (`cubic-bezier(0.2, 0, 0, 1)`).
-
-**Components** (opt a screen in with `.md-scope` on its root):
-- `.md-field` — outlined text field: `.md-field__label` above,
-  `.md-field__control` (1px border, 8px radius, 48px), `.md-field__input`,
-  optional `.md-field__trailing` text button. `.md-field--error` for errors,
-  with the message tied to the input by `aria-describedby`.
-- `.md-button.md-button--filled` / `--outlined` — 8px radius, 48px tall,
-  on-colour state layer, `scale(0.98)` on press, no elevation. Add
-  `[data-loading]` plus `.md-spinner` while an action is in flight.
-
-**Motion:** state changes use the standard easing at 150–200ms. Everything
-respects `prefers-reduced-motion`.
-
-**Reference implementation:** `src/screens/Login.jsx` + `Login.css` (landing
-page and sign-in panel).
+- The root carries `.dash-page`, so every DS rule the dashboard uses applies
+  unchanged. `Login.css` only adds layout, unlocks page scrolling (the
+  dashboard pins itself to the viewport) and sets `--tc` / `--ds-accent` to
+  `#58a6ff`.
+- Top bar and footer: `.vp-home-topbar.dash-topbar` and the dashboard
+  wordmark. The wordmark's "Pal" is solid `--ds-cat-practice` here (no gradient).
+- Tool tiles: `.dash-module` + `.dash-module-{stats,rotation,practice}`, as a
+  static list.
+- Sign-in, features, roles, steps, courtside details, FAQ and the final call to
+  action are all `.dash-widget` panels with `.dash-widget-head` headers.
+- Preview: the real `StandingsWidget`, `ScheduleWidget` and
+  `RosterPositionWidget`, rendered with the fictional rows in
+  `src/components/landing/sampleData.js` and marked `inert`.

@@ -31,6 +31,7 @@ export default function SignInCard({ id }) {
   const { login, loading, error, setError } = useAuth();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -60,15 +61,15 @@ export default function SignInCard({ id }) {
       <p className="lp-signin__subtitle">Use the login your coach or admin gave you.</p>
 
       <form className="lp-signin__form" onSubmit={handleSubmit} noValidate aria-busy={loading}>
-        <div className={`md-text-field${usernameInvalid ? ' md-text-field--error' : ''}`}>
-          <div className="md-text-field__control">
+        <div className={`md-field${usernameInvalid ? ' md-field--error' : ''}`}>
+          <label className="md-field__label" htmlFor={USERNAME_INPUT_ID}>Username</label>
+          <div className="md-field__control">
             <input
               id={USERNAME_INPUT_ID}
-              className="md-text-field__input"
+              className="md-field__input"
               type="text"
               value={username}
               onChange={edit(setUsername)}
-              placeholder=" "
               autoComplete="username"
               autoCapitalize="none"
               autoCorrect="off"
@@ -76,24 +77,34 @@ export default function SignInCard({ id }) {
               aria-invalid={usernameInvalid || undefined}
               aria-describedby={usernameInvalid ? 'login-error' : undefined}
             />
-            <label className="md-text-field__label" htmlFor={USERNAME_INPUT_ID}>Username</label>
           </div>
         </div>
 
-        <div className={`md-text-field${passwordInvalid ? ' md-text-field--error' : ''}`}>
-          <div className="md-text-field__control">
+        <div className={`md-field${passwordInvalid ? ' md-field--error' : ''}`}>
+          <label className="md-field__label" htmlFor="login-password">Password</label>
+          <div className="md-field__control">
             <input
               id="login-password"
-              className="md-text-field__input"
-              type="password"
+              className="md-field__input"
+              type={showPassword ? 'text' : 'password'}
               value={password}
               onChange={edit(setPassword)}
-              placeholder=" "
               autoComplete="current-password"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
               aria-invalid={passwordInvalid || undefined}
               aria-describedby={passwordInvalid ? 'login-error' : undefined}
             />
-            <label className="md-text-field__label" htmlFor="login-password">Password</label>
+            <button
+              type="button"
+              className="md-field__trailing"
+              aria-controls="login-password"
+              onClick={() => setShowPassword(v => !v)}
+            >
+              {showPassword ? 'Hide' : 'Show'}
+              <span className="lp-visually-hidden"> password</span>
+            </button>
           </div>
         </div>
 

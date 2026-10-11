@@ -17,6 +17,7 @@ const TOOLS = [
   {
     id: 'statspal',
     name: 'StatsPal',
+    summary: 'Live match stats',
     title: 'Track every touch, live from the bench.',
     benefits: [
       'Tap to log kills, attack errors, aces, digs, blocks, assists and ball-handling errors for each player.',
@@ -29,6 +30,7 @@ const TOOLS = [
   {
     id: 'rotationpal',
     name: 'RotationPal',
+    summary: 'Game plans and legal rotations',
     title: 'Plan legal rotations before the first serve.',
     benefits: [
       'Drag players onto the court for all six rotations, in both serve and serve receive.',
@@ -41,6 +43,7 @@ const TOOLS = [
   {
     id: 'practicepal',
     name: 'PracticePal',
+    summary: 'Drills, scrimmages and player development',
     title: 'Measure practice the way you measure games.',
     benefits: [
       'Run Serve-Receive, Hitting and Serving drills, or name your own made-or-missed drill.',
@@ -136,16 +139,6 @@ const FAQ = [
   },
 ];
 
-function Shapes({ variant }) {
-  return (
-    <div className={`lp-shapes lp-shapes--${variant}`} aria-hidden="true">
-      <span className="lp-shape lp-shape--1" />
-      <span className="lp-shape lp-shape--2" />
-      <span className="lp-shape lp-shape--3" />
-    </div>
-  );
-}
-
 const prefersReducedMotion = () =>
   typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 
@@ -215,6 +208,21 @@ function TopBar() {
   );
 }
 
+// Small line icons for the three tools: a bar chart, a court, a stopwatch.
+const TOOL_ICONS = {
+  statspal: 'M4 20V10h3v10H4Zm6.5 0V4h3v16h-3ZM17 20v-7h3v7h-3Z',
+  rotationpal: 'M3 4h18v16H3V4Zm2 2v5h14V6H5Zm0 7v5h14v-5H5Zm4.5-6.5h1.5v4H9.5v-4Zm3.5 0h1.5v4H13v-4Zm-3.5 7h1.5v4H9.5v-4Zm3.5 0h1.5v4H13v-4Z',
+  practicepal: 'M9 1h6v2H9V1Zm2 8h2v5h-2V9Zm8.03-1.39 1.42-1.42-1.41-1.41-1.42 1.42A8.96 8.96 0 0 0 12 4a9 9 0 1 0 7.03 3.61ZM12 20a7 7 0 1 1 0-14 7 7 0 0 1 0 14Z',
+};
+
+function ToolIcon({ id }) {
+  return (
+    <svg className="lp-tool-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path d={TOOL_ICONS[id]} />
+    </svg>
+  );
+}
+
 function Check() {
   return (
     <svg className="lp-check" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
@@ -232,21 +240,25 @@ export default function Login() {
       <main>
         {/* ── Hero ── */}
         <section className="lp-hero" aria-labelledby="lp-hero-title">
-          <Shapes variant="hero" />
-          <div className="lp-hero__inner">
-            <div className="lp-hero__copy">
-              <p className="lp-eyebrow">For high school and club volleyball</p>
-              <h1 id="lp-hero-title" className="lp-hero__title">
-                Live stats, legal rotations and practice data, all in one place.
-              </h1>
-              <p className="lp-hero__lede">
-                VolleyballPal tracks every touch courtside, plans your rotations before the first
-                serve, and measures practice the way you measure games.
-              </p>
-              <ul className="lp-hero__pills" aria-label="The three tools">
-                {TOOLS.map(t => <li key={t.id}><a href={`#${t.id}`}>{t.name}</a></li>)}
-              </ul>
-            </div>
+          <div className="lp-hero__copy">
+            <h1 id="lp-hero-title" className="lp-hero__title">
+              Live stats, legal rotations and practice data, all in one place.
+            </h1>
+            <p className="lp-hero__lede">
+              VolleyballPal tracks every touch courtside, plans your rotations before the first
+              serve, and measures practice the way you measure games.
+            </p>
+            <ul className="lp-hero__tools" aria-label="The three tools">
+              {TOOLS.map(t => (
+                <li key={t.id}>
+                  <ToolIcon id={t.id} />
+                  <a href={`#${t.id}`}><strong>{t.name}</strong></a>
+                  <span>{t.summary}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+          <div className="lp-hero__panel">
             <SignInCard id="sign-in" />
           </div>
         </section>
@@ -254,7 +266,6 @@ export default function Login() {
         {/* ── The three tools ── */}
         <section id="features" className="lp-section lp-tools" aria-labelledby="lp-features-title">
           <div className="lp-section__head">
-            <p className="lp-eyebrow">Features</p>
             <h2 id="lp-features-title" className="lp-h2">Three tools, one team.</h2>
             <p className="lp-section__lede">Game day, game plan and practice, with the same 0–3 passing scale in StatsPal and PracticePal.</p>
           </div>
@@ -262,7 +273,7 @@ export default function Login() {
           {TOOLS.map((tool, i) => (
             <article key={tool.id} id={tool.id} className={`lp-tool${i % 2 ? ' lp-tool--flip' : ''}`} aria-labelledby={`${tool.id}-title`}>
               <div className="lp-tool__copy">
-                <p className={`lp-tool__name lp-tool__name--${tool.id}`}>{tool.name}</p>
+                <p className="lp-tool__name"><ToolIcon id={tool.id} />{tool.name}</p>
                 <h3 id={`${tool.id}-title`} className="lp-h3">{tool.title}</h3>
                 <ul className="lp-list">
                   {tool.benefits.map(b => <li key={b}><Check />{b}</li>)}
@@ -278,7 +289,6 @@ export default function Login() {
         {/* ── Roles ── */}
         <section className="lp-section lp-roles" aria-labelledby="lp-roles-title">
           <div className="lp-section__head">
-            <p className="lp-eyebrow">Roles</p>
             <h2 id="lp-roles-title" className="lp-h2">Built for your whole team.</h2>
             <p className="lp-section__lede">Everyone signs in to the same app and sees what their role needs.</p>
           </div>
@@ -298,7 +308,6 @@ export default function Login() {
         {/* ── How it works ── */}
         <section id="how-it-works" className="lp-section" aria-labelledby="lp-how-title">
           <div className="lp-section__head">
-            <p className="lp-eyebrow">How it works</p>
             <h2 id="lp-how-title" className="lp-h2">From setup to game day in three steps.</h2>
           </div>
           <ol className="lp-steps">
@@ -316,7 +325,6 @@ export default function Login() {
         <section className="lp-section lp-courtside" aria-labelledby="lp-courtside-title">
           <div className="lp-courtside__panel">
             <div className="lp-section__head">
-              <p className="lp-eyebrow">Courtside-ready</p>
               <h2 id="lp-courtside-title" className="lp-h2">Made for a loud gym and a quick timeout.</h2>
             </div>
             <ul className="lp-courtside__grid">
@@ -332,23 +340,23 @@ export default function Login() {
 
         {/* ── FAQ ── */}
         <section id="faq" className="lp-section lp-faq" aria-labelledby="lp-faq-title">
-          <div className="lp-section__head">
-            <p className="lp-eyebrow">FAQ</p>
-            <h2 id="lp-faq-title" className="lp-h2">Questions, answered.</h2>
-          </div>
-          <div className="lp-faq__list">
-            {FAQ.map(f => (
-              <details key={f.q} className="lp-faq__item">
-                <summary><h3 className="lp-h4">{f.q}</h3></summary>
-                <p>{f.a}</p>
-              </details>
-            ))}
+          <div className="lp-faq__inner">
+            <div className="lp-section__head">
+              <h2 id="lp-faq-title" className="lp-h2">Questions, answered.</h2>
+            </div>
+            <div className="lp-faq__list">
+              {FAQ.map(f => (
+                <details key={f.q} className="lp-faq__item">
+                  <summary><h3 className="lp-h4">{f.q}</h3></summary>
+                  <p>{f.a}</p>
+                </details>
+              ))}
+            </div>
           </div>
         </section>
 
         {/* ── Final call to action ── */}
         <section className="lp-cta" aria-labelledby="lp-cta-title">
-          <Shapes variant="cta" />
           <div className="lp-cta__inner">
             <h2 id="lp-cta-title" className="lp-h2">Ready for game day?</h2>
             <p>Sign in to track your next match, check the plan, or see your numbers.</p>

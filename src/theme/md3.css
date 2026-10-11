@@ -6,44 +6,41 @@
  *  This file holds everything that does not depend on the seed: type,
  *  shape, motion, state layers, and the components built from them.
  *
+ *  House overrides on top of MD3 (see DESIGN.md): flat colour only — no
+ *  gradients, blur or glass; 1px borders instead of elevation; 8px
+ *  buttons, not pills; outlined fields with the label above.
+ *
  *  Opt a screen in with `.md-scope` on its root.
  * =================================================================== */
 
 :root {
-  /* Type */
-  --md-ref-typeface: 'Roboto', system-ui, -apple-system, 'Segoe UI', Arial, sans-serif;
-  --md-sys-typescale-headline-small: 500 1.5rem/2rem var(--md-ref-typeface);
-  --md-sys-typescale-title-large: 500 1.375rem/1.75rem var(--md-ref-typeface);
-  --md-sys-typescale-title-medium: 500 1rem/1.5rem var(--md-ref-typeface);
+  /* Type — Archivo variable (wght 100-900, wdth 62-125) */
+  --md-ref-typeface: 'Archivo', system-ui, -apple-system, 'Segoe UI', Arial, sans-serif;
+  --md-sys-typescale-headline-small: 600 1.5rem/2rem var(--md-ref-typeface);
+  --md-sys-typescale-title-large: 600 1.375rem/1.75rem var(--md-ref-typeface);
+  --md-sys-typescale-title-medium: 600 1rem/1.5rem var(--md-ref-typeface);
   --md-sys-typescale-body-large: 400 1rem/1.5rem var(--md-ref-typeface);
   --md-sys-typescale-body-medium: 400 0.875rem/1.25rem var(--md-ref-typeface);
   --md-sys-typescale-body-small: 400 0.75rem/1rem var(--md-ref-typeface);
   --md-sys-typescale-label-large: 500 0.875rem/1.25rem var(--md-ref-typeface);
+  --md-sys-heading-tracking: -0.02em;
 
   /* Shape */
   --md-sys-shape-corner-extra-small: 4px;
   --md-sys-shape-corner-small: 8px;
   --md-sys-shape-corner-medium: 12px;
   --md-sys-shape-corner-large: 16px;
-  --md-sys-shape-corner-extra-large: 28px;
-  --md-sys-shape-corner-extra-extra-large: 32px;
   --md-sys-shape-corner-full: 9999px;
 
   /* Motion */
   --md-sys-motion-easing-standard: cubic-bezier(0.2, 0, 0, 1);
-  --md-sys-motion-easing-emphasized-decelerate: cubic-bezier(0.05, 0.7, 0.1, 1);
   --md-sys-motion-duration-short3: 150ms;
   --md-sys-motion-duration-short4: 200ms;
-  --md-sys-motion-duration-medium4: 400ms;
 
   /* State layer opacities */
   --md-sys-state-hover: 0.08;
   --md-sys-state-focus: 0.1;
-  --md-sys-state-pressed: 0.1;
-
-  /* Elevation */
-  --md-sys-elevation-1: 0 1px 2px rgb(0 0 0 / 0.3), 0 1px 3px 1px rgb(0 0 0 / 0.15);
-  --md-sys-elevation-2: 0 1px 2px rgb(0 0 0 / 0.3), 0 2px 6px 2px rgb(0 0 0 / 0.15);
+  --md-sys-state-pressed: 0.12;
 }
 
 .md-scope {
@@ -53,50 +50,44 @@
   -webkit-font-smoothing: antialiased;
 }
 
-/* ── Filled text field ───────────────────────────────────────────────
- *  <div class="md-text-field">
- *    <div class="md-text-field__control">
- *      <input class="md-text-field__input" placeholder=" " id="x">
- *      <label class="md-text-field__label" for="x">Label</label>
+/* ── Outlined text field, label above ────────────────────────────────
+ *  <div class="md-field">
+ *    <label class="md-field__label" for="x">Label</label>
+ *    <div class="md-field__control">
+ *      <input class="md-field__input" id="x">
+ *      <button class="md-field__trailing">…</button>   (optional)
  *    </div>
- *    <p class="md-text-field__supporting">…</p>
  *  </div>
- *  The label floats when the input is focused or filled, so it stays
- *  visible the whole time. Add .md-text-field--error for the error state. */
-.md-text-field__control {
+ *  Add .md-field--error for the error state. */
+.md-field { display: grid; gap: 6px; }
+.md-field__label {
+  color: var(--md-sys-color-on-surface);
+  font: var(--md-sys-typescale-label-large);
+}
+.md-field__control {
   position: relative;
-  height: 56px;
-  background: var(--md-sys-color-surface-container-highest);
-  border-radius: var(--md-sys-shape-corner-extra-small) var(--md-sys-shape-corner-extra-small) 0 0;
-  border-bottom: 2px solid var(--md-sys-color-on-surface-variant);
+  display: flex;
+  align-items: center;
+  min-height: 48px;
+  border: 1px solid var(--md-sys-color-outline);
+  border-radius: var(--md-sys-shape-corner-small);
+  background: var(--md-sys-color-surface-container-lowest);
   transition:
     border-color var(--md-sys-motion-duration-short4) var(--md-sys-motion-easing-standard),
-    outline-color var(--md-sys-motion-duration-short4) var(--md-sys-motion-easing-standard);
-  outline: 2px solid transparent;
-  outline-offset: 2px;
+    box-shadow var(--md-sys-motion-duration-short4) var(--md-sys-motion-easing-standard);
 }
-.md-text-field__control::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  background: var(--md-sys-color-on-surface);
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity var(--md-sys-motion-duration-short4) var(--md-sys-motion-easing-standard);
-}
-.md-text-field__control:hover::before { opacity: var(--md-sys-state-hover); }
-.md-text-field__control:focus-within {
-  border-bottom-color: var(--md-sys-color-primary);
-  outline-color: var(--md-sys-color-primary);
+.md-field__control:hover { border-color: var(--md-sys-color-on-surface-variant); }
+.md-field__control:focus-within {
+  border-color: var(--md-sys-color-primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--md-sys-color-primary) 28%, transparent);
 }
 
 /* Doubled class beats the app-wide `[data-theme] input` rules. */
-.md-text-field .md-text-field__input {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  padding: 24px 16px 6px;
+.md-field .md-field__input {
+  flex: 1;
+  min-width: 0;
+  height: 46px;
+  padding: 0 14px;
   border: 0;
   border-radius: inherit;
   background: transparent;
@@ -105,54 +96,41 @@
   font: var(--md-sys-typescale-body-large);
   outline: none;
 }
-.md-text-field .md-text-field__input::placeholder { color: transparent; }
-.md-text-field .md-text-field__input:-webkit-autofill {
-  -webkit-box-shadow: 0 0 0 100px var(--md-sys-color-surface-container-highest) inset;
+.md-field .md-field__input:-webkit-autofill {
+  -webkit-box-shadow: 0 0 0 100px var(--md-sys-color-surface-container-lowest) inset;
   -webkit-text-fill-color: var(--md-sys-color-on-surface);
 }
 
-.md-text-field__label {
-  position: absolute;
-  left: 16px;
-  top: 15px;
-  max-width: calc(100% - 32px);
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  color: var(--md-sys-color-on-surface-variant);
-  font: var(--md-sys-typescale-body-large);
-  transform-origin: left top;
-  pointer-events: none;
-  transition:
-    transform var(--md-sys-motion-duration-short3) var(--md-sys-motion-easing-standard),
-    color var(--md-sys-motion-duration-short3) var(--md-sys-motion-easing-standard);
+/* A text button inside the field's right edge, e.g. "Show" on a password. */
+.md-field__trailing {
+  align-self: stretch;
+  min-width: 64px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 0 7px 7px 0;
+  background: transparent;
+  color: var(--md-sys-color-primary);
+  font: var(--md-sys-typescale-label-large);
+  cursor: pointer;
+  transition: background-color var(--md-sys-motion-duration-short4) var(--md-sys-motion-easing-standard);
 }
-.md-text-field__input:focus + .md-text-field__label,
-.md-text-field__input:not(:placeholder-shown) + .md-text-field__label,
-.md-text-field__input:-webkit-autofill + .md-text-field__label {
-  transform: translateY(-8px) scale(0.75);
-}
-.md-text-field__input:focus + .md-text-field__label { color: var(--md-sys-color-primary); }
-
-.md-text-field__supporting {
-  display: flex;
-  gap: 6px;
-  align-items: flex-start;
-  padding: 6px 16px 0;
-  color: var(--md-sys-color-on-surface-variant);
-  font: var(--md-sys-typescale-body-small);
+.md-field__trailing:hover { background: color-mix(in srgb, var(--md-sys-color-primary) 8%, transparent); }
+.md-field__trailing:focus-visible {
+  outline: 2px solid var(--md-sys-color-primary);
+  outline-offset: -2px;
 }
 
-.md-text-field--error .md-text-field__control,
-.md-text-field--error .md-text-field__control:focus-within { border-bottom-color: var(--md-sys-color-error); }
-.md-text-field--error .md-text-field__control:focus-within { outline-color: var(--md-sys-color-error); }
-.md-text-field--error .md-text-field__label,
-.md-text-field--error .md-text-field__input:focus + .md-text-field__label { color: var(--md-sys-color-error); }
-.md-text-field--error .md-text-field__input { caret-color: var(--md-sys-color-error); }
+.md-field--error .md-field__control,
+.md-field--error .md-field__control:hover { border-color: var(--md-sys-color-error); }
+.md-field--error .md-field__control:focus-within {
+  border-color: var(--md-sys-color-error);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--md-sys-color-error) 25%, transparent);
+}
+.md-field--error .md-field__input { caret-color: var(--md-sys-color-error); }
 
-/* ── Filled button ───────────────────────────────────────────────────
- *  Pill, 48px tall, with an on-primary state layer. Add [data-loading]
- *  to keep the filled look while it is disabled for an in-flight action. */
+/* ── Buttons ─────────────────────────────────────────────────────────
+ *  8px rectangles with a state layer; no elevation. Add [data-loading]
+ *  to keep the filled look while disabled for an in-flight action. */
 .md-button {
   position: relative;
   display: inline-flex;
@@ -160,18 +138,15 @@
   justify-content: center;
   gap: 8px;
   min-height: 48px;
-  padding: 0 24px;
+  padding: 0 20px;
   border: 0;
-  border-radius: var(--md-sys-shape-corner-full);
+  border-radius: var(--md-sys-shape-corner-small);
   font: var(--md-sys-typescale-title-medium);
-  letter-spacing: 0.01em;
   cursor: pointer;
   isolation: isolate;
   overflow: hidden;
   -webkit-tap-highlight-color: transparent;
-  transition:
-    transform var(--md-sys-motion-duration-short4) var(--md-sys-motion-easing-standard),
-    box-shadow var(--md-sys-motion-duration-short4) var(--md-sys-motion-easing-standard);
+  transition: transform var(--md-sys-motion-duration-short4) var(--md-sys-motion-easing-standard);
 }
 .md-button::before {
   content: '';
@@ -185,23 +160,28 @@
 .md-button:hover:not(:disabled)::before { opacity: var(--md-sys-state-hover); }
 .md-button:focus-visible::before { opacity: var(--md-sys-state-focus); }
 .md-button:active:not(:disabled)::before { opacity: var(--md-sys-state-pressed); }
-.md-button:active:not(:disabled) { transform: scale(0.95); }
+.md-button:active:not(:disabled) { transform: scale(0.98); }
 .md-button:focus-visible {
-  outline: 3px solid var(--md-sys-color-secondary);
-  outline-offset: 3px;
+  outline: 2px solid var(--md-sys-color-primary);
+  outline-offset: 2px;
 }
 
 .md-button--filled {
   background: var(--md-sys-color-primary);
   color: var(--md-sys-color-on-primary);
 }
-.md-button--filled:hover:not(:disabled) { box-shadow: var(--md-sys-elevation-1); }
 .md-button--filled:disabled:not([data-loading]) {
   background: color-mix(in srgb, var(--md-sys-color-on-surface) 12%, transparent);
   color: color-mix(in srgb, var(--md-sys-color-on-surface) 38%, transparent);
   cursor: not-allowed;
 }
 .md-button[data-loading] { cursor: progress; }
+
+.md-button--outlined {
+  background: transparent;
+  color: var(--md-sys-color-on-surface);
+  border: 1px solid var(--md-sys-color-outline);
+}
 
 /* Circular progress indicator, sized to sit inside a button label. */
 .md-spinner {
@@ -220,9 +200,8 @@
 @keyframes md-spin { to { transform: rotate(360deg); } }
 
 @media (prefers-reduced-motion: reduce) {
-  .md-text-field__control,
-  .md-text-field__control::before,
-  .md-text-field__label,
+  .md-field__control,
+  .md-field__trailing,
   .md-button,
   .md-button::before { transition: none; }
   .md-button:active:not(:disabled) { transform: none; }

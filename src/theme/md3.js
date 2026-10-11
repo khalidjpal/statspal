@@ -17,8 +17,8 @@
  *  far as the sRGB gamut needs.
  * =================================================================== */
 
-/** VolleyballPal brand seed, "Court Teal". Used until a team is chosen. */
-export const BRAND_SEED = '#00A3A3';
+/** VolleyballPal brand seed, a deep, muted "Court Teal". Used until a team is chosen. */
+export const BRAND_SEED = '#2A6F6B';
 
 // ---------- colour maths (sRGB <-> OKLCH, tone = CIELAB L*) ----------
 
@@ -115,8 +115,9 @@ const ERROR_HUE = hexToOklch('#B3261E').h;
 export function palettesFromSeed(seed) {
   const { c, h } = hexToOklch(seed);
   return {
-    // Keep the seed's own chroma so a strong team colour stays strong.
-    primary: tonalPalette(h, Math.max(c, 0.12)),
+    // Keep the seed's own chroma so a strong team colour stays strong; the
+    // floor only lifts near-grey seeds, and is kept low so accents stay muted.
+    primary: tonalPalette(h, Math.max(c, 0.08)),
     secondary: tonalPalette(h, 0.04),
     tertiary: tonalPalette((h + 60) % 360, 0.07),
     neutral: tonalPalette(h, 0.008),

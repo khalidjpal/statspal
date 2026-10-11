@@ -1,0 +1,143 @@
+/* ===================================================================
+ *  Login — Material You. Colours come from the --md-sys-color-* roles
+ *  (src/theme/md3.js); components from src/theme/md3.css.
+ * =================================================================== */
+
+.md-login {
+  position: relative;
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: max(24px, env(safe-area-inset-top)) 16px max(24px, env(safe-area-inset-bottom));
+  overflow: clip;
+  background:
+    radial-gradient(120% 80% at 50% 0%, var(--md-sys-color-surface-container-low), transparent 70%),
+    var(--md-sys-color-surface);
+}
+
+/* Soft organic shapes in the seed palette. Static, so each is painted
+ * once and composited; never more than three. */
+.md-login__shapes {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  contain: strict;
+}
+.md-login__shape {
+  position: absolute;
+  width: clamp(260px, 42vw, 560px);
+  aspect-ratio: 1;
+  filter: blur(64px);
+  opacity: 0.55;
+}
+.md-login__shape--1 {
+  top: -12%;
+  left: -10%;
+  background: var(--md-sys-color-primary-container);
+  border-radius: 62% 38% 54% 46% / 48% 58% 42% 52%;
+}
+.md-login__shape--2 {
+  bottom: -16%;
+  right: -12%;
+  background: var(--md-sys-color-tertiary-container);
+  border-radius: 44% 56% 38% 62% / 60% 42% 58% 40%;
+}
+.md-login__shape--3 {
+  top: 52%;
+  left: 58%;
+  width: clamp(160px, 22vw, 300px);
+  background: var(--md-sys-color-secondary-container);
+  border-radius: 50% 50% 36% 64% / 56% 40% 60% 44%;
+  opacity: 0.45;
+}
+/* Light containers are far more saturated than dark ones; tone them down. */
+:root[data-theme="light"] .md-login__shape { opacity: 0.32; }
+
+.md-login__card {
+  position: relative;
+  width: min(100%, 440px);
+  padding: 40px 40px 36px;
+  border-radius: var(--md-sys-shape-corner-extra-extra-large);
+  background: var(--md-sys-color-surface-container);
+  box-shadow: var(--md-sys-elevation-1);
+  animation: md-login-enter var(--md-sys-motion-duration-medium4) var(--md-sys-motion-easing-emphasized-decelerate) both;
+}
+@keyframes md-login-enter {
+  from { opacity: 0; transform: translateY(12px); }
+}
+
+/* ── Brand ── */
+.md-login__brand { margin-bottom: 32px; text-align: center; }
+.md-login__lockup {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+}
+.md-login__mark { width: 40px; height: 40px; flex: none; }
+.md-login__mark-ball { fill: var(--md-sys-color-primary); }
+.md-login__mark-seams {
+  fill: none;
+  stroke: var(--md-sys-color-on-primary);
+  stroke-width: 2.6;
+  stroke-linecap: round;
+}
+.md-login__wordmark {
+  margin: 0;
+  color: var(--md-sys-color-on-surface);
+  font: 500 2rem/2.5rem var(--md-ref-typeface);
+  letter-spacing: -0.01em;
+}
+.md-login__wordmark-pal { color: var(--md-sys-color-primary); }
+.md-login__subtitle {
+  margin-top: 8px;
+  color: var(--md-sys-color-on-surface-variant);
+  font: var(--md-sys-typescale-body-large);
+}
+
+/* ── Form ── */
+.md-login__form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.md-login__error-slot:empty { display: none; }
+.md-login__error {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  margin: 0;
+  padding: 0 4px;
+  color: var(--md-sys-color-error);
+  font: var(--md-sys-typescale-body-medium);
+}
+.md-login__error-icon {
+  width: 20px;
+  height: 20px;
+  flex: none;
+  fill: currentColor;
+}
+.md-login__submit {
+  width: 100%;
+  margin-top: 8px;
+}
+
+/* ── Phones ── */
+@media (max-width: 599px) {
+  .md-login__card {
+    padding: 32px 24px 24px;
+    border-radius: 24px;
+  }
+  .md-login__brand { margin-bottom: 28px; }
+  .md-login__wordmark { font-size: 1.75rem; line-height: 2.25rem; }
+  .md-login__mark { width: 36px; height: 36px; }
+}
+
+/* Short landscape phones: keep the card on screen without a big scroll. */
+@media (max-height: 520px) and (orientation: landscape) {
+  .md-login__card { padding-block: 24px; }
+  .md-login__brand { margin-bottom: 20px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .md-login__card { animation: none; }
+}

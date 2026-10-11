@@ -1,0 +1,230 @@
+/* ===================================================================
+ *  Material You (MD3) — shared tokens and components.
+ *
+ *  Colour roles (--md-sys-color-*) are generated from a seed colour in
+ *  ./md3.js and injected at startup with the VolleyballPal brand seed.
+ *  This file holds everything that does not depend on the seed: type,
+ *  shape, motion, state layers, and the components built from them.
+ *
+ *  Opt a screen in with `.md-scope` on its root.
+ * =================================================================== */
+
+:root {
+  /* Type */
+  --md-ref-typeface: 'Roboto', system-ui, -apple-system, 'Segoe UI', Arial, sans-serif;
+  --md-sys-typescale-headline-small: 500 1.5rem/2rem var(--md-ref-typeface);
+  --md-sys-typescale-title-large: 500 1.375rem/1.75rem var(--md-ref-typeface);
+  --md-sys-typescale-title-medium: 500 1rem/1.5rem var(--md-ref-typeface);
+  --md-sys-typescale-body-large: 400 1rem/1.5rem var(--md-ref-typeface);
+  --md-sys-typescale-body-medium: 400 0.875rem/1.25rem var(--md-ref-typeface);
+  --md-sys-typescale-body-small: 400 0.75rem/1rem var(--md-ref-typeface);
+  --md-sys-typescale-label-large: 500 0.875rem/1.25rem var(--md-ref-typeface);
+
+  /* Shape */
+  --md-sys-shape-corner-extra-small: 4px;
+  --md-sys-shape-corner-small: 8px;
+  --md-sys-shape-corner-medium: 12px;
+  --md-sys-shape-corner-large: 16px;
+  --md-sys-shape-corner-extra-large: 28px;
+  --md-sys-shape-corner-extra-extra-large: 32px;
+  --md-sys-shape-corner-full: 9999px;
+
+  /* Motion */
+  --md-sys-motion-easing-standard: cubic-bezier(0.2, 0, 0, 1);
+  --md-sys-motion-easing-emphasized-decelerate: cubic-bezier(0.05, 0.7, 0.1, 1);
+  --md-sys-motion-duration-short3: 150ms;
+  --md-sys-motion-duration-short4: 200ms;
+  --md-sys-motion-duration-medium4: 400ms;
+
+  /* State layer opacities */
+  --md-sys-state-hover: 0.08;
+  --md-sys-state-focus: 0.1;
+  --md-sys-state-pressed: 0.1;
+
+  /* Elevation */
+  --md-sys-elevation-1: 0 1px 2px rgb(0 0 0 / 0.3), 0 1px 3px 1px rgb(0 0 0 / 0.15);
+  --md-sys-elevation-2: 0 1px 2px rgb(0 0 0 / 0.3), 0 2px 6px 2px rgb(0 0 0 / 0.15);
+}
+
+.md-scope {
+  font-family: var(--md-ref-typeface);
+  font-variant-numeric: tabular-nums;
+  color: var(--md-sys-color-on-surface);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Filled text field ───────────────────────────────────────────────
+ *  <div class="md-text-field">
+ *    <div class="md-text-field__control">
+ *      <input class="md-text-field__input" placeholder=" " id="x">
+ *      <label class="md-text-field__label" for="x">Label</label>
+ *    </div>
+ *    <p class="md-text-field__supporting">…</p>
+ *  </div>
+ *  The label floats when the input is focused or filled, so it stays
+ *  visible the whole time. Add .md-text-field--error for the error state. */
+.md-text-field__control {
+  position: relative;
+  height: 56px;
+  background: var(--md-sys-color-surface-container-highest);
+  border-radius: var(--md-sys-shape-corner-extra-small) var(--md-sys-shape-corner-extra-small) 0 0;
+  border-bottom: 2px solid var(--md-sys-color-on-surface-variant);
+  transition:
+    border-color var(--md-sys-motion-duration-short4) var(--md-sys-motion-easing-standard),
+    outline-color var(--md-sys-motion-duration-short4) var(--md-sys-motion-easing-standard);
+  outline: 2px solid transparent;
+  outline-offset: 2px;
+}
+.md-text-field__control::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--md-sys-color-on-surface);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--md-sys-motion-duration-short4) var(--md-sys-motion-easing-standard);
+}
+.md-text-field__control:hover::before { opacity: var(--md-sys-state-hover); }
+.md-text-field__control:focus-within {
+  border-bottom-color: var(--md-sys-color-primary);
+  outline-color: var(--md-sys-color-primary);
+}
+
+/* Doubled class beats the app-wide `[data-theme] input` rules. */
+.md-text-field .md-text-field__input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  padding: 24px 16px 6px;
+  border: 0;
+  border-radius: inherit;
+  background: transparent;
+  color: var(--md-sys-color-on-surface);
+  caret-color: var(--md-sys-color-primary);
+  font: var(--md-sys-typescale-body-large);
+  outline: none;
+}
+.md-text-field .md-text-field__input::placeholder { color: transparent; }
+.md-text-field .md-text-field__input:-webkit-autofill {
+  -webkit-box-shadow: 0 0 0 100px var(--md-sys-color-surface-container-highest) inset;
+  -webkit-text-fill-color: var(--md-sys-color-on-surface);
+}
+
+.md-text-field__label {
+  position: absolute;
+  left: 16px;
+  top: 15px;
+  max-width: calc(100% - 32px);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--md-sys-color-on-surface-variant);
+  font: var(--md-sys-typescale-body-large);
+  transform-origin: left top;
+  pointer-events: none;
+  transition:
+    transform var(--md-sys-motion-duration-short3) var(--md-sys-motion-easing-standard),
+    color var(--md-sys-motion-duration-short3) var(--md-sys-motion-easing-standard);
+}
+.md-text-field__input:focus + .md-text-field__label,
+.md-text-field__input:not(:placeholder-shown) + .md-text-field__label,
+.md-text-field__input:-webkit-autofill + .md-text-field__label {
+  transform: translateY(-8px) scale(0.75);
+}
+.md-text-field__input:focus + .md-text-field__label { color: var(--md-sys-color-primary); }
+
+.md-text-field__supporting {
+  display: flex;
+  gap: 6px;
+  align-items: flex-start;
+  padding: 6px 16px 0;
+  color: var(--md-sys-color-on-surface-variant);
+  font: var(--md-sys-typescale-body-small);
+}
+
+.md-text-field--error .md-text-field__control,
+.md-text-field--error .md-text-field__control:focus-within { border-bottom-color: var(--md-sys-color-error); }
+.md-text-field--error .md-text-field__control:focus-within { outline-color: var(--md-sys-color-error); }
+.md-text-field--error .md-text-field__label,
+.md-text-field--error .md-text-field__input:focus + .md-text-field__label { color: var(--md-sys-color-error); }
+.md-text-field--error .md-text-field__input { caret-color: var(--md-sys-color-error); }
+
+/* ── Filled button ───────────────────────────────────────────────────
+ *  Pill, 48px tall, with an on-primary state layer. Add [data-loading]
+ *  to keep the filled look while it is disabled for an in-flight action. */
+.md-button {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 48px;
+  padding: 0 24px;
+  border: 0;
+  border-radius: var(--md-sys-shape-corner-full);
+  font: var(--md-sys-typescale-title-medium);
+  letter-spacing: 0.01em;
+  cursor: pointer;
+  isolation: isolate;
+  overflow: hidden;
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    transform var(--md-sys-motion-duration-short4) var(--md-sys-motion-easing-standard),
+    box-shadow var(--md-sys-motion-duration-short4) var(--md-sys-motion-easing-standard);
+}
+.md-button::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: currentColor;
+  opacity: 0;
+  transition: opacity var(--md-sys-motion-duration-short4) var(--md-sys-motion-easing-standard);
+}
+.md-button:hover:not(:disabled)::before { opacity: var(--md-sys-state-hover); }
+.md-button:focus-visible::before { opacity: var(--md-sys-state-focus); }
+.md-button:active:not(:disabled)::before { opacity: var(--md-sys-state-pressed); }
+.md-button:active:not(:disabled) { transform: scale(0.95); }
+.md-button:focus-visible {
+  outline: 3px solid var(--md-sys-color-secondary);
+  outline-offset: 3px;
+}
+
+.md-button--filled {
+  background: var(--md-sys-color-primary);
+  color: var(--md-sys-color-on-primary);
+}
+.md-button--filled:hover:not(:disabled) { box-shadow: var(--md-sys-elevation-1); }
+.md-button--filled:disabled:not([data-loading]) {
+  background: color-mix(in srgb, var(--md-sys-color-on-surface) 12%, transparent);
+  color: color-mix(in srgb, var(--md-sys-color-on-surface) 38%, transparent);
+  cursor: not-allowed;
+}
+.md-button[data-loading] { cursor: progress; }
+
+/* Circular progress indicator, sized to sit inside a button label. */
+.md-spinner {
+  width: 20px;
+  height: 20px;
+  flex: none;
+  animation: md-spin 0.9s linear infinite;
+}
+.md-spinner circle {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-dasharray: 40 60;
+}
+@keyframes md-spin { to { transform: rotate(360deg); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .md-text-field__control,
+  .md-text-field__control::before,
+  .md-text-field__label,
+  .md-button,
+  .md-button::before { transition: none; }
+  .md-button:active:not(:disabled) { transform: none; }
+  .md-spinner { animation-duration: 2.4s; }
+}

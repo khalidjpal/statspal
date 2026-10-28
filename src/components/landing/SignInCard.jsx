@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
-import { IconLock } from '../Icons';
 
 // Friendlier wording for the messages AuthContext and this form produce.
 function friendlyError(error, { usernameMissing, passwordMissing }) {
@@ -28,8 +27,8 @@ function ErrorIcon() {
 
 export const USERNAME_INPUT_ID = 'login-username';
 
-// The sign-in form as a dashboard panel: .dash-widget with a panel header,
-// the app's .ds-input fields and a .ds-btn-primary button.
+// The sign-in form as a glass card floating over the court scene. Auth logic
+// and fields are the same as before; only the dressing changed.
 export default function SignInCard({ id }) {
   const { login, loading, error, setError } = useAuth();
   const [username, setUsername] = useState('');
@@ -59,12 +58,9 @@ export default function SignInCard({ id }) {
   };
 
   return (
-    <section id={id} className="dash-widget lp-signin" aria-labelledby="lp-signin-title">
-      <header className="dash-widget-head">
-        <h2 id="lp-signin-title" className="dash-widget-title"><IconLock size={13} /> Sign in</h2>
-      </header>
-
-      <div className="dash-widget-body lp-signin__body">
+    <section id={id} className="lp-signin" aria-labelledby="lp-signin-title">
+      <h2 id="lp-signin-title" className="lp-signin__title">Sign in</h2>
+      <div className="lp-signin__body">
         <p className="lp-signin__subtitle">Use the login your coach or admin gave you.</p>
 
         <form className="lp-signin__form" onSubmit={handleSubmit} noValidate aria-busy={loading}>
@@ -124,7 +120,7 @@ export default function SignInCard({ id }) {
 
           <button
             type="submit"
-            className="ds-btn ds-btn-primary ds-btn-lg lp-signin__submit"
+            className="ds-btn ds-btn-lg lp-signin__submit"
             disabled={loading}
             data-loading={loading || undefined}
           >
@@ -133,7 +129,7 @@ export default function SignInCard({ id }) {
                 <circle cx="12" cy="12" r="9" />
               </svg>
             )}
-            {loading ? 'Signing in…' : 'Sign in'}
+            {loading ? 'Signing in…' : <>Step on the court <span aria-hidden="true">→</span></>}
           </button>
         </form>
 

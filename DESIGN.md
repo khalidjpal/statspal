@@ -25,6 +25,11 @@ with it, §0 wins.
 These exist because an earlier landing-page pass drifted toward a generic
 "AI-generated" look. They apply to every screen.
 
+**One exception:** the signed-out landing page (§9) is a deliberate
+"futuristic court" scene with glows, gradients, glass panels, pills and an
+uppercase tag. The exception covers that page only; every signed-in screen
+still follows these rules.
+
 **No effects. Solid, flat colour only.**
 - No gradients of any kind (linear, radial or conic), on backgrounds, text,
   borders or masks.
@@ -59,9 +64,9 @@ These exist because an earlier landing-page pass drifted toward a generic
   of the product copy; on phones it comes directly after the headline.
 
 **Accent: blue.**
-- The visible accent is the team colour, `--tc`. With no team (the signed-out
-  page) it is the default team colour, **`#58a6ff`**, set as `--ds-accent` on
-  that page.
+- The visible accent is the team colour, `--tc`. With no team selected it is
+  the default team colour, **`#58a6ff`**. The signed-out landing page is the
+  exception: it uses pink, `#f472b6` (§9).
 - Use it sparingly: the primary button, links, focus rings, the selected row.
   Icons, checkmarks and dividers stay neutral; tools keep their category
   colours (§2).
@@ -411,19 +416,44 @@ without a table.
 
 ## 9. Signed-out landing page
 
-`src/screens/Login.jsx` + `Login.css` is a product page with sign-in built in,
-built from the dashboard rather than beside it:
+`src/screens/Login.jsx` + `Login.css`: four tabs over one shared court
+backdrop, each meant to fit a laptop screen without scrolling.
 
-- The root carries `.dash-page`, so every DS rule the dashboard uses applies
-  unchanged. `Login.css` only adds layout, unlocks page scrolling (the
-  dashboard pins itself to the viewport) and sets `--tc` / `--ds-accent` to
-  `#58a6ff`.
-- Top bar and footer: `.vp-home-topbar.dash-topbar` and the dashboard
-  wordmark. The wordmark's "Pal" is solid `--ds-cat-practice` here (no gradient).
-- Tool tiles: `.dash-module` + `.dash-module-{stats,rotation,practice}`, as a
-  static list.
-- Sign-in, features, roles, steps, courtside details, FAQ and the final call to
-  action are all `.dash-widget` panels with `.dash-widget-head` headers.
-- Preview: the real `StandingsWidget`, `ScheduleWidget` and
-  `RosterPositionWidget`, rendered with the fictional rows in
-  `src/components/landing/sampleData.js` and marked `inert`.
+**Tabs and URLs.** Home `/`, Features `/features`, How it works
+`/how-it-works`, FAQ `/faq`. The signed-in app has no URL routing, so the page
+switches tabs itself with the History API (`useLandingRoute`, `PageLink`);
+back/forward work and modified clicks open real URLs. `vercel.json` rewrites
+those paths to `index.html` so a refresh or deep link works in production.
+Nav tabs are 15px semi-bold pills with a faint pink fill and border (brighter
+with a glow on hover); the active tab is solid pink with dark ink and
+`aria-current="page"`. Non-Home tabs
+show a Sign in button that returns to Home and focuses the username field.
+After a tab switch, focus moves to the new page's `h1`.
+
+**Theme: pink.** `#f472b6` main, `#f9a8d4` light, `#db2777` deep, on
+`#070b0f` with a dark plum glow at the bottom. Opponent dots are `#a78bfa`.
+Buttons with a pink fill use dark ink (`#3b0820`). No teal or cyan.
+
+**Court (`CourtScene`).** Fixed behind every tab: a CSS-3D court
+(`rotateX(62deg)` in a perspective container) running left to right, with
+glowing boundary, net and 3 m attack lines, a 1 m grid, six pink dots (us,
+left), six purple dots (opponent, right) and a ball looping over the net.
+Decorative, `aria-hidden`, `pointer-events: none`; dimmed on content tabs.
+
+**Home.** Uppercase pink tag, the headline "Every touch. Every rotation."
+(gradient on the second sentence), the glass `SignInCard`, and three glass
+tool cards (icon, name, one line) linking to `/features?tool=<id>`; they
+lift and glow on hover and stack on phones. `HudChips` are positioned relative to the
+card inside a centred stage (`.lp-orbit`, max 1100px) so they circle it at
+any screen width; hidden below 768px.
+
+**Content tabs.** Glass `.dash-widget` panels (the dashboard's classes,
+restyled here):
+- Features: a switcher for StatsPal / RotationPal / PracticePal (copy plus
+  mockup), opened on the tool named in `?tool=`. The mockup's size follows
+  the viewport height so the tab fits on one screen.
+- How it works: the three steps and the three roles.
+- FAQ: the questions in two columns and the "Ready for game day?" call to
+  action.
+
+`prefers-reduced-motion` stops the ball and the chip float.

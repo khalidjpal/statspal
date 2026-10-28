@@ -1,37 +1,46 @@
 /* ===================================================================
  *  Landing page (signed-out screen), on the team dashboard's design system.
  *
- *  The root carries .dash-page, so every DS rule the dashboard uses
- *  (.dash-widget, .dash-module, .dash-topbar, .ds-btn, .ds-input, the real
- *  Standings / Schedule / Roster widgets) styles this page identically.
- *  This file only adds layout and the few pieces the dashboard doesn't have.
+ *  Four tabs (Home, Features, How it works, FAQ), each a single screen over
+ *  a shared CSS-3D court. The root carries .dash-page, so the dashboard's DS
+ *  rules (.dash-widget, .ds-btn, .ds-input, the real dashboard widgets) still
+ *  apply; this file adds the layout, the court and the pink theme.
  *
- *  Flat by rule (DESIGN.md §0): no gradients, glows or blur.
+ *  The court, glows, gradients and glass are the one exception to
+ *  DESIGN.md §0's flat rule (§9).
  * =================================================================== */
 
-/* With no team selected, the accent is the default team colour. */
 .dash-page.lp {
-  --tc: #58a6ff;
+  --lp-bg: #070b0f;
+  --lp-pink: #f472b6;
+  --lp-pink-light: #f9a8d4;
+  --lp-pink-deep: #db2777;
+  --lp-pink-rgb: 244, 114, 182;
+  --lp-opp: #a78bfa;
+  --lp-ink: #3b0820;
+  --lp-glass: rgba(22, 14, 20, 0.64);
+  --lp-glass-border: rgba(var(--lp-pink-rgb), 0.24);
+  --tc: var(--lp-pink);
   --ds-accent: var(--tc);
-  --ds-accent-hover: #79b8ff;
-  --ds-accent-subtle: rgba(88, 166, 255, 0.12);
-  --ds-accent-border: rgba(88, 166, 255, 0.34);
+  --ds-accent-hover: var(--lp-pink-light);
+  --ds-accent-subtle: rgba(var(--lp-pink-rgb), 0.14);
+  --ds-accent-border: rgba(var(--lp-pink-rgb), 0.36);
+  position: relative;
+  isolation: isolate;
+  background: var(--lp-bg);
 
-  /* The dashboard locks itself to the viewport; this page scrolls. */
+  /* The dashboard locks itself to the viewport; this page may scroll. */
   height: auto;
   min-height: 100dvh;
   overflow: visible;
 }
 
-@media (prefers-reduced-motion: no-preference) {
-  html:has(.lp) { scroll-behavior: smooth; }
-}
-.lp :is(section, article)[id] { scroll-margin-top: 80px; }
 .lp a { color: inherit; text-decoration: none; }
 .lp :is(a, button, summary):focus-visible {
   outline: 2px solid var(--ds-accent);
   outline-offset: 2px;
 }
+.lp :is(#lp-page-title, #lp-main):focus { outline: none; }
 
 .lp-visually-hidden {
   position: absolute;
@@ -55,29 +64,82 @@
 }
 .lp-skip:focus { top: 8px; }
 
-/* Primary buttons: blue fill with dark ink — white on #58a6ff fails AA. */
-.lp .ds-btn-primary,
-.lp .ds-btn-primary:hover { color: var(--ds-accent-ink); }
-.lp .ds-btn-lg { font-size: var(--ds-fs-md); }
+/* ── Pink glow button: the sign-in submit and the other Sign in actions ── */
+.lp .lp-signin__submit,
+.lp .lp-glow-btn {
+  border: 0;
+  border-radius: 12px;
+  background: linear-gradient(90deg, var(--lp-pink-deep), var(--lp-pink) 55%, var(--lp-pink-light));
+  color: var(--lp-ink);
+  font-weight: 800;
+  box-shadow: 0 10px 30px -8px rgba(var(--lp-pink-rgb), 0.6);
+  transition: filter var(--ds-transition), box-shadow var(--ds-transition);
+}
+.lp .lp-signin__submit:hover:not(:disabled),
+.lp .lp-glow-btn:hover {
+  filter: brightness(1.08);
+  box-shadow: 0 12px 36px -6px rgba(var(--lp-pink-rgb), 0.75);
+}
+.lp .lp-signin__submit:focus-visible,
+.lp .lp-glow-btn:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
 
-/* ── Brand: the dashboard wordmark, flat ── */
-.lp .vp-home-brand-accent {
+/* ── Brand: the dashboard wordmark, "Pal" in pink ── */
+.lp .lp-brand .vp-home-brand-accent {
   background: none;
   -webkit-text-fill-color: currentColor;
-  color: var(--ds-cat-practice);
+  color: var(--lp-pink);
 }
 .lp-brand { align-self: center; }
 
-/* ── Top bar: the dashboard's .dash-topbar, made sticky ── */
-.lp-top {
+/* ── Top bar with the four tabs ── */
+.lp .lp-top {
+  --tc: var(--lp-pink);
   position: sticky;
   top: 0;
   z-index: 20;
   min-height: 56px;
+  background: rgba(7, 11, 15, 0.78);
+  border-bottom-color: rgba(var(--lp-pink-rgb), 0.14);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
 }
-.lp-top__nav { display: none; gap: var(--ds-space-2); margin-left: auto; }
+/* Each tab is a visible pill: faint pink fill and border, brighter with a
+   glow on hover, solid pink with dark ink when it is the current page. */
+.lp-top__nav { display: none; gap: 10px; margin-left: auto; }
+.lp-tab {
+  display: inline-flex;
+  align-items: center;
+  height: 38px;
+  padding: 0 18px;
+  border: 1px solid rgba(var(--lp-pink-rgb), 0.35);
+  border-radius: 999px;
+  background: rgba(var(--lp-pink-rgb), 0.08);
+  color: #fdf2f8;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.005em;
+  white-space: nowrap;
+  transition:
+    color var(--ds-transition),
+    background var(--ds-transition),
+    border-color var(--ds-transition),
+    box-shadow var(--ds-transition);
+}
+.lp-tab:hover {
+  border-color: rgba(var(--lp-pink-rgb), 0.85);
+  background: rgba(var(--lp-pink-rgb), 0.16);
+  box-shadow: 0 0 16px -2px rgba(var(--lp-pink-rgb), 0.5);
+}
+.lp-tab.is-active {
+  border-color: var(--lp-pink);
+  background: var(--lp-pink);
+  color: var(--lp-ink);
+  font-weight: 700;
+  box-shadow: 0 0 20px -4px rgba(var(--lp-pink-rgb), 0.7);
+}
+.lp-tab.is-active:hover { background: var(--lp-pink-light); border-color: var(--lp-pink-light); }
 .lp-top__actions { display: flex; align-items: center; gap: var(--ds-space-2); margin-left: auto; }
-.lp-top__signin { padding: 0 var(--ds-space-4); }
+.lp .lp-top__signin { height: 38px; padding: 0 18px; border-radius: 999px; font-size: 15px; }
 .lp-top__menu { justify-content: center; width: 34px; padding: 0; }
 .lp-top__menu svg { width: 18px; height: 18px; fill: currentColor; }
 .lp-menu {
@@ -98,9 +160,10 @@
   font-weight: 600;
 }
 .lp-menu__link:hover { background: var(--ds-surface-2); color: var(--ds-text); }
+.lp-menu__link.is-active { color: var(--lp-ink); background: var(--lp-pink); }
 @media (min-width: 840px) {
   .lp-top__nav { display: flex; }
-  .lp-top__actions { margin-left: 0; }
+  .lp-top__actions { margin-left: var(--ds-space-3); }
   .lp-top__menu, .lp-menu { display: none !important; }
 }
 @media (pointer: coarse) {
@@ -108,28 +171,29 @@
   .lp-top__menu { width: 44px; }
 }
 
-/* ── Main column: full width, same padding and rhythm as the dashboard ── */
+/* ── Page frame: each tab is one centred screen over the court ── */
 .lp-main {
-  padding: var(--ds-space-5) var(--ds-space-4) var(--ds-space-8);
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  place-items: center;
+  min-height: calc(100dvh - 56px);
+  padding: 24px var(--ds-space-4) 28px;
 }
 @media (min-width: 720px) { .lp-main { padding-inline: var(--ds-space-5); } }
+.lp-page { width: min(1100px, 100%); }
+.lp-page__head { margin-bottom: var(--ds-space-4); }
+.lp-page__head--sub { margin-top: var(--ds-space-6); }
 
 /* ── Type ── */
-.lp-hero__title {
-  max-width: 20ch;
-  font-size: clamp(2.125rem, 1.3rem + 2.2vw, 3.5rem);
-  font-weight: 700;
-  line-height: 1.06;
-  letter-spacing: -0.025em;
+.lp-h1 {
   color: var(--ds-text);
+  font-size: clamp(1.75rem, 1.2rem + 1.6vw, 2.375rem);
+  font-weight: 800;
+  line-height: 1.12;
+  letter-spacing: -0.025em;
   text-wrap: balance;
-}
-.lp-hero__lede {
-  max-width: 40rem;
-  margin-top: var(--ds-space-4);
-  color: var(--ds-text-secondary);
-  font-size: var(--ds-fs-lg);
-  line-height: 1.6;
 }
 .lp-h2 {
   font-size: var(--ds-fs-2xl);
@@ -158,6 +222,13 @@
   font-size: var(--ds-fs-base);
   line-height: 1.6;
 }
+.lp-section__lede {
+  max-width: 44rem;
+  margin-top: var(--ds-space-2);
+  color: var(--ds-text-secondary);
+  font-size: var(--ds-fs-md);
+  line-height: 1.6;
+}
 
 .lp-list { display: grid; gap: var(--ds-space-3); list-style: none; padding: 0; }
 .lp-list li {
@@ -169,60 +240,193 @@
 }
 .lp-list--compact { gap: var(--ds-space-2); margin-top: var(--ds-space-3); }
 .lp-list--compact li { font-size: var(--ds-fs-base); }
-.lp-check { flex: none; margin-top: 3px; color: var(--ds-text-muted); }
+.lp-check { flex: none; margin-top: 3px; color: var(--lp-pink); }
 
-/* ── Hero: copy | sign-in on the right; tiles under the copy ── */
-.lp-hero {
+/* ===================================================================
+ *  Home: headline, sign-in card with orbiting stat chips, tool pills.
+ * =================================================================== */
+.lp-home {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+.lp-hero__tag {
+  color: var(--lp-pink);
+  font-family: var(--ds-font-mono);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+.lp-hero__title {
+  margin: 10px 0 22px;
+  color: var(--ds-text);
+  font-size: clamp(1.875rem, 1.2rem + 2.6vw, 2.625rem);
+  font-weight: 800;
+  line-height: 1.08;
+  letter-spacing: -0.03em;
+  text-wrap: balance;
+}
+.lp-hero__gradient {
+  background: linear-gradient(90deg, var(--lp-pink), var(--lp-pink-light));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+}
+
+/* The orbit: a centred stage, at most 1100px wide, with the card in the
+   middle and the chips placed around it. */
+.lp-orbit {
+  position: relative;
   display: grid;
-  grid-template-areas: 'copy' 'signin' 'tiles';
-  gap: var(--ds-space-4);
-}
-.lp-hero__copy { grid-area: copy; padding: var(--ds-space-4) 0 var(--ds-space-2); }
-.lp-signin { grid-area: signin; }
-.lp-tiles { grid-area: tiles; }
-@media (min-width: 1024px) {
-  .lp-hero {
-    grid-template-columns: minmax(0, 1fr) 400px;
-    grid-template-areas: 'copy signin' 'tiles signin';
-    grid-template-rows: 1fr auto;
-    align-items: stretch;
-  }
-  .lp-hero__copy {
-    align-self: center;
-    padding: var(--ds-space-7) var(--ds-space-6) var(--ds-space-7) var(--ds-space-2);
-  }
+  justify-items: center;
+  width: 100%;
+  max-width: 1100px;
 }
 
-/* Tool tiles: the dashboard's .dash-module, as a static list. */
-.lp-tiles { list-style: none; padding: 0; margin: 0; }
-@media (min-width: 720px) { .lp-tiles { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
-.dash-page .lp-tile { cursor: default; }
-.dash-page .lp-tile:hover {
-  background: var(--ds-surface);
-  border-color: var(--ds-border);
+/* ── HUD chips: small glass readouts circling the card ── */
+.lp-hud { position: absolute; inset: 0; pointer-events: none; }
+.lp-hud__chip {
+  position: absolute;
+  display: grid;
+  gap: 2px;
+  max-width: 160px;
+  padding: 10px 14px;
+  border: 1px solid rgba(var(--lp-pink-rgb), 0.32);
+  border-radius: 12px;
+  background: rgba(22, 14, 20, 0.6);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 14px 40px -12px rgba(0, 0, 0, 0.7), 0 0 20px -8px rgba(var(--lp-pink-rgb), 0.45);
+  text-align: left;
+  animation: lp-float 7s ease-in-out infinite;
 }
-.lp-tile__link { border-radius: var(--ds-radius-sm); }
-.lp-tile__link:hover { text-decoration: underline; text-underline-offset: 3px; }
+.lp-hud__label {
+  color: var(--ds-text-secondary);
+  font-family: var(--ds-font-mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+.lp-hud__value {
+  color: var(--ds-text);
+  font-family: var(--ds-font-mono);
+  font-size: 19px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.lp-hud__value.is-accent { color: var(--lp-pink); }
+/* Positions are relative to the card's edges (it is 380px wide, centred). */
+.lp-hud__chip--tl { top: 4%; right: calc(50% + 190px + 56px); }
+.lp-hud__chip--tr { top: 22%; left: calc(50% + 190px + 40px); animation-delay: -1.75s; }
+.lp-hud__chip--bl { bottom: 16%; right: calc(50% + 190px + 30px); animation-delay: -3.5s; }
+.lp-hud__chip--br { bottom: -2%; left: calc(50% + 190px + 64px); animation-delay: -5.25s; }
+/* Narrower screens: pull the chips in tight against the card. */
+@media (max-width: 1023px) {
+  .lp-hud__chip { padding: 8px 12px; }
+  .lp-hud__value { font-size: 17px; }
+  .lp-hud__chip--tl, .lp-hud__chip--bl { right: calc(50% + 190px + 16px); }
+  .lp-hud__chip--tr, .lp-hud__chip--br { left: calc(50% + 190px + 16px); }
+}
+@keyframes lp-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
+}
 
-/* ── Sign-in panel ── */
-.lp-signin__body { padding: var(--ds-space-5); justify-content: center; }
-.lp-signin__subtitle { color: var(--ds-text-secondary); font-size: var(--ds-fs-base); }
+/* ── The three tool cards under the sign-in card ── */
+.lp-tools {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  width: min(860px, 100%);
+  margin: 20px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.lp-tools > li { display: grid; }
+.lp-toolcard {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid rgba(var(--lp-pink-rgb), 0.24);
+  border-radius: 16px;
+  background: var(--lp-glass);
+  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(16px);
+  box-shadow: 0 18px 40px -20px rgba(0, 0, 0, 0.8);
+  text-align: left;
+  transition:
+    transform var(--ds-transition),
+    border-color var(--ds-transition),
+    box-shadow var(--ds-transition);
+}
+.lp-toolcard:hover {
+  transform: translateY(-3px);
+  border-color: rgba(var(--lp-pink-rgb), 0.7);
+  box-shadow:
+    0 22px 44px -20px rgba(0, 0, 0, 0.85),
+    0 0 24px -4px rgba(var(--lp-pink-rgb), 0.5);
+}
+.lp-toolcard__icon {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border: 1px solid rgba(var(--lp-pink-rgb), 0.3);
+  border-radius: 12px;
+  background: rgba(var(--lp-pink-rgb), 0.12);
+  color: var(--lp-pink);
+}
+.lp-toolcard__text { display: grid; gap: 2px; min-width: 0; }
+.lp-toolcard__name { color: var(--ds-text); font-size: var(--ds-fs-md); font-weight: 700; }
+.lp-toolcard__line { color: var(--ds-text-secondary); font-size: var(--ds-fs-sm); line-height: 1.35; }
+
+/* ── Sign-in card: glass over the court ── */
+.lp-signin {
+  position: relative;
+  z-index: 1;
+  width: min(380px, 100%);
+  padding: 24px 26px 20px;
+  border: 1px solid var(--lp-glass-border);
+  border-radius: 20px;
+  background: var(--lp-glass);
+  -webkit-backdrop-filter: blur(18px);
+  backdrop-filter: blur(18px);
+  box-shadow:
+    0 40px 90px -24px rgba(0, 0, 0, 0.85),
+    0 0 0 1px rgba(255, 255, 255, 0.02) inset;
+  text-align: left;
+}
+.lp-signin__title {
+  color: var(--ds-text);
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+.lp-signin__subtitle { margin-top: 4px; color: var(--ds-text-secondary); font-size: var(--ds-fs-base); }
 .lp-signin__form { display: flex; flex-direction: column; gap: var(--ds-space-4); margin-top: var(--ds-space-5); }
 .lp-field { display: grid; gap: var(--ds-space-2); }
 .lp-field__label { color: var(--ds-text-secondary); font-size: var(--ds-fs-sm); font-weight: 600; }
 .lp-field__wrap { position: relative; }
 .lp .lp-field__input {
-  height: 40px;
-  background: var(--ds-surface-2);
-  border-color: var(--ds-border-strong);
+  height: 46px;
+  padding: 0 14px;
+  background: rgba(10, 5, 9, 0.7);
+  border-color: rgba(255, 255, 255, 0.09);
+  border-radius: 12px;
   color: var(--ds-text);
   font-size: var(--ds-fs-md);
   font-family: var(--ds-font);
+  transition: border-color var(--ds-transition), box-shadow var(--ds-transition);
 }
 .lp .lp-field__input:focus {
   outline: none;
-  border-color: var(--ds-accent);
-  box-shadow: 0 0 0 3px var(--ds-accent-subtle);
+  border-color: var(--lp-pink);
+  box-shadow: 0 0 0 3px rgba(var(--lp-pink-rgb), 0.24), 0 0 18px rgba(var(--lp-pink-rgb), 0.2);
 }
 .lp-field__wrap .lp-field__input { padding-right: 64px; }
 .lp-field.is-error .lp-field__input { border-color: var(--ds-danger); }
@@ -236,16 +440,16 @@
   padding: 0 var(--ds-space-3);
   background: transparent;
   border: 0;
-  border-radius: 0 var(--ds-radius-md) var(--ds-radius-md) 0;
-  color: var(--ds-accent);
+  border-radius: 0 12px 12px 0;
+  color: var(--lp-pink);
   font-size: var(--ds-fs-sm);
   font-weight: 600;
   cursor: pointer;
 }
-.lp-field__toggle:hover { background: var(--ds-surface-3); }
+.lp-field__toggle:hover { background: rgba(var(--lp-pink-rgb), 0.08); }
 @media (pointer: coarse) {
-  /* 16px stops iOS zooming into the field; 44px is the tap-target floor. */
-  .lp .lp-field__input { height: 44px; font-size: 16px; }
+  /* 16px stops iOS zooming into the field. */
+  .lp .lp-field__input { font-size: 16px; }
 }
 .lp-signin__error-slot:empty { display: none; }
 .lp-signin__error {
@@ -257,78 +461,203 @@
   line-height: 1.5;
 }
 .lp-signin__error-icon { width: 18px; height: 18px; flex: none; fill: currentColor; }
-.lp-signin__submit { width: 100%; }
+.lp .lp-signin__submit {
+  width: 100%;
+  height: 48px;
+  margin-top: 4px;
+  font-size: var(--ds-fs-md);
+}
 .lp-signin__help {
   margin-top: var(--ds-space-4);
   color: var(--ds-text-secondary);
   font-size: var(--ds-fs-sm);
+  text-align: center;
 }
 .lp-spinner { width: 16px; height: 16px; animation: lp-spin 0.9s linear infinite; }
 .lp-spinner circle { fill: none; stroke: currentColor; stroke-width: 2.5; stroke-linecap: round; stroke-dasharray: 40 60; }
 @keyframes lp-spin { to { transform: rotate(360deg); } }
-@media (prefers-reduced-motion: reduce) { .lp-spinner { animation-duration: 2.4s; } }
 
-/* ── Dashboard preview: the real widgets, inert ── */
-.lp-preview__grid { display: grid; gap: var(--ds-space-4); }
-.lp-preview__grid > .dash-widget { height: 420px; }
-.lp-preview__grid > .dash-widget-standings { height: auto; align-self: start; }
-@media (min-width: 720px) {
-  .lp-preview__grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .lp-preview__grid > :last-child { grid-column: 1 / -1; }
+/* ===================================================================
+ *  Court scene: a court tilted away from the viewer, fixed behind every
+ *  tab. Purely decorative.
+ * =================================================================== */
+.lp-court {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+  perspective: 1400px;
+  perspective-origin: 50% 35%;
+  background: radial-gradient(ellipse 70% 45% at 50% 100%, rgba(112, 26, 75, 0.42), transparent 70%);
 }
-@media (min-width: 1100px) {
-  .lp-preview__grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-  .lp-preview__grid > :last-child { grid-column: auto; }
+.lp-court__floor {
+  --line: rgba(var(--lp-pink-rgb), 0.72);
+  position: absolute;
+  left: 50%;
+  top: 60%;
+  width: min(1000px, 96vw);
+  aspect-ratio: 2 / 1;
+  transform: translate(-50%, -50%) rotateX(62deg);
+  transform-style: preserve-3d;
+  border: 2px solid var(--line);
+  box-shadow:
+    0 0 22px rgba(var(--lp-pink-rgb), 0.35),
+    inset 0 0 48px rgba(var(--lp-pink-rgb), 0.12);
+  /* A faint 1 m grid: the court runs 18 m left to right and 9 m deep. */
+  background:
+    linear-gradient(rgba(var(--lp-pink-rgb), 0.07) 1px, transparent 1px) 0 0 / 100% calc(100% / 9),
+    linear-gradient(90deg, rgba(var(--lp-pink-rgb), 0.07) 1px, transparent 1px) 0 0 / calc(100% / 18) 100%,
+    rgba(26, 8, 20, 0.45);
+  transition: opacity 0.4s ease;
 }
-.lp-preview__caption {
-  margin-top: var(--ds-space-2);
-  color: var(--ds-text-secondary);
-  font-size: var(--ds-fs-xs);
+/* Behind the content tabs, the court steps back. */
+.lp:not(.lp--home) .lp-court__floor { opacity: 0.4; }
+.lp-court__net,
+.lp-court__attack {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  transform: translateX(-50%);
+}
+.lp-court__net {
+  left: 50%;
+  width: 4px;
+  background: #fbcfe8;
+  box-shadow: 0 0 10px var(--lp-pink), 0 0 28px rgba(var(--lp-pink-rgb), 0.8);
+}
+/* 3 m attack lines: a sixth of the court's length either side of the net. */
+.lp-court__attack {
+  width: 2px;
+  background: var(--line);
+  box-shadow: 0 0 10px rgba(var(--lp-pink-rgb), 0.5);
+}
+.lp-court__attack--us { left: calc(100% / 3); }
+.lp-court__attack--opp { left: calc(200% / 3); }
+.lp-court__dot {
+  --dot: var(--lp-pink);
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: radial-gradient(circle, #fff 0 22%, var(--dot) 48%);
+  box-shadow: 0 0 8px var(--dot), 0 0 22px var(--dot);
+  /* Stand the dot back up so it reads as a round marker, not an ellipse. */
+  transform: translate(-50%, -50%) rotateX(-62deg);
+}
+.lp-court__dot--opp { --dot: var(--lp-opp); }
+
+/* The flight layer is the court's size, so its translate % are court %. */
+.lp-court__flight {
+  position: absolute;
+  inset: 0;
+  transform-style: preserve-3d;
+  transform: translate3d(-30%, 14%, 12px);
+  animation: lp-rally 4.8s ease-in-out infinite;
+}
+.lp-court__ball {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #fff, #fdf2f8 60%, #fbcfe8);
+  box-shadow: 0 0 10px #fff, 0 0 24px rgba(249, 168, 212, 0.9);
+  transform: translate(-50%, -50%) rotateX(-62deg);
+}
+@keyframes lp-rally {
+  0%, 100% { transform: translate3d(-30%, 14%, 12px); }
+  25% { transform: translate3d(0%, 0%, 150px); }
+  50% { transform: translate3d(31%, -16%, 12px); }
+  75% { transform: translate3d(0%, 4%, 150px); }
+}
+/* Fade the court into the page at the top and bottom. */
+.lp-court__fade {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    180deg,
+    var(--lp-bg) 0%,
+    rgba(7, 11, 15, 0) 14%,
+    rgba(7, 11, 15, 0) 80%,
+    rgba(7, 11, 15, 0.85) 100%
+  );
 }
 
-/* ── Sections ── */
-.lp-section { margin-top: var(--ds-space-8); }
-@media (min-width: 1024px) { .lp-section { margin-top: 56px; } }
-.lp-main > .lp-section:first-of-type { margin-top: var(--ds-space-4); }
-.lp-section__head { margin-bottom: var(--ds-space-4); }
-.lp-section__lede {
-  max-width: 44rem;
-  margin-top: var(--ds-space-2);
-  color: var(--ds-text-secondary);
-  font-size: var(--ds-fs-md);
-  line-height: 1.6;
+/* ===================================================================
+ *  Content tabs: glass panels over the dimmed court.
+ * =================================================================== */
+.lp .lp-panel.dash-widget {
+  background: rgba(16, 11, 16, 0.72);
+  border-color: rgba(var(--lp-pink-rgb), 0.16);
+  border-radius: 14px;
+  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(16px);
 }
-.lp-stack { display: grid; gap: var(--ds-space-4); }
-.lp-grid-3 { display: grid; gap: var(--ds-space-4); list-style: none; padding: 0; }
-.lp-grid-3 > li { display: grid; }
-@media (min-width: 900px) { .lp-grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
-
+.lp-panel .dash-widget-title svg { color: var(--lp-pink); }
 /* Panels hold their content at full height; no inner scrolling here. */
 .lp-panel .dash-widget-body { overflow: visible; max-height: none; padding: var(--ds-space-5); }
 
-/* Tool panels: icon in the tool colour, as on the dashboard tiles. */
+.lp-grid-3 { display: grid; gap: var(--ds-space-4); list-style: none; padding: 0; margin: 0; }
+.lp-grid-3 > li { display: grid; }
+@media (min-width: 900px) { .lp-grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+
+/* Features: a segmented switcher and one view at a time. */
+.lp-seg {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  width: fit-content;
+  max-width: 100%;
+  margin-bottom: var(--ds-space-4);
+  padding: 4px;
+  border: 1px solid rgba(var(--lp-pink-rgb), 0.16);
+  border-radius: 999px;
+  background: rgba(16, 11, 16, 0.72);
+}
+.lp-seg__btn {
+  height: 32px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ds-text-secondary);
+  font-size: var(--ds-fs-sm);
+  font-weight: 600;
+  cursor: pointer;
+}
+.lp-seg__btn:hover { color: var(--ds-text); }
+.lp-seg__btn.is-active {
+  background: rgba(var(--lp-pink-rgb), 0.16);
+  color: var(--lp-pink-light);
+  box-shadow: inset 0 0 0 1px rgba(var(--lp-pink-rgb), 0.4);
+}
+
+.lp-tool .lp-tool__body { display: grid; gap: var(--ds-space-6); align-items: center; }
+.lp-tool__copy .lp-h3 { margin-bottom: var(--ds-space-4); }
+/* Size the mockup by the height left under the nav, header and switcher, so
+   the whole tab fits on a laptop screen. */
+.lp-tool__visual {
+  width: 100%;
+  max-width: clamp(320px, calc((100dvh - 330px) * 1.1), 600px);
+  justify-self: center;
+}
 .lp-tool.dash-module-rotation .dash-widget-title svg { color: var(--ds-cat-rotation); }
 .lp-tool.dash-module-stats .dash-widget-title svg { color: var(--ds-cat-stats); }
 .lp-tool.dash-module-practice .dash-widget-title svg { color: var(--ds-cat-practice); }
-.lp-tool .lp-tool__body { display: grid; gap: var(--ds-space-6); align-items: center; }
-.lp-tool__copy .lp-h3 { margin-bottom: var(--ds-space-4); }
 @media (min-width: 1024px) {
   .lp-tool .lp-tool__body {
-    grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
-    gap: var(--ds-space-8);
+    grid-template-columns: minmax(0, 5fr) minmax(0, 6fr);
+    gap: var(--ds-space-7);
     padding: var(--ds-space-6);
   }
 }
 
-/* Courtside details inside one panel. */
-.lp-courtside__grid { display: grid; gap: var(--ds-space-5) var(--ds-space-7); list-style: none; padding: 0; }
-@media (min-width: 600px) { .lp-courtside__grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-@media (min-width: 1024px) { .lp-courtside__grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
-
-/* FAQ rows, divided like the dashboard's list rows. */
-.lp-panel .lp-faq { padding-block: 0; }
+/* FAQ: two columns of rows on wide screens. */
+.lp-panel .lp-faq { display: grid; padding-block: var(--ds-space-1); column-gap: var(--ds-space-7); }
+@media (min-width: 900px) { .lp-panel .lp-faq { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; } }
 .lp-faq__item { border-bottom: 1px solid var(--ds-border-faint); }
-.lp-faq__item:last-child { border-bottom: 0; }
 .lp-faq__item summary {
   display: flex;
   align-items: center;
@@ -352,10 +681,11 @@
   transition: transform var(--ds-transition);
 }
 .lp-faq__item[open] summary::after { transform: translateY(2px) rotate(-135deg); }
-.lp-faq__item summary:hover .lp-h4 { color: var(--ds-accent); }
+.lp-faq__item summary:hover .lp-h4 { color: var(--lp-pink-light); }
 .lp-faq__item p { max-width: 52rem; margin: 0; padding-bottom: var(--ds-space-4); }
 
-/* Final call to action. */
+/* Call to action under the FAQ. */
+.lp-cta-panel { margin-top: var(--ds-space-4); }
 .lp-panel .lp-cta {
   flex-direction: row;
   flex-wrap: wrap;
@@ -364,26 +694,24 @@
   gap: var(--ds-space-5);
 }
 .lp-cta__actions { display: grid; gap: var(--ds-space-2); justify-items: start; }
-.lp-cta__button { min-width: 200px; }
+.lp .lp-cta__button { min-width: 200px; height: 44px; font-size: var(--ds-fs-md); }
 .lp-cta__help { color: var(--ds-text-secondary); font-size: var(--ds-fs-sm); }
 @media (min-width: 720px) { .lp-cta__actions { justify-items: end; } }
 
-/* ── Footer: the top bar's surface and hairline ── */
-.lp-footer {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--ds-space-2) var(--ds-space-5);
-  padding: var(--ds-space-3) var(--ds-space-5) max(var(--ds-space-3), env(safe-area-inset-bottom));
-  background: var(--ds-surface);
-  border-top: 1px solid var(--ds-border);
+/* ── Phones: no HUD, a smaller court, a full-width card ── */
+@media (max-width: 767px) {
+  .lp-main { padding-top: 28px; }
+  .lp-hud { display: none; }
+  .lp-court__floor { width: 560px; top: 78%; }
+  .lp-signin { width: 100%; padding: 24px 20px 20px; }
+  .lp-tools { grid-template-columns: minmax(0, 1fr); gap: 10px; }
 }
-.lp-footer nav { display: flex; flex-wrap: wrap; gap: var(--ds-space-2); }
-.lp-footer__copy { color: var(--ds-text-secondary); font-size: var(--ds-fs-xs); }
 
 @media (prefers-reduced-motion: reduce) {
-  .lp-faq__item summary::after { transition: none; }
+  .lp-court__flight, .lp-hud__chip { animation: none; }
+  .lp-toolcard, .lp-toolcard:hover { transition: none; transform: none; }
+  .lp-court__floor, .lp-faq__item summary::after { transition: none; }
+  .lp-spinner { animation-duration: 2.4s; }
 }
 
 /* ===================================================================

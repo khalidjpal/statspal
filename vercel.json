@@ -1,0 +1,5 @@
+{
+  "rewrites": [
+    { "source": "/(features|how-it-works|faq)", "destination": "/index.html" }
+  ]
+}

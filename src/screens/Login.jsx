@@ -182,51 +182,44 @@ const TOOL_TILE = {
 
 const ROLE_ICON = { Coaches: IconClipboard, Players: IconUsers, Admins: IconPin };
 
+// Home's floating tool chips: one short line and a sample stat each.
+// The stats are decorative sample numbers.
+const TOOL_CHIP = {
+  statspal: { line: 'Live stats, every touch, courtside', stat: '.412 kill % · Set 2' },
+  rotationpal: { line: 'Game plans and legal rotations', stat: 'Rotation 4 ✓ Legal' },
+  practicepal: { line: 'Drills, scrimmages and player growth', stat: 'Pass rating 2.31' },
+};
+
 // Player spots on the court as [x, y] % of its length and depth. The court
 // runs left to right: the left half is our side, the right half the opponent's.
-const OUR_SPOTS = [[40, 20], [40, 50], [40, 80], [17, 20], [17, 50], [17, 80]];
-const OPP_SPOTS = [[60, 20], [60, 50], [60, 80], [83, 20], [83, 50], [83, 80]];
+const OUR_SPOTS = [[12, 20], [12, 70], [28, 45], [40, 15], [40, 50], [40, 82]];
+const OPP_SPOTS = [[58, 22], [58, 55], [58, 84], [74, 40], [86, 18], [86, 72]];
 
-// Floating stat readouts circling the sign-in card. Decorative sample numbers.
-const HUD = [
-  { label: 'Kill % · Set 2', value: '.412', pos: 'tl' },
-  { label: 'Rotation 4', value: '✓ Legal', pos: 'tr', accent: true },
-  { label: 'Serve streak', value: '7 in a row', pos: 'bl' },
-  { label: 'Pass rating', value: '2.31', pos: 'br' },
-];
-
-// The hero backdrop: a CSS-3D court tilted away from the viewer, both teams'
-// spots and a ball rallying over the net. Purely decorative.
+// The backdrop behind every tab: a CSS-3D court tilted away from the viewer,
+// both teams' spots and a ball rallying over the net. Purely decorative.
 function CourtScene() {
   return (
     <div className="lp-court" aria-hidden="true">
       <div className="lp-court__floor">
-        <span className="lp-court__attack lp-court__attack--us" />
-        <span className="lp-court__net" />
-        <span className="lp-court__attack lp-court__attack--opp" />
         {OUR_SPOTS.map(([x, y]) => (
           <span key={`us-${x}-${y}`} className="lp-court__dot" style={{ left: `${x}%`, top: `${y}%` }} />
         ))}
         {OPP_SPOTS.map(([x, y]) => (
           <span key={`opp-${x}-${y}`} className="lp-court__dot lp-court__dot--opp" style={{ left: `${x}%`, top: `${y}%` }} />
         ))}
-        <span className="lp-court__flight"><span className="lp-court__ball" /></span>
+        <span className="lp-court__ball" />
       </div>
       <div className="lp-court__fade" />
     </div>
   );
 }
 
-function HudChips() {
+function BallLogo() {
   return (
-    <div className="lp-hud" aria-hidden="true">
-      {HUD.map(h => (
-        <div key={h.pos} className={`lp-hud__chip lp-hud__chip--${h.pos}`}>
-          <span className="lp-hud__label">{h.label}</span>
-          <span className={`lp-hud__value${h.accent ? ' is-accent' : ''}`}>{h.value}</span>
-        </div>
-      ))}
-    </div>
+    <svg className="lp-logo" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true" focusable="false">
+      <circle cx="12" cy="12" r="10" />
+      <path d="M12 2a10 10 0 0 1 0 20M2.5 9.5c5 1 10 0 14.5-5M4 18c4-4 10-6 17-5" />
+    </svg>
   );
 }
 
@@ -287,6 +280,7 @@ function TopBar({ page, go, onSignIn }) {
   return (
     <header className="vp-home-topbar dash-topbar lp-top">
       <PageLink to="/" go={go} className="vp-home-brand dash-topbar-brand lp-brand" aria-label="VolleyballPal home">
+        <BallLogo />
         <Wordmark />
       </PageLink>
 
@@ -331,32 +325,31 @@ function PageTitle({ className = 'lp-h1', children }) {
 function HomePage({ go }) {
   return (
     <section className="lp-page lp-home" aria-labelledby="lp-page-title">
-      <p className="lp-hero__tag">Courtside command center</p>
       <PageTitle className="lp-hero__title">
         Every touch. <span className="lp-hero__gradient">Every rotation.</span>
       </PageTitle>
 
-      <div className="lp-orbit">
-        <HudChips />
+      <div className="lp-stage">
         <SignInCard id="sign-in" />
-      </div>
 
-      <ul className="lp-tools" aria-label="The three tools">
-        {TOOLS.map(t => {
-          const { Icon } = TOOL_TILE[t.id];
-          return (
-            <li key={t.id}>
-              <PageLink to="/features" query={`?tool=${t.id}`} go={go} className={`lp-toolcard lp-toolcard--${t.id}`}>
-                <span className="lp-toolcard__icon" aria-hidden="true"><Icon size={20} /></span>
-                <span className="lp-toolcard__text">
-                  <span className="lp-toolcard__name">{t.name}</span>
-                  <span className="lp-toolcard__line">{t.summary}</span>
-                </span>
-              </PageLink>
-            </li>
-          );
-        })}
-      </ul>
+        <ul className="lp-toolchips" aria-label="The three tools">
+          {TOOLS.map(t => {
+            const { Icon } = TOOL_TILE[t.id];
+            return (
+              <li key={t.id} className={`lp-toolchip-slot lp-toolchip-slot--${t.id}`}>
+                <PageLink to="/features" query={`?tool=${t.id}`} go={go} className="lp-toolchip">
+                  <span className="lp-toolchip__head">
+                    <Icon size={16} />
+                    <b>{t.name}</b>
+                  </span>
+                  <span className="lp-toolchip__line">{TOOL_CHIP[t.id].line}</span>
+                  <span className="lp-toolchip__stat">{TOOL_CHIP[t.id].stat}</span>
+                </PageLink>
+              </li>
+            );
+          })}
+        </ul>
+      </div>
     </section>
   );
 }

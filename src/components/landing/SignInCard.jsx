@@ -61,7 +61,7 @@ export default function SignInCard({ id }) {
     <section id={id} className="lp-signin" aria-labelledby="lp-signin-title">
       <h2 id="lp-signin-title" className="lp-signin__title">Sign in</h2>
       <div className="lp-signin__body">
-        <p className="lp-signin__subtitle">Use the login your coach or admin gave you.</p>
+        <p className="lp-signin__subtitle">Use the login your coach or club admin gave you.</p>
 
         <form className="lp-signin__form" onSubmit={handleSubmit} noValidate aria-busy={loading}>
           <div className={`lp-field${usernameInvalid ? ' is-error' : ''}`}>
@@ -129,7 +129,7 @@ export default function SignInCard({ id }) {
                 <circle cx="12" cy="12" r="9" />
               </svg>
             )}
-            {loading ? 'Signing in…' : <>Step on the court <span aria-hidden="true">→</span></>}
+            {loading ? 'Signing in…' : 'Sign in'}
           </button>
         </form>
 

@@ -18,6 +18,7 @@
   --lp-pink-rgb: 244, 114, 182;
   --lp-opp: #a78bfa;
   --lp-ink: #3b0820;
+  --lp-muted: #8aa09c;
   --lp-glass: rgba(22, 14, 20, 0.64);
   --lp-glass-border: rgba(var(--lp-pink-rgb), 0.24);
   --tc: var(--lp-pink);
@@ -89,7 +90,34 @@
   -webkit-text-fill-color: currentColor;
   color: var(--lp-pink);
 }
-.lp-brand { align-self: center; }
+.lp .lp-brand {
+  align-self: center;
+  gap: 10px;
+  padding-left: 0;
+  border-left: 0;
+  color: #e6f1ef;
+  font-size: 20px;
+  font-weight: 700;
+}
+.lp .lp-brand .vp-home-brand-name { font-size: 20px; font-weight: 700; }
+.lp-logo { flex: none; color: var(--lp-pink); filter: drop-shadow(0 0 8px var(--lp-pink)); }
+
+/* On Home the bar floats over the court with no fill or rule. */
+.lp.lp--home .lp-top {
+  padding: 22px 44px;
+  border-bottom-color: transparent;
+  background: transparent;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+@media (max-width: 767px) {
+  .lp.lp--home .lp-top { padding: 14px 20px; }
+}
+/* Home has no Sign in button in the bar, so on wide screens the actions
+   slot is empty; drop it so the tabs sit against the edge padding. */
+@media (min-width: 840px) {
+  .lp--home .lp-top__actions { display: none; }
+}
 
 /* ── Top bar with the four tabs ── */
 .lp .lp-top {
@@ -105,16 +133,15 @@
 }
 /* Each tab is a visible pill: faint pink fill and border, brighter with a
    glow on hover, solid pink with dark ink when it is the current page. */
-.lp-top__nav { display: none; gap: 10px; margin-left: auto; }
+.lp-top__nav { display: none; gap: 8px; margin-left: auto; }
 .lp-tab {
   display: inline-flex;
   align-items: center;
-  height: 38px;
-  padding: 0 18px;
-  border: 1px solid rgba(var(--lp-pink-rgb), 0.35);
+  padding: 8px 17px;
+  border: 1px solid rgba(var(--lp-pink-rgb), 0.28);
   border-radius: 999px;
-  background: rgba(var(--lp-pink-rgb), 0.08);
-  color: #fdf2f8;
+  background: rgba(var(--lp-pink-rgb), 0.06);
+  color: #e6f1ef;
   font-size: 15px;
   font-weight: 600;
   letter-spacing: 0.005em;
@@ -133,9 +160,7 @@
 .lp-tab.is-active {
   border-color: var(--lp-pink);
   background: var(--lp-pink);
-  color: var(--lp-ink);
-  font-weight: 700;
-  box-shadow: 0 0 20px -4px rgba(var(--lp-pink-rgb), 0.7);
+  color: #2a0717;
 }
 .lp-tab.is-active:hover { background: var(--lp-pink-light); border-color: var(--lp-pink-light); }
 .lp-top__actions { display: flex; align-items: center; gap: var(--ds-space-2); margin-left: auto; }
@@ -178,7 +203,8 @@
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   place-items: center;
-  min-height: calc(100dvh - 56px);
+  /* The top bar renders 63px tall (56px min-height plus its border/padding). */
+  min-height: calc(100dvh - 64px);
   padding: 24px var(--ds-space-4) 28px;
 }
 @media (min-width: 720px) { .lp-main { padding-inline: var(--ds-space-5); } }
@@ -243,30 +269,23 @@
 .lp-check { flex: none; margin-top: 3px; color: var(--lp-pink); }
 
 /* ===================================================================
- *  Home: headline, sign-in card with orbiting stat chips, tool pills.
+ *  Home: headline, a centred sign-in card, the three tool links under it
+ *  and two stat chips either side, all over the court.
  * =================================================================== */
-.lp-home {
+.lp--home .lp-main { min-height: 0; place-items: start center; padding-top: 7vh; }
+.lp-page.lp-home {
   display: flex;
   flex-direction: column;
   align-items: center;
-  text-align: center;
-}
-.lp-hero__tag {
-  color: var(--lp-pink);
-  font-family: var(--ds-font-mono);
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.2em;
-  text-transform: uppercase;
+  width: 100%;
 }
 .lp-hero__title {
-  margin: 10px 0 22px;
-  color: var(--ds-text);
-  font-size: clamp(1.875rem, 1.2rem + 2.6vw, 2.625rem);
+  color: #e6f1ef;
+  font-size: clamp(30px, 9vw, 46px);
   font-weight: 800;
-  line-height: 1.08;
-  letter-spacing: -0.03em;
-  text-wrap: balance;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  text-align: center;
 }
 .lp-hero__gradient {
   background: linear-gradient(90deg, var(--lp-pink), var(--lp-pink-light));
@@ -276,157 +295,119 @@
   -webkit-text-fill-color: transparent;
 }
 
-/* The orbit: a centred stage, at most 1100px wide, with the card in the
-   middle and the chips placed around it. */
-.lp-orbit {
+/* The card sits centred in a ~1000px stage; the three tool chips float in
+   the stage's side gutters, so they stay near the card on wide screens and
+   can never reach it (the card is 380px, the chips start 40px past it). */
+.lp-stage {
+  --card-half: 190px;
+  --chip-gap: 40px;
   position: relative;
-  display: grid;
-  justify-items: center;
-  width: 100%;
-  max-width: 1100px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: min(1000px, 100%);
 }
-
-/* ── HUD chips: small glass readouts circling the card ── */
-.lp-hud { position: absolute; inset: 0; pointer-events: none; }
-.lp-hud__chip {
+.lp-toolchips { margin: 0; padding: 0; list-style: none; }
+.lp-toolchip-slot {
+  --offset: 0px;
   position: absolute;
+  /* Up to 220px, but never wider than the gutter beside the card, so a
+     chip can't reach the card or run off the screen edge. */
+  width: min(220px, calc(50% - var(--card-half) - var(--chip-gap) - var(--offset) - 8px));
+  animation: lp-float 6s ease-in-out infinite;
+}
+/* Upper left, right at middle height, lower left; staggered floats. */
+.lp-toolchip-slot--statspal { top: 8%; right: calc(50% + var(--card-half) + var(--chip-gap)); }
+.lp-toolchip-slot--rotationpal { top: 40%; left: calc(50% + var(--card-half) + var(--chip-gap)); animation-delay: -2s; }
+.lp-toolchip-slot--practicepal { --offset: 24px; top: 64%; right: calc(50% + var(--card-half) + var(--chip-gap) + var(--offset)); animation-delay: -4s; }
+.lp-toolchip {
   display: grid;
-  gap: 2px;
-  max-width: 160px;
-  padding: 10px 14px;
-  border: 1px solid rgba(var(--lp-pink-rgb), 0.32);
-  border-radius: 12px;
-  background: rgba(22, 14, 20, 0.6);
-  -webkit-backdrop-filter: blur(12px);
-  backdrop-filter: blur(12px);
-  box-shadow: 0 14px 40px -12px rgba(0, 0, 0, 0.7), 0 0 20px -8px rgba(var(--lp-pink-rgb), 0.45);
-  text-align: left;
-  animation: lp-float 7s ease-in-out infinite;
+  gap: 3px;
+  width: 100%;
+  min-height: 44px;
+  padding: 12px 16px;
+  border: 1px solid rgba(var(--lp-pink-rgb), 0.2);
+  border-radius: 14px;
+  background: rgba(10, 18, 22, 0.7);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  color: #e6f1ef;
+  font-size: 14px;
+  transition: border-color var(--ds-transition), translate var(--ds-transition), box-shadow var(--ds-transition);
 }
-.lp-hud__label {
-  color: var(--ds-text-secondary);
-  font-family: var(--ds-font-mono);
-  font-size: 11px;
-  letter-spacing: 0.04em;
-  white-space: nowrap;
-}
-.lp-hud__value {
-  color: var(--ds-text);
-  font-family: var(--ds-font-mono);
-  font-size: 19px;
-  font-weight: 700;
-  white-space: nowrap;
-}
-.lp-hud__value.is-accent { color: var(--lp-pink); }
-/* Positions are relative to the card's edges (it is 380px wide, centred). */
-.lp-hud__chip--tl { top: 4%; right: calc(50% + 190px + 56px); }
-.lp-hud__chip--tr { top: 22%; left: calc(50% + 190px + 40px); animation-delay: -1.75s; }
-.lp-hud__chip--bl { bottom: 16%; right: calc(50% + 190px + 30px); animation-delay: -3.5s; }
-.lp-hud__chip--br { bottom: -2%; left: calc(50% + 190px + 64px); animation-delay: -5.25s; }
-/* Narrower screens: pull the chips in tight against the card. */
-@media (max-width: 1023px) {
-  .lp-hud__chip { padding: 8px 12px; }
-  .lp-hud__value { font-size: 17px; }
-  .lp-hud__chip--tl, .lp-hud__chip--bl { right: calc(50% + 190px + 16px); }
-  .lp-hud__chip--tr, .lp-hud__chip--br { left: calc(50% + 190px + 16px); }
+.lp-toolchip__head { display: flex; align-items: center; gap: 8px; white-space: nowrap; }
+.lp-toolchip svg { flex: none; color: var(--lp-pink); }
+.lp-toolchip b { font-weight: 700; }
+.lp-toolchip__line { color: var(--lp-muted); font-size: 12.5px; line-height: 1.35; }
+.lp-toolchip__stat { color: var(--lp-pink); font-family: var(--ds-font-mono); font-size: 12px; white-space: nowrap; }
+/* `translate` composes with the float's `transform`, so the lift adds to it. */
+.lp-toolchip:hover {
+  border-color: var(--lp-pink);
+  translate: 0 -3px;
+  box-shadow: 0 0 18px -4px rgba(var(--lp-pink-rgb), 0.6);
 }
 @keyframes lp-float {
-  0%, 100% { transform: translateY(0); }
   50% { transform: translateY(-10px); }
 }
-
-/* ── The three tool cards under the sign-in card ── */
-.lp-tools {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 14px;
-  width: min(860px, 100%);
-  margin: 20px 0 0;
-  padding: 0;
-  list-style: none;
+/* Under 900px: a simple row under the card, no floating. */
+@media (max-width: 899px) {
+  .lp-toolchips {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 10px;
+    margin-top: 20px;
+  }
+  .lp-toolchip-slot { position: static; width: min(220px, 100%); animation: none; }
 }
-.lp-tools > li { display: grid; }
-.lp-toolcard {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 14px 16px;
-  border: 1px solid rgba(var(--lp-pink-rgb), 0.24);
-  border-radius: 16px;
-  background: var(--lp-glass);
-  -webkit-backdrop-filter: blur(16px);
-  backdrop-filter: blur(16px);
-  box-shadow: 0 18px 40px -20px rgba(0, 0, 0, 0.8);
-  text-align: left;
-  transition:
-    transform var(--ds-transition),
-    border-color var(--ds-transition),
-    box-shadow var(--ds-transition);
-}
-.lp-toolcard:hover {
-  transform: translateY(-3px);
-  border-color: rgba(var(--lp-pink-rgb), 0.7);
-  box-shadow:
-    0 22px 44px -20px rgba(0, 0, 0, 0.85),
-    0 0 24px -4px rgba(var(--lp-pink-rgb), 0.5);
-}
-.lp-toolcard__icon {
-  display: grid;
-  flex: none;
-  place-items: center;
-  width: 40px;
-  height: 40px;
-  border: 1px solid rgba(var(--lp-pink-rgb), 0.3);
-  border-radius: 12px;
-  background: rgba(var(--lp-pink-rgb), 0.12);
-  color: var(--lp-pink);
-}
-.lp-toolcard__text { display: grid; gap: 2px; min-width: 0; }
-.lp-toolcard__name { color: var(--ds-text); font-size: var(--ds-fs-md); font-weight: 700; }
-.lp-toolcard__line { color: var(--ds-text-secondary); font-size: var(--ds-fs-sm); line-height: 1.35; }
 
 /* ── Sign-in card: glass over the court ── */
 .lp-signin {
   position: relative;
   z-index: 1;
   width: min(380px, 100%);
-  padding: 24px 26px 20px;
-  border: 1px solid var(--lp-glass-border);
+  margin-top: 30px;
+  padding: 30px;
+  border: 1px solid rgba(var(--lp-pink-rgb), 0.22);
   border-radius: 20px;
-  background: var(--lp-glass);
+  background: rgba(14, 22, 26, 0.62);
   -webkit-backdrop-filter: blur(18px);
   backdrop-filter: blur(18px);
   box-shadow:
-    0 40px 90px -24px rgba(0, 0, 0, 0.85),
-    0 0 0 1px rgba(255, 255, 255, 0.02) inset;
+    0 20px 80px rgba(0, 0, 0, 0.6),
+    0 0 0 1px rgba(255, 255, 255, 0.03) inset;
+  color: #e6f1ef;
   text-align: left;
 }
 .lp-signin__title {
-  color: var(--ds-text);
-  font-size: 22px;
-  font-weight: 800;
-  letter-spacing: -0.02em;
+  margin-bottom: 4px;
+  color: #e6f1ef;
+  font-size: 20px;
+  font-weight: 700;
 }
-.lp-signin__subtitle { margin-top: 4px; color: var(--ds-text-secondary); font-size: var(--ds-fs-base); }
-.lp-signin__form { display: flex; flex-direction: column; gap: var(--ds-space-4); margin-top: var(--ds-space-5); }
-.lp-field { display: grid; gap: var(--ds-space-2); }
-.lp-field__label { color: var(--ds-text-secondary); font-size: var(--ds-fs-sm); font-weight: 600; }
+.lp-signin__subtitle { margin-bottom: 20px; color: var(--lp-muted); font-size: 13px; }
+.lp-signin__form { display: flex; flex-direction: column; }
+.lp-field { display: block; }
+.lp-field__label { display: block; margin: 12px 0 6px; color: var(--lp-muted); font-size: 12px; }
+/* The first label's top margin would merge with the subtitle's in a plain
+   block; the form is a flex column, so drop it instead. */
+.lp-signin__form > .lp-field:first-child .lp-field__label { margin-top: 0; }
 .lp-field__wrap { position: relative; }
 .lp .lp-field__input {
   height: 46px;
   padding: 0 14px;
-  background: rgba(10, 5, 9, 0.7);
-  border-color: rgba(255, 255, 255, 0.09);
+  background: rgba(0, 0, 0, 0.45);
+  border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 12px;
-  color: var(--ds-text);
-  font-size: var(--ds-fs-md);
+  color: #e6f1ef;
+  font-size: 15px;
   font-family: var(--ds-font);
   transition: border-color var(--ds-transition), box-shadow var(--ds-transition);
 }
 .lp .lp-field__input:focus {
   outline: none;
   border-color: var(--lp-pink);
-  box-shadow: 0 0 0 3px rgba(var(--lp-pink-rgb), 0.24), 0 0 18px rgba(var(--lp-pink-rgb), 0.2);
+  box-shadow: 0 0 0 3px rgba(var(--lp-pink-rgb), 0.15);
 }
 .lp-field__wrap .lp-field__input { padding-right: 64px; }
 .lp-field.is-error .lp-field__input { border-color: var(--ds-danger); }
@@ -442,11 +423,10 @@
   border: 0;
   border-radius: 0 12px 12px 0;
   color: var(--lp-pink);
-  font-size: var(--ds-fs-sm);
-  font-weight: 600;
+  font-size: 12px;
   cursor: pointer;
 }
-.lp-field__toggle:hover { background: rgba(var(--lp-pink-rgb), 0.08); }
+.lp-field__toggle:hover { color: var(--lp-pink-light); }
 @media (pointer: coarse) {
   /* 16px stops iOS zooming into the field. */
   .lp .lp-field__input { font-size: 16px; }
@@ -454,6 +434,7 @@
 .lp-signin__error-slot:empty { display: none; }
 .lp-signin__error {
   display: flex;
+  margin-top: 12px;
   gap: var(--ds-space-2);
   align-items: flex-start;
   color: var(--ds-danger);
@@ -464,13 +445,18 @@
 .lp .lp-signin__submit {
   width: 100%;
   height: 48px;
-  margin-top: 4px;
-  font-size: var(--ds-fs-md);
+  margin-top: 22px;
+  border-radius: 12px;
+  background: linear-gradient(90deg, var(--lp-pink), var(--lp-pink-light));
+  box-shadow: none;
+  color: #2a0717;
+  font-size: 15px;
+  font-weight: 700;
 }
 .lp-signin__help {
-  margin-top: var(--ds-space-4);
-  color: var(--ds-text-secondary);
-  font-size: var(--ds-fs-sm);
+  margin-top: 16px;
+  color: var(--lp-muted);
+  font-size: 12px;
   text-align: center;
 }
 .lp-spinner { width: 16px; height: 16px; animation: lp-spin 0.9s linear infinite; }
@@ -487,102 +473,67 @@
   z-index: 0;
   overflow: hidden;
   pointer-events: none;
-  perspective: 1400px;
-  perspective-origin: 50% 35%;
-  background: radial-gradient(ellipse 70% 45% at 50% 100%, rgba(112, 26, 75, 0.42), transparent 70%);
+  perspective: 1100px;
+  background: radial-gradient(ellipse at 50% 120%, #2a0f1f 0%, var(--lp-bg) 60%);
 }
+/* 1100 × 550: the court runs 18 m left to right and 9 m deep. The net is
+   the bright centre line; the 3 m attack lines sit a sixth either side. */
 .lp-court__floor {
-  --line: rgba(var(--lp-pink-rgb), 0.72);
   position: absolute;
   left: 50%;
-  top: 60%;
-  width: min(1000px, 96vw);
+  top: 70%;
+  width: 1100px;
   aspect-ratio: 2 / 1;
+  opacity: 0.8;
   transform: translate(-50%, -50%) rotateX(62deg);
-  transform-style: preserve-3d;
-  border: 2px solid var(--line);
+  border: 2px solid rgba(var(--lp-pink-rgb), 0.35);
   box-shadow:
-    0 0 22px rgba(var(--lp-pink-rgb), 0.35),
-    inset 0 0 48px rgba(var(--lp-pink-rgb), 0.12);
-  /* A faint 1 m grid: the court runs 18 m left to right and 9 m deep. */
+    0 0 60px rgba(var(--lp-pink-rgb), 0.15),
+    inset 0 0 80px rgba(var(--lp-pink-rgb), 0.06);
   background:
-    linear-gradient(rgba(var(--lp-pink-rgb), 0.07) 1px, transparent 1px) 0 0 / 100% calc(100% / 9),
-    linear-gradient(90deg, rgba(var(--lp-pink-rgb), 0.07) 1px, transparent 1px) 0 0 / calc(100% / 18) 100%,
-    rgba(26, 8, 20, 0.45);
+    linear-gradient(90deg, transparent 49.8%, rgba(var(--lp-pink-rgb), 0.55) 49.8% 50.2%, transparent 50.2%),
+    linear-gradient(90deg,
+      transparent 33.2%, rgba(var(--lp-pink-rgb), 0.35) 33.2% 33.5%,
+      transparent 33.5% 66.5%, rgba(var(--lp-pink-rgb), 0.35) 66.5% 66.8%,
+      transparent 66.8%);
   transition: opacity 0.4s ease;
 }
 /* Behind the content tabs, the court steps back. */
-.lp:not(.lp--home) .lp-court__floor { opacity: 0.4; }
-.lp-court__net,
-.lp-court__attack {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  transform: translateX(-50%);
-}
-.lp-court__net {
-  left: 50%;
-  width: 4px;
-  background: #fbcfe8;
-  box-shadow: 0 0 10px var(--lp-pink), 0 0 28px rgba(var(--lp-pink-rgb), 0.8);
-}
-/* 3 m attack lines: a sixth of the court's length either side of the net. */
-.lp-court__attack {
-  width: 2px;
-  background: var(--line);
-  box-shadow: 0 0 10px rgba(var(--lp-pink-rgb), 0.5);
-}
-.lp-court__attack--us { left: calc(100% / 3); }
-.lp-court__attack--opp { left: calc(200% / 3); }
+.lp:not(.lp--home) .lp-court__floor { opacity: 0.35; }
 .lp-court__dot {
-  --dot: var(--lp-pink);
   position: absolute;
-  width: 16px;
-  height: 16px;
+  width: 26px;
+  height: 26px;
   border-radius: 50%;
-  background: radial-gradient(circle, #fff 0 22%, var(--dot) 48%);
-  box-shadow: 0 0 8px var(--dot), 0 0 22px var(--dot);
-  /* Stand the dot back up so it reads as a round marker, not an ellipse. */
-  transform: translate(-50%, -50%) rotateX(-62deg);
+  background: radial-gradient(circle, var(--lp-pink) 0 35%, rgba(var(--lp-pink-rgb), 0.25) 36% 100%);
+  box-shadow: 0 0 20px var(--lp-pink);
 }
-.lp-court__dot--opp { --dot: var(--lp-opp); }
-
-/* The flight layer is the court's size, so its translate % are court %. */
-.lp-court__flight {
-  position: absolute;
-  inset: 0;
-  transform-style: preserve-3d;
-  transform: translate3d(-30%, 14%, 12px);
-  animation: lp-rally 4.8s ease-in-out infinite;
+.lp-court__dot--opp {
+  background: radial-gradient(circle, var(--lp-opp) 0 35%, rgba(167, 139, 250, 0.25) 36% 100%);
+  box-shadow: 0 0 20px var(--lp-opp);
 }
 .lp-court__ball {
   position: absolute;
-  left: 50%;
-  top: 50%;
+  left: 18%;
+  top: 70%;
   width: 14px;
   height: 14px;
   border-radius: 50%;
-  background: radial-gradient(circle at 35% 35%, #fff, #fdf2f8 60%, #fbcfe8);
-  box-shadow: 0 0 10px #fff, 0 0 24px rgba(249, 168, 212, 0.9);
-  transform: translate(-50%, -50%) rotateX(-62deg);
+  background: #fff;
+  box-shadow: 0 0 18px #fff, 0 0 40px var(--lp-pink);
+  animation: lp-rally 4.5s ease-in-out infinite;
 }
 @keyframes lp-rally {
-  0%, 100% { transform: translate3d(-30%, 14%, 12px); }
-  25% { transform: translate3d(0%, 0%, 150px); }
-  50% { transform: translate3d(31%, -16%, 12px); }
-  75% { transform: translate3d(0%, 4%, 150px); }
+  0%, 100% { left: 18%; top: 70%; }
+  25% { left: 38%; top: 30%; }
+  50% { left: 78%; top: 45%; }
+  75% { left: 60%; top: 75%; }
 }
 /* Fade the court into the page at the top and bottom. */
 .lp-court__fade {
   position: absolute;
   inset: 0;
-  background: linear-gradient(
-    180deg,
-    var(--lp-bg) 0%,
-    rgba(7, 11, 15, 0) 14%,
-    rgba(7, 11, 15, 0) 80%,
-    rgba(7, 11, 15, 0.85) 100%
-  );
+  background: linear-gradient(180deg, var(--lp-bg) 0%, transparent 30%, transparent 75%, var(--lp-bg) 100%);
 }
 
 /* ===================================================================
@@ -698,19 +649,18 @@
 .lp-cta__help { color: var(--ds-text-secondary); font-size: var(--ds-fs-sm); }
 @media (min-width: 720px) { .lp-cta__actions { justify-items: end; } }
 
-/* ── Phones: no HUD, a smaller court, a full-width card ── */
+/* ── Phones: a smaller backdrop court, a full-width card ── */
 @media (max-width: 767px) {
   .lp-main { padding-top: 28px; }
-  .lp-hud { display: none; }
   .lp-court__floor { width: 560px; top: 78%; }
   .lp-signin { width: 100%; padding: 24px 20px 20px; }
-  .lp-tools { grid-template-columns: minmax(0, 1fr); gap: 10px; }
 }
 
+/* Reduced motion: the ball rests on our side and the chips hold still. */
 @media (prefers-reduced-motion: reduce) {
-  .lp-court__flight, .lp-hud__chip { animation: none; }
-  .lp-toolcard, .lp-toolcard:hover { transition: none; transform: none; }
-  .lp-court__floor, .lp-faq__item summary::after { transition: none; }
+  .lp-court__ball, .lp-toolchip-slot { animation: none; }
+  .lp-toolchip, .lp-court__floor, .lp-faq__item summary::after { transition: none; }
+  .lp-toolchip:hover { translate: none; }
   .lp-spinner { animation-duration: 2.4s; }
 }
 

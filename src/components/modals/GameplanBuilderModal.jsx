@@ -1,6 +1,6 @@
 import {
   createContext, useContext, memo, useEffect, useLayoutEffect,
-  useMemo, useRef, useState, useCallback,
+  useMemo, useRef, useState, useCallback, useSyncExternalStore,
 } from 'react';
 import {
   DndContext, DragOverlay, useDraggable, useDroppable,
@@ -153,6 +153,36 @@ function lastNameOf(name) {
 function firstNameOf(name) {
   const parts = (name || '').trim().split(/\s+/);
   return parts[0] || '';
+}
+// What a bubble or roster chip shows as its big label: the jersey number, or
+// the player's initials when no number has been entered.
+function badgeFor(player) {
+  const num = String(player?.jersey_number ?? '').trim();
+  if (num) return num;
+  const parts = (player?.name || '').trim().split(/\s+/).filter(Boolean);
+  const initials = parts.length > 1
+    ? parts[0][0] + parts[parts.length - 1][0]
+    : (parts[0] || '').slice(0, 2);
+  return initials.toUpperCase() || '?';
+}
+
+// ─── Phone layout ──
+// Below 768px the builder switches to a single-column phone layout: two-row
+// header, square court, collapsible Subs and Roster sections. Desktop and
+// tablet layouts are untouched. CSS does the restyling; this flag is only
+// for the few places where the markup itself differs.
+const PHONE_QUERY = '(max-width: 767px)';
+function subscribePhone(onChange) {
+  const mq = window.matchMedia(PHONE_QUERY);
+  mq.addEventListener('change', onChange);
+  return () => mq.removeEventListener('change', onChange);
+}
+function useIsPhone() {
+  return useSyncExternalStore(
+    subscribePhone,
+    () => window.matchMedia(PHONE_QUERY).matches,
+    () => false,
+  );
 }
 
 // ─── Global first/last name display ────────────────────────────────────────
@@ -1484,6 +1514,12 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
   // the row; everything else lives behind this overflow menu.
   const [overflowOpen, setOverflowOpen] = useState(false);
   const overflowRef = useRef(null);
+
+  // Phone layout: the Subs and Roster sections under the court start
+  // collapsed so the court stays on screen.
+  const isPhone = useIsPhone();
+  const [phoneSubsOpen, setPhoneSubsOpen] = useState(false);
+  const [phoneRosterOpen, setPhoneRosterOpen] = useState(false);
   useEffect(() => {
     if (!overflowOpen) return;
     function onDown(e) {
@@ -3401,10 +3437,21 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
                   {/* The preset apply/manage entries lived here. They're gone
                       with the gameplan toolbar's — the playground is where
                       sessions are BUILT, so there is nothing to import into it. */}
-                  <button
-                    type="button" role="menuitem" className="gpb-slimmenu-item"
-                    onClick={() => { setRosterCollapsed(c => !c); setOverflowOpen(false); }}
-                  >{rosterCollapsed ? '▶  Show roster' : '◀  Hide roster'}</button>
+                  {/* On a phone the roster is its own collapsible section, so
+                      the show/hide item gives way to the panels toggle, which
+                      leaves the bar there. */}
+                  {isPhone ? (
+                    <button
+                      type="button" role="menuitem" className="gpb-slimmenu-item"
+                      onClick={() => { setPanelsHidden(v => !v); setOverflowOpen(false); }}
+                      aria-pressed={panelsHidden}
+                    >{panelsHidden ? '▤  Show subs panel' : '▤  Hide subs panel'}</button>
+                  ) : (
+                    <button
+                      type="button" role="menuitem" className="gpb-slimmenu-item"
+                      onClick={() => { setRosterCollapsed(c => !c); setOverflowOpen(false); }}
+                    >{rosterCollapsed ? '▶  Show roster' : '◀  Hide roster'}</button>
+                  )}
                   <button
                     type="button" role="menuitem" className="gpb-slimmenu-item"
                     onClick={() => { resetCurrentFormation(); setOverflowOpen(false); }}
@@ -3427,6 +3474,17 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
                       maxLength={280}
                     />
                   </label>
+
+                  {/* Phone: close moves in here, so the bar keeps one button. */}
+                  {isPhone && (
+                    <>
+                      <div className="gpb-slimmenu-sep" />
+                      <button
+                        type="button" role="menuitem" className="gpb-slimmenu-item"
+                        onClick={() => { setOverflowOpen(false); onClose(); }}
+                      >×  Close playground</button>
+                    </>
+                  )}
                 </div>
               )}
             </div>
@@ -4007,6 +4065,52 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
                   </div>
               );
 
+              // Playground on a phone: the court, then two collapsible
+              // sections. Their summary lines carry the numbers that matter,
+              // so a collapsed section still says where things stand.
+              if (isPlayground && isPhone) {
+                const setNo = activePlan.set_number || 1;
+                return (
+                  <>
+                    {courtColumn}
+                    {!panelsHidden && (
+                      <section className={`gpb-roster gpb-msec gpb-col-subs${phoneSubsOpen ? ' is-open' : ''}`}>
+                        <button
+                          type="button"
+                          className="gpb-msec-toggle"
+                          aria-expanded={phoneSubsOpen}
+                          aria-controls="gpb-msec-subs"
+                          onClick={() => setPhoneSubsOpen(o => !o)}
+                        >
+                          <span className="gpb-msec-title">
+                            Subs: {setSubCount(activePlan)}/{SET_SUB_LIMIT} · Set {setNo}
+                          </span>
+                          <span className="gpb-msec-chevron" aria-hidden="true" />
+                        </button>
+                        {phoneSubsOpen && (
+                          <div id="gpb-msec-subs" className="gpb-msec-body">{subChrome}</div>
+                        )}
+                      </section>
+                    )}
+                    <section className={`gpb-roster gpb-msec gpb-col-roster${phoneRosterOpen ? ' is-open' : ''}`}>
+                      <button
+                        type="button"
+                        className="gpb-msec-toggle"
+                        aria-expanded={phoneRosterOpen}
+                        aria-controls="gpb-msec-roster"
+                        onClick={() => setPhoneRosterOpen(o => !o)}
+                      >
+                        <span className="gpb-msec-title">Roster: {onCourtIds.size}/6 in plan</span>
+                        <span className="gpb-msec-chevron" aria-hidden="true" />
+                      </button>
+                      {phoneRosterOpen && (
+                        <div id="gpb-msec-roster" className="gpb-msec-body">{rosterList}</div>
+                      )}
+                    </section>
+                  </>
+                );
+              }
+
               // Playground: roster | court | subs, as three real columns.
               if (isPlayground) {
                 return (
@@ -4196,6 +4300,9 @@ function CourtSurface({
         </span>
         {!hideHint && <span className="gpb-court-hint">{hint}</span>}
       </div>
+      {/* Phone only (CSS): the front-row label sits above the net stripe
+          instead of on top of it. */}
+      <div className="gpb-court-netlabel" aria-hidden="true">FRONT ROW · NET</div>
       <div
         ref={(el) => { setNodeRef(el); courtRef(el); }}
         onClick={onCourtClick}
@@ -4405,7 +4512,7 @@ const CourtBubble = memo(function CourtBubble({
     >
       {slotLabel && <div className="gpb-bubble-slot">{slotLabel}</div>}
       {libero && <div className="gpb-bubble-libero" title="Libero">L</div>}
-      <div className="gpb-bubble-num">{player.jersey_number || '?'}</div>
+      <div className="gpb-bubble-num">{badgeFor(player)}</div>
       <div className="gpb-bubble-name">{dn(player)}</div>
       <button
         type="button"
@@ -4428,7 +4535,7 @@ function BubblePreview({ player, colorVars, slotLabel, bubbleSize }) {
       style={{ '--gpb-bubble': `${bubbleSize || 88}px`, ...colorVars }}
     >
       {slotLabel && <div className="gpb-bubble-slot">{slotLabel}</div>}
-      <div className="gpb-bubble-num">{player.jersey_number || '?'}</div>
+      <div className="gpb-bubble-num">{badgeFor(player)}</div>
       <div className="gpb-bubble-name">{dn(player)}</div>
     </div>
   );
@@ -4523,7 +4630,7 @@ function BenchRow({
       {...attributes}
     >
       <span className="gpb-bench-dot" aria-hidden="true" />
-      <div className="gpb-bench-num">{player.jersey_number || '?'}</div>
+      <div className="gpb-bench-num">{badgeFor(player)}</div>
       <div className="gpb-bench-mid">
         <div className="gpb-bench-name">{showStatus ? dn(player) : player.name}</div>
         <div className="gpb-bench-meta">

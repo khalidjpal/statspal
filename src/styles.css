@@ -13326,6 +13326,220 @@ td.trn-railtable-player {
   .gpb-body.roster-collapsed.panels-hidden { grid-template-rows: 1fr; }
 }
 
+/* Shown only in the phone layout below. */
+.gpb-court-netlabel { display: none; }
+
+/* ── Playground on a phone (< 768px) ──
+   Full-screen, single column: a two-row header (name + ⋯, then rotations and
+   Serve/Recv), a square court the width of the screen (a half court is
+   9m × 9m), and collapsible Subs and Roster sections under it. The side
+   rails and the panels/close buttons are folded into those sections and the
+   ⋯ menu. Placed last so it outranks the narrow-width rules above. */
+@media (max-width: 767px) {
+  /* Shell: edge to edge, no frame. */
+  .gpb-overlay.is-playground {
+    padding: 0;
+    align-items: stretch;
+    backdrop-filter: none; -webkit-backdrop-filter: none;
+  }
+  .gpb-modal.is-playground {
+    width: 100%;
+    height: 100vh;
+    height: 100dvh;
+    max-width: 100%;
+    max-height: none;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    animation: none;
+    overflow: hidden;
+  }
+
+  /* Header row 1: name on the left, ⋯ on the right.
+     Row 2: rotations 1–6. Row 3: Serve/Recv with the legality badge. */
+  .gpb-slimbar {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px;
+    padding: 6px 12px 10px;
+    padding-top: max(6px, env(safe-area-inset-top));
+  }
+  .gpb-slimbar .gpb-slim-eyebrow,
+  .gpb-slimbar .gpb-slim-sep,
+  .gpb-slimbar .gpb-slim-spacer,
+  .gpb-slimbar > .gpb-panels-btn,
+  .gpb-slimbar > .gpb-slim-close { display: none; }
+
+  .gpb-slimbar > .gpb-head-title,
+  .gpb-slimbar > .gpb-head-title-input {
+    grid-column: 1; grid-row: 1;
+    display: block;
+    max-width: 100%;
+    min-width: 0;
+    height: 44px;
+    padding: 0 4px;
+    font-size: 16px;
+    line-height: 44px;
+    text-align: left;
+  }
+  .gpb-slimbar > .gpb-head-title .gpb-head-title-edit { display: inline; margin-left: 6px; }
+
+  .gpb-slimbar .gpb-slim-more { grid-column: 2; grid-row: 1; }
+  .gpb-slimbar .gpb-slim-more > .gpb-slim-btn { width: 44px; height: 44px; font-size: 20px; }
+
+  .gpb-slimbar .gpb-slim-rots {
+    grid-column: 1 / -1; grid-row: 2;
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 6px;
+  }
+  .gpb-slimbar .gpb-slim-rot { width: auto; height: 44px; font-size: 15px; border-radius: 9px; }
+
+  .gpb-slimbar .gpb-slim-modes {
+    grid-column: 1; grid-row: 3;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+  .gpb-slimbar .gpb-slim-mode { min-height: 44px; padding: 0 10px; font-size: 13px; }
+  .gpb-slimbar .gpb-slim-status {
+    grid-column: 2; grid-row: 3;
+    align-self: center;
+    padding: 7px 10px;
+    font-size: 11px;
+  }
+
+  .gpb-slimmenu {
+    width: min(300px, calc(100vw - 24px));
+    max-height: calc(100dvh - 72px);
+    overflow-y: auto;
+  }
+  .gpb-slimmenu .gpb-slimmenu-item { min-height: 44px; padding: 0 12px; font-size: 14px; }
+  .gpb-slimmenu .gpb-nametoggle-btn { min-height: 44px; min-width: 56px; }
+
+  /* Body: one column that scrolls vertically and never sideways. */
+  .gpb-body.is-playground,
+  .gpb-body.is-playground.roster-collapsed,
+  .gpb-body.is-playground.panels-hidden,
+  .gpb-body.is-playground.roster-collapsed.panels-hidden {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 10px 12px max(16px, env(safe-area-inset-bottom));
+    overflow-x: hidden;
+    overflow-y: auto;
+  }
+  .gpb-body.is-playground .gpb-court-wrap,
+  .gpb-body.is-playground.panels-hidden .gpb-court-wrap {
+    flex: none;
+    min-height: 0;
+  }
+  .gpb-body.is-playground .gpb-court-info { margin-bottom: 4px; }
+
+  /* Court: square, full width. */
+  .gpb-body.is-playground .gpb-court {
+    flex: none;
+    width: 100%;
+    max-width: 100%;
+    aspect-ratio: 1 / 1;
+    min-height: 0;
+    margin: 0;
+    overscroll-behavior: contain;
+  }
+  .gpb-court-netlabel {
+    display: block;
+    margin-bottom: 5px;
+    text-align: center;
+    font-size: 10px; font-weight: 700;
+    letter-spacing: 0.22em;
+    color: rgba(88,166,255,0.65);
+  }
+  .gpb-body.is-playground .gpb-court-row-front { display: none; }
+
+  /* Bubbles: the jersey number fills the circle; the name sits under it as
+     a readable label that wraps rather than truncating. */
+  .gpb-body.is-playground .gpb-bubble-num {
+    font-size: clamp(18px, calc(var(--gpb-bubble, 62px) * 0.36), 26px);
+  }
+  .gpb-body.is-playground .gpb-bubble-name {
+    position: absolute;
+    top: calc(100% + 3px);
+    left: 50%;
+    transform: translateX(-50%);
+    width: max-content;
+    max-width: 96px;
+    margin: 0;
+    padding: 1px 5px;
+    border-radius: 5px;
+    background: rgba(0,0,0,0.62);
+    font-size: 11px;
+    line-height: 1.25;
+    letter-spacing: 0.03em;
+    text-align: center;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    overflow: visible;
+    text-overflow: clip;
+  }
+  .gpb-body.is-playground .gpb-bubble:has(.gpb-bubble-libero) .gpb-bubble-name { top: calc(100% + 11px); }
+
+  /* Collapsible Subs / Roster sections. */
+  .gpb-body.is-playground .gpb-msec {
+    flex: none;
+    max-height: none;
+    overflow: visible;
+    padding: 0;
+  }
+  .gpb-msec .gpb-msec-toggle {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 12px;
+    width: 100%;
+    min-height: 50px;
+    padding: 0 14px;
+    background: transparent;
+    border: 0;
+    color: #e6edf3;
+    font: inherit;
+    font-size: 14px; font-weight: 700;
+    text-align: left;
+    cursor: pointer;
+    border-radius: 12px;
+  }
+  .gpb-msec .gpb-msec-toggle:active { transform: none; }
+  .gpb-msec-title { min-width: 0; }
+  .gpb-msec-chevron {
+    flex: 0 0 auto;
+    width: 9px; height: 9px;
+    margin-right: 4px;
+    border-right: 2px solid #8b949e;
+    border-bottom: 2px solid #8b949e;
+    transform: translateY(-2px) rotate(45deg);
+    transition: transform 0.15s ease;
+  }
+  .gpb-msec.is-open .gpb-msec-chevron { transform: translateY(2px) rotate(-135deg); }
+  .gpb-msec-body { border-top: 1px solid rgba(255,255,255,0.06); }
+
+  /* Roster: a vertical list, one full-width row per player. */
+  .gpb-body.is-playground .gpb-msec .gpb-roster-list {
+    flex-direction: column;
+    flex-wrap: nowrap;
+    overflow: visible;
+    max-height: none;
+  }
+  .gpb-body.is-playground .gpb-msec .gpb-bench-row {
+    width: 100%;
+    flex-shrink: 1;
+    min-height: 52px;
+  }
+
+  /* Sub controls: thumb-sized. */
+  .gpb-msec .gpb-sub-undo,
+  .gpb-msec .gpb-sub-newset,
+  .gpb-msec .gpb-subflow-mode { min-height: 44px; }
+  .gpb-msec .gpb-sub-undo { min-width: 44px; }
+  .gpb-msec .gpb-sub-newset { padding: 0 14px; font-size: 12px; }
+}
+[data-theme="light"] .gpb-msec .gpb-msec-toggle { color: #0d1117; }
+
 /* ═══════════════════════════════════════════════════════════════════════════
    PRACTICEPAL — the third pillar
    ───────────────────────────────────────────────────────────────────────────

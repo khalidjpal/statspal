@@ -77,6 +77,18 @@ export default function App() {
 
   const nav = useCallback((s) => setScreen(s), []);
 
+  // Make `team` the app-wide current team and remember it for next time.
+  // StatsPal, RotationPal and PracticePal all read this one selection.
+  const currentUserIdForTeam = currentUser?.id;
+  const selectCurrentTeam = useCallback((team) => {
+    setSelectedTeam(team);
+    if (currentUserIdForTeam) {
+      try {
+        localStorage.setItem(lastTeamKey(currentUserIdForTeam), String(team.id));
+      } catch { /* localStorage unavailable — remembered team just won't persist */ }
+    }
+  }, [currentUserIdForTeam]);
+
   const findTournament = useCallback(
     (id) => (id ? (tournaments || []).find(t => t.id === id) || null : null),
     [tournaments]
@@ -99,11 +111,22 @@ export default function App() {
     }
   }
 
+  function rememberedTeam() {
+    if (!currentUser?.id) return null;
+    try {
+      const stored = localStorage.getItem(lastTeamKey(currentUser.id));
+      return stored ? candidateTeams.find(t => String(t.id) === stored) || null : null;
+    } catch { return null; }
+  }
+
   function launchRotationPalForTeam(team) {
     // Selected team is sticky — RotationPal opens directly for the team the
-    // coach is already on. No extra picker, no prompts.
-    setSelectedTeam(team);
-    setActiveEntry({ mode: 'linked', teamId: team.id });
+    // coach is already on (or the one remembered from last time). With no
+    // current team, RotationPal picks the only team itself, and shows its
+    // picker only when there are several to choose from.
+    const current = team || rememberedTeam();
+    if (current) selectCurrentTeam(current);
+    setActiveEntry({ mode: 'linked', teamId: current?.id ?? null });
     nav(SCREENS.ROTATIONPAL);
   }
 
@@ -120,12 +143,7 @@ export default function App() {
   }
 
   function handleSelectTeamFromPicker(team) {
-    setSelectedTeam(team);
-    if (currentUser?.id) {
-      try {
-        localStorage.setItem(lastTeamKey(currentUser.id), String(team.id));
-      } catch { /* localStorage unavailable — remembered team just won't persist */ }
-    }
+    selectCurrentTeam(team);
     nav(SCREENS.TEAM_LAUNCH);
   }
 
@@ -492,7 +510,10 @@ export default function App() {
       return (
         <RotationPalScreen
           entry={activeEntry}
-          onHome={() => { setActiveEntry(null); nav(SCREENS.TEAM_LAUNCH); }}
+          team={liveTeam}
+          teams={candidateTeams}
+          onSelectTeam={selectCurrentTeam}
+          onHome={() => { setActiveEntry(null); nav(selectedTeam ? SCREENS.TEAM_LAUNCH : SCREENS.TEAM_PICKER); }}
         />
       );
 

@@ -1,40 +1,24 @@
-import { useMemo } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useData } from '../contexts/DataContext';
 import { useVolleyballPal } from '../contexts/VolleyballPalContext';
 import RotationPalApp from '../modules/rotationpal/RotationPalApp';
 import '../modules/rotationpal/rotationpal.css';
 
-export default function RotationPalScreen({ entry, onHome }) {
+// RotationPal runs on the app-wide current team: `team` and `teams` come from
+// App (the same selection StatsPal and PracticePal use), and `onSelectTeam`
+// writes a pick or a switch back there, where it is remembered.
+export default function RotationPalScreen({ entry, team, teams, onSelectTeam, onHome }) {
   const { currentUser, logout } = useAuth();
-  const { activeTeams, players, schedule, completedGames, tournaments } = useData();
+  const { players, schedule, completedGames, tournaments } = useData();
   const { standaloneTeams, publishSession, clearSession } = useVolleyballPal();
 
-  const isAdmin = currentUser?.role === 'admin';
-  const teamIds = currentUser?.teamIds || [];
-  const visibleTeams = isAdmin ? activeTeams : activeTeams.filter(t => teamIds.includes(t.id));
+  const standalone = entry?.mode === 'standalone';
 
-  // When entered in linked mode with a specific StatsPal team, narrow the
-  // team list so the user lands on just that team. Standalone mode swaps the
-  // team list out for the user's standalone lineups.
-  const { effectiveTeams, effectivePlayers } = useMemo(() => {
-    if (entry?.mode === 'linked' && entry.teamId) {
-      const t = visibleTeams.find(x => x.id === entry.teamId);
-      return {
-        effectiveTeams: t ? [t] : visibleTeams,
-        effectivePlayers: players,
-      };
-    }
-    if (entry?.mode === 'standalone') {
-      const list = entry.standaloneTeamId
-        ? standaloneTeams.filter(t => t.id === entry.standaloneTeamId)
-        : standaloneTeams;
-      // Standalone teams have no StatsPal players — rosters are edited in the
-      // RotationPal roster view directly.
-      return { effectiveTeams: list, effectivePlayers: [] };
-    }
-    return { effectiveTeams: visibleTeams, effectivePlayers: players };
-  }, [entry, visibleTeams, players, standaloneTeams]);
+  // Standalone mode swaps the team list for the user's standalone lineups,
+  // which have no StatsPal players (rosters are edited in RotationPal).
+  const effectiveTeams = standalone
+    ? (entry.standaloneTeamId ? standaloneTeams.filter(t => t.id === entry.standaloneTeamId) : standaloneTeams)
+    : teams;
 
   const session = currentUser
     ? { username: currentUser.username || currentUser.name, role: currentUser.role }
@@ -44,11 +28,13 @@ export default function RotationPalScreen({ entry, onHome }) {
     <RotationPalApp
       session={session}
       statsPalTeams={effectiveTeams}
-      statsPalPlayers={effectivePlayers}
-      statsPalSchedule={entry?.mode === 'standalone' ? [] : schedule}
-      statsPalCompletedGames={entry?.mode === 'standalone' ? [] : completedGames}
-      statsPalTournaments={entry?.mode === 'standalone' ? [] : tournaments}
+      statsPalPlayers={standalone ? [] : players}
+      statsPalSchedule={standalone ? [] : schedule}
+      statsPalCompletedGames={standalone ? [] : completedGames}
+      statsPalTournaments={standalone ? [] : tournaments}
       entryMode={entry?.mode || 'linked'}
+      currentTeamId={standalone ? null : team?.id ?? null}
+      onSelectTeam={onSelectTeam}
       onHome={onHome}
       onLogout={logout}
       onPublishSession={publishSession}

@@ -1,4 +1,4 @@
-import { useState, useEffect, useLayoutEffect, useMemo, useRef } from 'react'
+import { createContext, useContext, useState, useEffect, useLayoutEffect, useMemo, useRef } from 'react'
 import {
   ensureTeamRecord, getTeam, updateTeam, setRoster as saveRoster,
   createGame, getGame, updateGame, deleteGame, resetGameState,
@@ -302,9 +302,18 @@ function shortName(p) {
 //   session       — { username, role } derived from StatsPal auth
 //   statsPalTeams — the teams array from StatsPal's DataContext
 //   statsPalPlayers — flat array of { id, team_id, name, position, jersey_number }
+//   currentTeamId — the app-wide current team (the same one StatsPal and
+//                   PracticePal use); RotationPal opens straight onto it
+//   onSelectTeam  — (team) => void; makes a team the app-wide current team
+//                   (and remembers it). Called by the picker and the switcher.
 //   onHome        — navigate back to VolleyballPal landing
 //   onLogout      — log out of the whole app
 // ============================================================
+
+// The header's team switcher. Provided by RotationPalApp and read by
+// HeaderBar, so every team page gets it without threading props through.
+const TeamSwitcherContext = createContext(null)
+
 export default function RotationPalApp({
   session,
   statsPalTeams = [],
@@ -313,6 +322,8 @@ export default function RotationPalApp({
   statsPalCompletedGames = [],
   statsPalTournaments = [],
   entryMode = 'linked',
+  currentTeamId = null,
+  onSelectTeam,
   onHome,
   onLogout,
   onPublishSession,
@@ -320,17 +331,44 @@ export default function RotationPalApp({
 }) {
   const isStandalone = entryMode === 'standalone'
 
-  // Skip the team-list screen and land directly on teamHome when there is
-  // exactly one team. With multiple teams the user picks from MyTeamsView
-  // inside the app.
-  const [nav, setNav] = useState(() => {
-    if (!isStandalone && statsPalTeams.length === 1) {
+  // Where RotationPal opens. Linked mode never shows a team list when it can
+  // avoid it: the app's current team wins, then the only team. The picker is
+  // left for a user with several teams and no current one (an admin, say).
+  function homeNav() {
+    if (!isStandalone) {
+      if (currentTeamId && statsPalTeams.some(t => t.id === currentTeamId)) {
+        return { screen: 'teamHome', teamId: currentTeamId }
+      }
+      if (statsPalTeams.length === 1) return { screen: 'teamHome', teamId: statsPalTeams[0].id }
+    } else if (statsPalTeams.length === 1) {
       return { screen: 'teamHome', teamId: statsPalTeams[0].id }
     }
     return { screen: 'teams' }
-  })
+  }
+
+  const [nav, setNav] = useState(homeNav)
   const [tick, setTick] = useState(0)
   const refresh = () => setTick(t => t + 1)
+
+  // Opening the sole team makes it the app's current team too, so StatsPal and
+  // the rest of the app stay on the same team.
+  const soleTeam = !isStandalone && !currentTeamId && statsPalTeams.length === 1 ? statsPalTeams[0] : null
+  useEffect(() => {
+    if (soleTeam) onSelectTeam?.(soleTeam)
+  }, [soleTeam, onSelectTeam])
+
+  // Pick or switch team: update the shared current team, then open it.
+  function openTeam(teamId) {
+    const t = statsPalTeams.find(x => x.id === teamId)
+    if (!t) return
+    if (!isStandalone) onSelectTeam?.(t)
+    setNav({ screen: 'teamHome', teamId })
+  }
+
+  // Hidden when there is only one team to choose from.
+  const switcher = !isStandalone && statsPalTeams.length > 1 && nav.screen !== 'teams'
+    ? { teams: statsPalTeams, currentId: nav.teamId, onChange: openTeam }
+    : null
 
   // Build a roster-per-team lookup (StatsPal players → RotationPal format).
   // Only populated in linked mode — standalone teams edit rosters directly.
@@ -374,11 +412,33 @@ export default function RotationPalApp({
   // data across the entire RotationPal module, so add/edit/remove of a
   // player anywhere in StatsPal shows up here without lag.
   function liveTeam(teamId) {
-    const baseTeam = getTeam(teamId)
+    // A team opened for the first time has no local record until the sync
+    // effect above runs, which is after this render. Create it now (the call
+    // is idempotent) rather than bouncing the user to the team list.
+    const statsPalTeam = statsPalTeams.find(t => t.id === teamId)
+    const baseTeam = getTeam(teamId) || (statsPalTeam ? ensureTeamRecord(statsPalTeam, session?.username) : null)
     if (!baseTeam) return null
     if (isStandalone) return baseTeam
     const players = (statsPalPlayers || []).filter(p => p.team_id === teamId)
     return { ...baseTeam, roster: mapStatsPalRoster(players) }
+  }
+
+  // A screen whose team (or game) has gone missing falls back to wherever
+  // RotationPal would open, never to the team list by default. While the team
+  // list itself is still loading there is nothing to fall back to yet.
+  function fallBack() {
+    if (statsPalTeams.length === 0) return null
+    const next = homeNav()
+    if (next.screen !== nav.screen || next.teamId !== nav.teamId) setNav(next)
+    return null
+  }
+
+  // Once teams have loaded, a picker that opened while the app was still
+  // fetching moves on to the current or only team.
+  const resolved = homeNav()
+  if (nav.screen === 'teams' && resolved.screen === 'teamHome') {
+    setNav(resolved)
+    return null
   }
 
   let screen
@@ -389,12 +449,12 @@ export default function RotationPalApp({
         tick={tick}
         statsPalTeams={statsPalTeams}
         isStandalone={isStandalone}
-        onOpenTeam={(id) => setNav({ screen: 'teamHome', teamId: id })}
+        onOpenTeam={openTeam}
       />
     )
   } else if (nav.screen === 'teamHome') {
     const team = liveTeam(nav.teamId)
-    if (!team) { setNav({ screen: 'teams' }); return null }
+    if (!team) return fallBack()
     screen = (
       <TeamHomeView
         {...headerProps}
@@ -402,9 +462,7 @@ export default function RotationPalApp({
         statsPalPlayers={statsPalPlayers}
         statsPalSchedule={statsPalSchedule}
         statsPalCompletedGames={statsPalCompletedGames}
-        onBack={statsPalTeams.length <= 1
-          ? () => onHome?.()
-          : () => setNav({ screen: 'teams' })}
+        onBack={() => onHome?.()}
         onOpenRoster={() => setNav({ screen: 'roster', teamId: team.id })}
         onOpenSchedule={() => setNav({ screen: 'schedule', teamId: team.id })}
         onOpenFormations={() => setNav({ screen: 'formations', teamId: team.id })}
@@ -434,7 +492,7 @@ export default function RotationPalApp({
     )
   } else if (nav.screen === 'roster') {
     const team = liveTeam(nav.teamId)
-    if (!team) { setNav({ screen: 'teams' }); return null }
+    if (!team) return fallBack()
     screen = (
       <RosterView
         {...headerProps}
@@ -446,7 +504,7 @@ export default function RotationPalApp({
     )
   } else if (nav.screen === 'formations') {
     const team = liveTeam(nav.teamId)
-    if (!team) { setNav({ screen: 'teams' }); return null }
+    if (!team) return fallBack()
     screen = (
       <FormationsView
         {...headerProps}
@@ -458,7 +516,7 @@ export default function RotationPalApp({
     )
   } else if (nav.screen === 'schedule') {
     const team = liveTeam(nav.teamId)
-    if (!team) { setNav({ screen: 'teams' }); return null }
+    if (!team) return fallBack()
     const teamSchedule = statsPalSchedule.filter(s => s.team_id === team.id)
     screen = (
       <ScheduleView
@@ -488,7 +546,7 @@ export default function RotationPalApp({
     )
   } else if (nav.screen === 'gameplans') {
     const team = liveTeam(nav.teamId)
-    if (!team) { setNav({ screen: 'teams' }); return null }
+    if (!team) return fallBack()
     const teamSchedule = statsPalSchedule.filter(s => s.team_id === team.id)
     screen = (
       <GameplansView
@@ -517,7 +575,7 @@ export default function RotationPalApp({
     )
   } else if (nav.screen === 'gameplan_edit') {
     const team = liveTeam(nav.teamId)
-    if (!team) { setNav({ screen: 'teams' }); return null }
+    if (!team) return fallBack()
     const existingGp = nav.editGameplanId
       ? (team.gameplans || []).find(g => g.id === nav.editGameplanId)
       : null
@@ -537,7 +595,7 @@ export default function RotationPalApp({
   } else if (nav.screen === 'game') {
     const team = liveTeam(nav.teamId)
     const game = team ? (team.games || []).find(g => g.id === nav.gameId) : null
-    if (!team || !game) { setNav({ screen: 'teams' }); return null }
+    if (!team || !game) return fallBack()
     // StatsPal teams are always linked; standalone teams never publish sessions.
     const canPublish = !isStandalone
     screen = (
@@ -554,19 +612,47 @@ export default function RotationPalApp({
     )
   }
 
-  return <div className="rotationpal-module">{screen}</div>
+  return (
+    <TeamSwitcherContext.Provider value={switcher}>
+      <div className="rotationpal-module">{screen}</div>
+    </TeamSwitcherContext.Provider>
+  )
+}
+
+// Team name with a dropdown arrow, in place of the page title. A native
+// <select> under the hood, so it works with keyboard and screen readers.
+function TeamSwitcher({ teams, currentId, onChange }) {
+  return (
+    <span className="rp-team-switch">
+      <select
+        className="rp-team-switch-select"
+        aria-label="Switch team"
+        value={currentId ?? ''}
+        onChange={e => {
+          const t = teams.find(x => String(x.id) === e.target.value)
+          if (t) onChange(t.id)
+        }}
+      >
+        {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+      </select>
+      <span className="rp-team-switch-caret" aria-hidden="true">▾</span>
+    </span>
+  )
 }
 
 // ============================================================
 // Shared header (dashboard-style pages)
 // ============================================================
 function HeaderBar({ session, onHome, onLogout, modeBadge, title, subtitle, leftActions, rightActions }) {
+  // On team pages (the title is the team name) the name becomes the team
+  // switcher when there is more than one team to switch between.
+  const switcher = useContext(TeamSwitcherContext)
   return (
     <div className="dashboard-header">
       <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
         {leftActions}
         <div>
-          <h1>{title || <>Rotation<span>Pal</span></>}</h1>
+          <h1>{switcher && title ? <TeamSwitcher {...switcher} /> : (title || <>Rotation<span>Pal</span></>)}</h1>
           {subtitle && <div className="subtitle">{subtitle}</div>}
         </div>
         {modeBadge && (
@@ -633,10 +719,9 @@ function MyTeamsView({
       />
 
       <div className="teams-section-header">
-        <h2>
-          {isStandalone ? 'Standalone Lineups' : 'My Teams'}
-          {!isStandalone && session?.role === 'admin' ? ' (All)' : ''}
-        </h2>
+        {/* Linked mode only lands here when there is no current team yet and
+            several to choose from; the choice is remembered app-wide. */}
+        <h2>{isStandalone ? 'Standalone Lineups' : 'Choose a team'}</h2>
       </div>
 
       {teams.length === 0 ? (

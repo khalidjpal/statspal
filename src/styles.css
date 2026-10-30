@@ -7765,9 +7765,12 @@ td.dash-stand-team .dash-stand-name {
      - Lift effect (scale, brightness, z-index) is also direct-DOM, instant.
        Box-shadow stays constant — shadow changes trigger paint. */
 .gpb-bubble {
-  --bubble-bg: linear-gradient(135deg, #1f6feb 0%, #1958c2 100%);
-  --bubble-glow: rgba(31,111,235,0.5);
-  --bubble-edge: rgba(255,255,255,0.20);
+  /* Fallbacks only — colorVarsFor sets these from the shared role map
+     (src/modules/rotationpal/roleColors.js). Gray = no role. */
+  --bubble-bg: linear-gradient(135deg, #8b949e 0%, #6f767e 100%);
+  --bubble-glow: rgba(139,148,158,0.55);
+  --bubble-edge: rgba(255,255,255,0.45);
+  --bubble-ink: #111418;
 
   position: absolute;
   /* --gpb-bubble is set in JS from the measured court, so bubbles scale with
@@ -7780,7 +7783,7 @@ td.dash-stand-team .dash-stand-name {
   background: var(--bubble-bg);
   border: 2px solid var(--bubble-edge);
   border-radius: 50%;
-  color: #fff;
+  color: var(--bubble-ink);
   cursor: grab;
   user-select: none;
   touch-action: none;
@@ -7788,10 +7791,15 @@ td.dash-stand-team .dash-stand-name {
   /* Promote the bubble to its own GPU layer + tell the browser left/top
      are about to change — keeps positioning paint-free. */
   will-change: left, top;
+  /* The glow is the bubble's palette colour (--bubble-glow, ~0.55 alpha,
+     set in JS) scaled down to ~0.30 at rest and ~0.36 when lifted, with
+     about half the blur and spread it used to have. */
+  --bubble-glow-soft: color-mix(in srgb, var(--bubble-glow) 55%, transparent);
+  --bubble-glow-lift: color-mix(in srgb, var(--bubble-glow) 65%, transparent);
   box-shadow:
     0 0 0 3px rgba(0,0,0,0.35),
-    0 8px 24px var(--bubble-glow),
-    inset 0 1px 0 rgba(255,255,255,0.22),
+    0 4px 13px var(--bubble-glow-soft),
+    inset 0 1px 0 rgba(255,255,255,0.11),
     inset 0 -8px 14px rgba(0,0,0,0.18);
   /* No default transition. The settle one is inlined on release. */
   /* Sub-in animation: the React key on each CourtBubble is the player id,
@@ -7811,7 +7819,7 @@ td.dash-stand-team .dash-stand-name {
   inset: 6px 6px auto 6px;
   height: 26px;
   border-radius: 50% 50% 50% 50% / 100% 100% 0 0;
-  background: linear-gradient(180deg, rgba(255,255,255,0.18), transparent);
+  background: linear-gradient(180deg, rgba(255,255,255,0.09), transparent);
   pointer-events: none;
 }
 /* Hover — no transform here (it would compose with the inline drag
@@ -7819,25 +7827,25 @@ td.dash-stand-team .dash-stand-name {
 .gpb-bubble:hover {
   box-shadow:
     0 0 0 3px rgba(0,0,0,0.35),
-    0 12px 32px var(--bubble-glow),
-    inset 0 1px 0 rgba(255,255,255,0.28),
+    0 6px 16px var(--bubble-glow-lift),
+    inset 0 1px 0 rgba(255,255,255,0.14),
     inset 0 -8px 14px rgba(0,0,0,0.18),
-    0 0 0 5px var(--bubble-edge);
+    0 0 0 2px var(--bubble-edge);
 }
 @keyframes gpb-lifted-pulse {
   50% {
     box-shadow:
       0 0 0 3px rgba(0,0,0,0.45),
-      0 28px 60px var(--bubble-glow),
-      0 0 0 10px var(--bubble-edge),
-      inset 0 1px 0 rgba(255,255,255,0.32),
+      0 11px 24px var(--bubble-glow-lift),
+      0 0 0 4px var(--bubble-edge),
+      inset 0 1px 0 rgba(255,255,255,0.16),
       inset 0 -10px 16px rgba(0,0,0,0.22);
   }
 }
 
-/* Libero marker on court. The bubble is already amber (LIBERO_DEFAULT), but
-   colour alone never carries a meaning here — the "L" chip under the bubble
-   is the signal, and it survives the roster's own colour-blind settings. */
+/* Libero marker on court. The bubble is already libero gold, but colour
+   alone never carries a meaning here — the "L" chip under the bubble is the
+   signal. Dark chip, gold letter, so it stands out against the gold fill. */
 .gpb-bubble-libero {
   position: absolute;
   bottom: calc(var(--gpb-bubble, 88px) * -0.09);
@@ -7845,10 +7853,10 @@ td.dash-stand-team .dash-stand-name {
   transform: translateX(-50%);
   min-width: 18px;
   padding: 1px 6px;
-  background: linear-gradient(135deg, #fbbf24, #b45309);
-  border: 1px solid rgba(0,0,0,0.45);
+  background: #111418;
+  border: 1px solid var(--bubble-edge);
   border-radius: 7px;
-  color: #1a1206;
+  color: #fbbf24;
   font-size: 9.5px; font-weight: 900;
   letter-spacing: 0.10em;
   line-height: 1.35;
@@ -7872,7 +7880,7 @@ td.dash-stand-team .dash-stand-name {
   letter-spacing: 0.18em;
   padding: 2px 8px;
   border-radius: 8px;
-  text-shadow: 0 0 8px var(--bubble-glow);
+  text-shadow: 0 0 3px var(--bubble-glow-soft);
   white-space: nowrap;
   pointer-events: none;
   z-index: 1;
@@ -7907,21 +7915,22 @@ td.dash-stand-team .dash-stand-name {
   z-index: 20000;
   box-shadow:
     0 0 0 3px rgba(0,0,0,0.45),
-    0 24px 50px var(--bubble-glow),
-    0 0 0 7px var(--bubble-edge),
-    inset 0 1px 0 rgba(255,255,255,0.32),
+    0 10px 20px var(--bubble-glow-lift),
+    0 0 0 3px var(--bubble-edge),
+    inset 0 1px 0 rgba(255,255,255,0.16),
     inset 0 -10px 16px rgba(0,0,0,0.22);
   animation: gpb-lifted-pulse 1.4s ease-in-out infinite;
   transition: none;
 }
 .gpb-bubble.lifted .gpb-bubble-x { display: none; }
-.gpb-bubble.lifted::before { opacity: 0.9; }
+.gpb-bubble.lifted::before { opacity: 0.45; }
 
 .gpb-bubble-num {
   font-size: clamp(15px, calc(var(--gpb-bubble, 88px) * 0.30), 30px); font-weight: 800;
   font-family: 'Space Mono', monospace;
   line-height: 1;
-  text-shadow: 0 1px 3px rgba(0,0,0,0.55), 0 0 10px rgba(0,0,0,0.35);
+  /* Dark ink on a light role fill: a faint light lift, not a dark halo. */
+  text-shadow: 0 1px 0 rgba(255,255,255,0.28);
   pointer-events: none;
 }
 .gpb-bubble-name {
@@ -7931,7 +7940,7 @@ td.dash-stand-team .dash-stand-name {
   letter-spacing: 0.06em;
   max-width: calc(var(--gpb-bubble, 88px) * 0.91);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+  text-shadow: 0 1px 0 rgba(255,255,255,0.22);
   pointer-events: none;
 }
 
@@ -8271,9 +8280,10 @@ td.dash-stand-team .dash-stand-name {
   color: #6e7681; font-size: 12px;
 }
 .gpb-bench-row {
-  --bubble-bg: linear-gradient(135deg, #1f6feb 0%, #1958c2 100%);
-  --bubble-glow: rgba(31,111,235,0.5);
-  --bubble-edge: rgba(255,255,255,0.20);
+  /* Fallbacks; colorVarsFor sets the player's role colour. */
+  --bubble-bg: linear-gradient(135deg, #8b949e 0%, #6f767e 100%);
+  --bubble-glow: rgba(139,148,158,0.55);
+  --bubble-edge: rgba(255,255,255,0.45);
 
   display: flex; align-items: center; gap: 10px;
   min-height: 52px;
@@ -13528,7 +13538,7 @@ td.trn-railtable-player {
   .gpb-body.is-playground .gpb-msec .gpb-bench-row {
     width: 100%;
     flex-shrink: 1;
-    min-height: 52px;
+    min-height: 44px;   /* compact, but still a comfortable tap */
   }
 
   /* Sub controls: thumb-sized. */
@@ -17625,6 +17635,62 @@ td.trn-railtable-player {
 .pp-dl-custom        { --dh: 240, 165, 0; }
 .pp-dl-scrimmage     { --dh: 56, 189, 248; }
 
+/* "Start drill ▾" — the header's primary action; the drill hues live only
+   on the icons inside its menu. */
+.pp-dlmenu { position: relative; }
+.pp-dlmenu-list {
+  position: absolute; top: calc(100% + 8px); right: 0;
+  z-index: 300;
+  min-width: 210px;
+  padding: 6px;
+  background: #17171b;
+  border: 1px solid #26262b;
+  border-radius: 10px;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.5);
+}
+.pp-dlmenu-item {
+  display: flex; align-items: center; gap: 10px;
+  width: 100%;
+  padding: 9px 8px;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  color: #d4d4dc;
+  font: inherit;
+  font-size: 13.5px; font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+}
+.pp-dlmenu-item:hover { background: rgba(255, 255, 255, 0.06); color: #fff; }
+.pp-dlmenu-ico {
+  display: inline-grid; place-items: center;
+  width: 26px; height: 26px;
+  border-radius: 7px;
+  background: rgba(var(--dh), 0.14);
+  color: rgb(var(--dh));
+}
+/* Session count inside the header's Sessions button. */
+.ah .pp-sessbtn-n {
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #8a8a93;
+  font-size: 11.5px; font-weight: 600;
+}
+/* Inside the phone ⋯ panel the header's dropdowns open in place rather
+   than floating, so the scrolling panel can't clip them. */
+@media (max-width: 767px) {
+  .pp-dlmenu-list { position: static; margin-top: 6px; box-shadow: none; }
+  .ah .pp-dlmenu > .ah-btn { width: 100%; }
+  .ah .pp-sessmenu { display: block; }
+  .ah .pp-sessmenu > .ah-btn { width: 100%; }
+  .ah .pp-sessdrop { position: static; width: auto; margin-top: 6px; box-shadow: none; }
+  .ah .dash-fab-wrap { display: block; }
+  .ah .dash-fab-wrap > .ah-btn { width: 100%; }
+  .ah .dash-fab-wrap:not(.is-open) .dash-fab-popup { display: none; }
+  .ah .dash-fab-wrap.is-open .dash-fab-popup { position: static; width: auto; margin-top: 6px; box-shadow: none; transform: none; }
+}
+
 /* Tinted rather than solid-filled. A row of five saturated buttons would fight
    both each other and the brand beside them; a 16% wash with the hue as the
    text reads as a primary action while leaving the banner calm. */
@@ -17765,3 +17831,1428 @@ td.trn-railtable-player {
   box-shadow: 0 0 18px rgba(154, 164, 178, 0.35);
 }
 .lv-ab-neutral .lv-ab-badge { background: rgba(255, 255, 255, 0.16); color: #e6edf3; }
+
+/* =============================================================================
+   RotationPal side panels — Roster (left) and Substitutions (right)
+   Plain rows, normal-case headers, the app's own font, status in words.
+   Selectors carry two classes so they outrank the module's generic
+   `.rotationpal-module button` reset.
+   ============================================================================= */
+
+/* ── Roster ── */
+.gpb-roster .gpb-roster-head {
+  padding: 14px 14px 4px;
+  font-size: 15px; font-weight: 600;
+  letter-spacing: normal;
+  color: #e6edf3;
+}
+.gpb-roster .gpb-roster-count {
+  font-size: 12px; font-weight: 500;
+  letter-spacing: normal;
+  color: #8b949e;
+}
+.gpb-roster .gpb-roster-list { gap: 0; padding: 4px 8px 10px; }
+.gpb-roster .gpb-roster-group {
+  padding: 16px 6px 4px;
+  font-size: 13px; font-weight: 600;
+  letter-spacing: normal; text-transform: none;
+  color: #c9d1d9;
+}
+.gpb-roster .gpb-roster-group:first-child { padding-top: 6px; }
+
+/* Rows: compact (36px), no box — a faint hairline between them, background
+   only on hover. */
+.gpb-roster .gpb-bench-row {
+  gap: 10px;
+  min-height: 36px;
+  padding: 4px 6px;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+  border-radius: 0;
+}
+.gpb-roster .gpb-bench-row:hover { background: rgba(255, 255, 255, 0.04); border-color: rgba(255, 255, 255, 0.03); }
+/* Grouping says who's on court, so those rows aren't dimmed in the Playground. */
+.gpb-col-roster .gpb-bench-row.on-court { opacity: 1; background: transparent; }
+.gpb-col-roster .gpb-bench-row.on-court:hover { background: rgba(255, 255, 255, 0.04); }
+/* "Sub used": slightly dimmed. */
+.gpb-roster .gpb-bench-row.is-locked,
+.gpb-roster .gpb-bench-row.is-locked:not(.on-court) { opacity: 0.6; }
+.gpb-roster .gpb-bench-num {
+  min-width: 26px; height: auto;
+  padding: 0;
+  justify-content: flex-start;
+  background: none;
+  border: 0;
+  font-family: inherit;
+  font-size: 14px; font-weight: 700;
+  letter-spacing: normal;
+  font-variant-numeric: tabular-nums;
+  color: #e6edf3;
+}
+.gpb-roster .gpb-bench-mid { gap: 1px; }
+.gpb-bench-line {
+  display: flex; align-items: center; gap: 6px;
+  min-width: 0;
+}
+/* Names wrap rather than truncate. The role tag sits at the far right. */
+.gpb-roster .gpb-bench-name {
+  flex: 0 1 auto; min-width: 0;
+  font-size: 13px; font-weight: 600;
+  white-space: normal; overflow: visible; text-overflow: clip;
+  overflow-wrap: anywhere;
+  color: #e6edf3;
+}
+.gpb-bench-role {
+  flex: 0 0 auto;
+  font-size: 11.5px; font-weight: 600;
+  color: #8b949e;
+}
+.gpb-bench-note {
+  font-size: 11.5px;
+  line-height: 1.35;
+  color: #8b949e;
+  overflow-wrap: anywhere;
+}
+.gpb-roster .gpb-bench-blocked { letter-spacing: normal; }
+
+/* ── Substitutions ── */
+.gpb-col-subs .gpb-setbar { padding: 14px 14px 12px; }
+.gpb-setbar-row { display: flex; align-items: center; gap: 8px; }
+.gpb-setbar-set { font-size: 15px; font-weight: 600; color: #e6edf3; }
+.gpb-setbar-count {
+  margin-left: auto;
+  font-size: 12.5px;
+  color: #8b949e;
+  font-variant-numeric: tabular-nums;
+}
+.gpb-setbar-count.is-full { color: #f0a500; }
+.gpb-col-subs .gpb-setbar-undo {
+  flex: 0 0 auto;
+  width: 28px; height: 28px;
+  padding: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 7px;
+  color: #c9d1d9;
+  font-size: 15px; line-height: 1;
+}
+.gpb-col-subs .gpb-setbar-undo:hover:not(:disabled) { background: rgba(255, 255, 255, 0.07); color: #fff; }
+.gpb-col-subs .gpb-setbar-undo:disabled { opacity: 0.35; cursor: not-allowed; }
+.gpb-setbar-track {
+  height: 4px;
+  margin-top: 8px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+.gpb-setbar-fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: #58a6ff;
+  transition: width 0.2s ease;
+}
+.gpb-setbar-track.is-full .gpb-setbar-fill { background: #f0a500; }
+
+.gpb-col-subs .gpb-subflow,
+.gpb-col-subs .gpb-subflow.is-active {
+  padding: 2px 14px 12px;
+  background: transparent;
+  border: 0;
+}
+
+/* Actions: one primary, two secondary side by side. */
+.gpb-subactions { display: flex; flex-direction: column; gap: 8px; }
+.gpb-col-subs .gpb-subaction-main {
+  width: 100%;
+  padding: 10px 14px;
+  background: #f472b6;
+  border: 1px solid #f472b6;
+  border-radius: 9px;
+  color: #1a0b14;
+  font-size: 14px; font-weight: 600;
+  letter-spacing: normal;
+}
+.gpb-col-subs .gpb-subaction-main:hover { background: #f78cc6; border-color: #f78cc6; }
+.gpb-subaction-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.gpb-col-subs .gpb-subaction {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 7px 8px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: 8px;
+  color: #c9d1d9;
+  font-size: 12.5px; font-weight: 600;
+  letter-spacing: normal;
+  line-height: 1.25;
+}
+.gpb-col-subs .gpb-subaction:hover { background: rgba(255, 255, 255, 0.08); color: #fff; }
+.gpb-col-subs .gpb-subaction.is-on {
+  background: rgba(88, 166, 255, 0.14);
+  border-color: rgba(88, 166, 255, 0.45);
+  color: #fff;
+}
+.gpb-subaction-count {
+  min-width: 18px; height: 18px;
+  padding: 0 5px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.12);
+  font-size: 11px; font-weight: 600;
+}
+.gpb-subaction-hint { margin: 2px 0 0; font-size: 12px; line-height: 1.4; color: #8b949e; }
+
+.gpb-col-subs .gpb-subflow-picked { margin-top: 12px; border-bottom: 0; }
+.gpb-col-subs .gpb-subflow-cancel {
+  margin-left: auto;
+  padding: 4px 10px;
+  font-size: 12px; font-weight: 600;
+  letter-spacing: normal;
+}
+
+/* "This set": one plain line per sub or pair. */
+.gpb-thisset { margin-top: 18px; }
+.gpb-thisset-label { margin-bottom: 4px; font-size: 14px; font-weight: 600; color: #e6edf3; }
+.gpb-thisset-empty { padding: 4px 0; font-size: 12.5px; color: #8b949e; }
+.gpb-thisset-item { padding: 7px 0; border-bottom: 1px solid rgba(255, 255, 255, 0.05); }
+.gpb-thisset-item:last-child { border-bottom: 0; }
+.gpb-thisset-line { display: flex; align-items: center; gap: 4px; }
+.gpb-thisset-text {
+  flex: 1 1 auto; min-width: 0;
+  font-size: 13px; line-height: 1.4;
+  color: #c9d1d9;
+  overflow-wrap: anywhere;
+}
+.gpb-thisset-who { color: #e6edf3; font-weight: 600; }
+.gpb-thisset-kind { color: #8b949e; }
+.gpb-col-subs .gpb-thisset-x,
+.gpb-col-subs .gpb-linemenu-btn {
+  flex: 0 0 auto;
+  width: 24px; height: 24px;
+  padding: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  color: #8b949e;
+  font-size: 15px; line-height: 1;
+}
+.gpb-col-subs .gpb-linemenu-btn:hover,
+.gpb-col-subs .gpb-linemenu-btn[aria-expanded="true"] { background: rgba(255, 255, 255, 0.08); color: #e6edf3; }
+.gpb-col-subs .gpb-thisset-x:hover { background: rgba(248, 81, 73, 0.14); color: #ff7b72; }
+.gpb-linemenu { position: relative; flex: 0 0 auto; }
+.gpb-linemenu-list {
+  position: absolute;
+  top: calc(100% + 4px); right: 0;
+  z-index: 60;
+  min-width: 170px;
+  padding: 4px;
+  display: flex; flex-direction: column;
+  background: #161b22;
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: 8px;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.45);
+}
+.gpb-col-subs .gpb-linemenu-item {
+  padding: 7px 10px;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  color: #c9d1d9;
+  font-size: 12.5px; font-weight: 500;
+  text-align: left;
+  white-space: nowrap;
+}
+.gpb-col-subs .gpb-linemenu-item:hover { background: rgba(255, 255, 255, 0.07); color: #fff; }
+.gpb-thisset-item .gpb-rowflag { margin-top: 6px; }
+
+/* "New set" sits at the bottom as a plain secondary button. */
+.gpb-subfoot { padding: 6px 14px 14px; }
+.gpb-col-subs .gpb-newset-btn {
+  width: 100%;
+  padding: 8px 12px;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  color: #c9d1d9;
+  font-size: 13px; font-weight: 600;
+  letter-spacing: normal;
+}
+.gpb-col-subs .gpb-newset-btn:hover { background: rgba(255, 255, 255, 0.06); color: #fff; }
+
+/* No tiny letter-spaced capitals anywhere in either panel. */
+.gpb-roster :is(.gpb-dirtag, .gpb-rolepill, .gpb-rowflag-tag, .gpb-fbroles-eyebrow,
+  .gpb-liberotab-label, .gpb-libero-eyebrow, .gpb-playerline-name, .gpb-subflow-cand-num) {
+  letter-spacing: normal;
+  text-transform: none;
+}
+.gpb-roster :is(.gpb-dirtag, .gpb-rolepill) { font-size: 10.5px; font-weight: 600; }
+.gpb-roster :is(.gpb-fbroles-eyebrow, .gpb-liberotab-label, .gpb-libero-eyebrow) {
+  font-size: 13px; font-weight: 600;
+}
+.gpb-roster :is(.gpb-playerline-num, .gpb-subflow-cand-num) { font-family: inherit; }
+
+/* Light theme. */
+[data-theme="light"] .gpb-roster :is(.gpb-roster-head, .gpb-bench-num, .gpb-bench-name,
+  .gpb-setbar-set, .gpb-thisset-label, .gpb-thisset-who) { color: #0d1117; }
+[data-theme="light"] .gpb-roster :is(.gpb-roster-group, .gpb-thisset-text) { color: #3d434b; }
+[data-theme="light"] .gpb-thisset-item { border-bottom-color: #e6e9ee; }
+[data-theme="light"] .gpb-roster .gpb-bench-row { border-bottom-color: #eef0f3; }
+[data-theme="light"] .gpb-col-subs :is(.gpb-subaction, .gpb-newset-btn, .gpb-setbar-undo) { color: #24292f; border-color: #d0d7de; }
+[data-theme="light"] .gpb-linemenu-list { background: #fff; border-color: #d0d7de; }
+[data-theme="light"] .gpb-col-subs .gpb-linemenu-item { color: #24292f; }
+[data-theme="light"] .gpb-setbar-track { background: #e6e9ee; }
+
+/* =============================================================================
+   RotationPal side panels — role colour and status pills
+   Same structure as above; colour comes from the player's role (--role-c,
+   set inline per row / per name).
+   ============================================================================= */
+
+/* Panels: a touch lighter than the page, 12px corners. */
+.gpb-body.is-playground .gpb-roster.gpb-col-roster,
+.gpb-body.is-playground .gpb-roster.gpb-col-subs {
+  background: rgba(255, 255, 255, 0.045);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 12px;
+}
+
+/* Small count badge beside section headers. */
+.gpb-count-badge {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 20px; height: 18px;
+  margin-left: 6px;
+  padding: 0 6px;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.09);
+  color: #c9d1d9;
+  font-size: 11px; font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  vertical-align: 1px;
+}
+
+/* Rows: the number square carries the role colour; bench rows are a little
+   dimmer than on-court ones. */
+.gpb-roster .gpb-bench-row {
+  --role-c: #8b949e;
+  position: relative;
+  padding-left: 10px;
+  transition: background 0.12s ease, opacity 0.12s ease;
+}
+.gpb-roster .gpb-bench-row:not(.on-court) { opacity: 0.82; }
+.gpb-roster .gpb-bench-row:not(.on-court):hover { opacity: 1; }
+.gpb-roster .gpb-bench-row.is-locked,
+.gpb-roster .gpb-bench-row.is-locked:not(.on-court) { opacity: 0.55; }
+/* Linked to the hovered bubble on the court (and vice versa). */
+.gpb-roster .gpb-bench-row.is-linked {
+  opacity: 1;
+  background: color-mix(in srgb, var(--role-c) 10%, transparent);
+}
+
+/* Jersey number in a small rounded square tinted with the role colour. */
+.gpb-roster .gpb-bench-num {
+  flex: 0 0 auto;
+  min-width: 26px; height: 26px;
+  padding: 0 4px;
+  justify-content: center;
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--role-c) 18%, transparent);
+  border: 1px solid color-mix(in srgb, var(--role-c) 40%, transparent);
+  color: color-mix(in srgb, var(--role-c) 55%, #fff);
+  font-size: 12.5px;
+}
+/* Role badge in the role's colour, at the far right of the row. */
+.gpb-roster .gpb-bench-role {
+  margin-left: auto;
+  padding: 1px 6px;
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--role-c) 16%, transparent);
+  color: var(--role-c);
+  font-size: 12px; font-weight: 600;
+  line-height: 1.5;
+}
+/* Status pills share the name's line: the name keeps its width, the pill
+   shortens (full text in its tooltip). */
+.gpb-roster .gpb-bench-line .gpb-bench-name { flex-shrink: 0; max-width: 100%; }
+.gpb-roster .gpb-bench-line .gpb-bench-pill {
+  flex: 0 1 auto; min-width: 0;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+/* On court, in court-position order: the position digit (1–6, or "L"),
+   small and muted like the numbers on an official lineup sheet, tucked
+   right against the number square. */
+.gpb-roster .gpb-bench-row .gpb-lineup-no {
+  flex: 0 0 10px;
+  width: 10px;
+  /* Out to ~4px from the panel's left edge (past the list and row padding),
+     6px before the number square (the row's gap is 10px). */
+  margin-left: -14px;
+  margin-right: -4px;
+  white-space: nowrap;
+  overflow: visible;
+  font-family: inherit;
+  font-size: 10px; font-weight: 400;
+  line-height: 1;
+  letter-spacing: normal;
+  text-align: left;
+  font-variant-numeric: tabular-nums;
+  color: #5a5a62;
+}
+/* Bench pinned to the bottom of the roster panel: the list is a full-height
+   flex column, so the auto margin takes the free space. With no free space
+   it's 0 and the list scrolls as usual — nothing overlaps. */
+.gpb-roster .gpb-roster-list > .gpb-bench-section {
+  margin-top: auto;
+  flex: 0 0 auto;
+  display: flex; flex-direction: column;
+}
+/* Inside the wrapper the header is a first child — keep its 16px above. */
+.gpb-roster .gpb-bench-section > .gpb-roster-group:first-child { padding-top: 16px; }
+/* The libero box under the six: a thin divider above, same row height. */
+.gpb-roster .gpb-libbox {
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+/* Looks like any other roster row — no fill, no frame; gold lives only on
+   the number square and the "L" tag. Dimmed to 50% while the libero is off
+   court this rotation. */
+.gpb-roster .gpb-libbox-row {
+  cursor: pointer;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+  box-shadow: none;
+}
+.gpb-roster .gpb-libbox-row:focus:not(:focus-visible) { outline: none; }
+.gpb-roster .gpb-libbox-row:not(.is-empty-spot) { opacity: 0.5; }
+.gpb-roster .gpb-libbox-row.is-in { opacity: 1; }
+/* A starter the libero is in for: dimmed, with a gold "⇄ L" in place of
+   their role tag. */
+.gpb-roster .gpb-bench-row.is-libero-out { opacity: 0.5; }
+.gpb-roster .gpb-bench-libin {
+  flex: 0 0 auto;
+  display: inline-flex; align-items: center; gap: 2px;
+  margin-left: auto;
+  padding: 1px 6px;
+  border-radius: 5px;
+  background: color-mix(in srgb, #fbbf24 16%, transparent);
+  color: #fbbf24;
+  font-size: 12px; font-weight: 600;
+  line-height: 1.5;
+}
+[data-theme="light"] .gpb-roster .gpb-bench-libin { color: color-mix(in srgb, #fbbf24 65%, #000); }
+.gpb-roster .gpb-libbox-row:not(.is-empty-spot):hover { opacity: 1; }
+.gpb-roster .gpb-libbox-row.is-empty-spot:hover { background: rgba(255, 255, 255, 0.04); }
+[data-theme="light"] .gpb-roster .gpb-libbox { border-top-color: #e6e9ee; }
+/* An empty court spot: faded, with the role the system wants there. */
+.gpb-roster .gpb-bench-row.is-empty-spot { opacity: 0.45; cursor: default; }
+.gpb-roster .gpb-bench-row.is-empty-spot:hover { background: transparent; }
+.gpb-roster .gpb-bench-row.is-empty-spot .gpb-bench-name { font-weight: 500; color: #8b949e; }
+
+/* Tiny pushpin: a play-as the coach picked (kept through system changes). */
+.gpb-pinmark {
+  flex: 0 0 auto;
+  display: inline-flex; align-items: center;
+  color: #8b949e;
+  line-height: 1;
+}
+.gpb-bubble-natural .gpb-pinmark { margin-right: 2px; color: inherit; }
+/* Playing another role: the natural one, small and gray, by the name. */
+.gpb-roster .gpb-bench-natural {
+  flex: 0 0 auto;
+  font-size: 12px; font-weight: 500;
+  color: #8b949e;
+}
+
+/* Status notes as small coloured pills. */
+.gpb-roster .gpb-bench-note {
+  display: flex; flex-wrap: wrap; gap: 4px;
+  margin-top: 3px;
+}
+.gpb-bench-pill {
+  display: inline-block;
+  padding: 1px 7px;
+  border-radius: 9px;
+  font-size: 10.5px; font-weight: 600;
+  line-height: 1.5;
+  border: 1px solid transparent;
+}
+.gpb-bench-pill.is-libero { background: rgba(251, 191, 36, 0.14); border-color: rgba(251, 191, 36, 0.35); color: #fbbf24; }
+.gpb-bench-pill.is-used   { background: rgba(229, 115, 115, 0.12); border-color: rgba(229, 115, 115, 0.32); color: #e57373; }
+.gpb-bench-pill.is-paired { background: rgba(168, 85, 247, 0.14); border-color: rgba(168, 85, 247, 0.38); color: #c084fc; }
+
+/* Sub counter: pink, orange from 10, red at 12. */
+.gpb-setbar-fill { background: #f472b6; transition: width 0.2s ease, background 0.2s ease; }
+.gpb-setbar-track.is-warn .gpb-setbar-fill { background: #fb923c; }
+.gpb-setbar-track.is-full .gpb-setbar-fill { background: #f85149; }
+.gpb-setbar-count.is-warn { color: #fb923c; }
+.gpb-setbar-count.is-full { color: #f85149; }
+
+/* "This set": a leading icon, names in their role colour. */
+.gpb-thisset-icon {
+  flex: 0 0 auto;
+  width: 22px; height: 22px;
+  display: inline-flex; align-items: center; justify-content: center;
+  margin-right: 4px;
+  border-radius: 6px;
+  background: rgba(244, 114, 182, 0.13);
+  color: #f472b6;
+  font-size: 13px; line-height: 1;
+}
+.gpb-thisset-icon.is-fb { background: rgba(168, 85, 247, 0.14); color: #c084fc; }
+.gpb-thisset-who { --role-c: #e6edf3; color: var(--role-c); }
+
+/* Light theme: deepen the role colours so they read on white. */
+[data-theme="light"] .gpb-roster .gpb-bench-role,
+[data-theme="light"] .gpb-roster .gpb-thisset-who { color: color-mix(in srgb, var(--role-c) 65%, #000); }
+[data-theme="light"] .gpb-roster .gpb-bench-num { color: color-mix(in srgb, var(--role-c) 60%, #000); }
+[data-theme="light"] .gpb-body.is-playground .gpb-roster.gpb-col-roster,
+[data-theme="light"] .gpb-body.is-playground .gpb-roster.gpb-col-subs { background: #f6f8fa; border-color: #d0d7de; }
+[data-theme="light"] .gpb-count-badge { background: #e6e9ee; color: #3d434b; }
+
+/* Bench subheaders by position, in the role's colour. */
+.gpb-roster .gpb-roster-subgroup {
+  margin: 0;
+  padding: 10px 6px 4px;
+  font-size: 12px; font-weight: 600;
+  line-height: 1.3;
+  color: var(--role-c);
+}
+[data-theme="light"] .gpb-roster .gpb-roster-subgroup { color: color-mix(in srgb, var(--role-c) 65%, #000); }
+
+/* ── Empty court spot: "+ Add player" placeholder + bench picker ── */
+.gpb-court .gpb-slot-guide.gpb-slot-add {
+  width: var(--gpb-bubble, 88px); height: var(--gpb-bubble, 88px);
+  padding: 0;
+  flex-direction: column; gap: 2px;
+  border: 2px dashed rgba(88, 166, 255, 0.45);
+  border-radius: 50%;
+  background: rgba(88, 166, 255, 0.06);
+  color: #9ecbff;
+  font-family: inherit;
+  cursor: pointer;
+  pointer-events: auto;
+  z-index: 4;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+.gpb-court .gpb-slot-guide.gpb-slot-add:hover,
+.gpb-court .gpb-slot-guide.gpb-slot-add.is-open {
+  background: rgba(88, 166, 255, 0.14);
+  border-color: rgba(88, 166, 255, 0.8);
+  color: #fff;
+}
+.gpb-court .gpb-slot-guide.gpb-slot-add:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+/* The module's `button:active { transform: scale(0.97) }` used to replace
+   the centring translate while the mouse was down, so the placeholder
+   jumped half its size away from the cursor and the click landed on the
+   bare court instead. Keep the translate in every state. */
+.gpb-court .gpb-slot-guide.gpb-slot-add,
+.gpb-court .gpb-slot-guide.gpb-slot-add:hover,
+.gpb-court .gpb-slot-guide.gpb-slot-add:active { transform: translate(-50%, -50%); }
+/* Drop target while a roster player is dragged over the court. */
+.gpb-court .gpb-slot-guide.gpb-slot-add.is-drop-target {
+  background: rgba(74, 222, 128, 0.16);
+  border-color: #4ade80;
+  border-style: solid;
+  color: #fff;
+}
+.gpb-bubble.is-drop-target {
+  box-shadow:
+    0 0 0 3px rgba(0,0,0,0.35),
+    0 0 0 6px rgba(74, 222, 128, 0.8),
+    0 0 20px rgba(74, 222, 128, 0.45);
+}
+.gpb-slot-add-plus { font-size: calc(var(--gpb-bubble, 88px) * 0.3); font-weight: 600; line-height: 1; }
+.gpb-slot-add-text {
+  font-size: clamp(9px, calc(var(--gpb-bubble, 88px) * 0.12), 12px);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.gpb-slotpick {
+  position: absolute;
+  z-index: 40;
+  min-width: 190px; max-height: 240px;
+  overflow-y: auto;
+  padding: 4px;
+  transform: translate(-50%, calc(var(--gpb-bubble, 88px) / 2 + 8px));
+  display: flex; flex-direction: column;
+  background: #161b22;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.5);
+}
+.gpb-slotpick.is-up { transform: translate(-50%, calc(-100% - var(--gpb-bubble, 88px) / 2 - 8px)); }
+.gpb-slotpick-head { padding: 6px 8px 4px; font-size: 12px; font-weight: 600; color: #8b949e; }
+.gpb-slotpick-empty { padding: 6px 8px 8px; font-size: 12.5px; color: #8b949e; }
+.gpb-court .gpb-slotpick-item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 8px;
+  background: transparent;
+  border: 0;
+  border-radius: 7px;
+  color: #e6edf3;
+  font-family: inherit;
+  font-size: 13px; font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+.gpb-court .gpb-slotpick-item:hover,
+.gpb-court .gpb-slotpick-item:focus-visible { background: rgba(255, 255, 255, 0.07); outline: none; }
+.gpb-slotpick-num {
+  min-width: 26px; height: 22px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--role-c) 18%, transparent);
+  color: color-mix(in srgb, var(--role-c) 55%, #fff);
+  font-size: 11.5px; font-weight: 700;
+}
+.gpb-slotpick-name { flex: 1 1 auto; min-width: 0; }
+.gpb-court .gpb-slotpick-more {
+  margin-top: 2px;
+  padding: 7px 8px;
+  background: transparent;
+  border: 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 0 0 7px 7px;
+  color: #8b949e;
+  font-family: inherit;
+  font-size: 12.5px; font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+}
+.gpb-court .gpb-slotpick-more:hover { background: rgba(255, 255, 255, 0.05); border-color: rgba(255, 255, 255, 0.07); color: #c9d1d9; }
+.gpb-slotpick-group {
+  padding: 8px 8px 2px;
+  font-size: 11.5px; font-weight: 600;
+  color: var(--role-c);
+}
+.gpb-slotpick-role { font-size: 10.5px; font-weight: 700; color: var(--role-c); }
+[data-theme="light"] .gpb-slotpick { background: #fff; border-color: #d0d7de; }
+[data-theme="light"] .gpb-court .gpb-slotpick-item { color: #24292f; }
+
+/* ── Court bubbles: hover link + drag guides ── */
+
+/* Linked to the hovered roster row. */
+.gpb-bubble.is-linked {
+  box-shadow:
+    0 0 0 3px rgba(0,0,0,0.35),
+    0 4px 13px var(--bubble-glow-soft),
+    0 0 0 5px rgba(255,255,255,0.55);
+}
+/* Neighbours whose position constrains the dragged player. */
+.gpb-bubble.is-constraint {
+  box-shadow:
+    0 0 0 3px rgba(0,0,0,0.35),
+    0 4px 13px var(--bubble-glow-soft),
+    0 0 0 5px rgba(134, 239, 172, 0.45);
+  transition: box-shadow 0.18s ease;
+}
+/* Dragged player in a legal spot: green border (is-violation stays red). */
+.gpb-bubble.is-drag-legal {
+  border-color: #4ade80;
+  box-shadow:
+    0 0 0 3px rgba(0,0,0,0.35),
+    0 8px 20px rgba(74, 222, 128, 0.35),
+    0 0 0 5px rgba(74, 222, 128, 0.35);
+}
+.gpb-bubble.is-violation { border-color: #f85149; }
+
+.gpb-guides {
+  position: absolute; left: 0; top: 0;
+  pointer-events: none;
+  animation: gpb-guides-in 0.18s ease-out;
+  transition: opacity 0.2s ease;
+}
+.gpb-guides.is-leaving { opacity: 0; }
+@keyframes gpb-guides-in { from { opacity: 0; } }
+.gpb-guides-zone  { z-index: 2; }
+.gpb-guides-lines { z-index: 6; overflow: visible; }
+.gpb-guide-outside { fill: rgba(0, 0, 0, 0.22); }
+.gpb-guide-legal {
+  fill: rgba(74, 222, 128, 0.09);
+  stroke: rgba(74, 222, 128, 0.28);
+  stroke-width: 1;
+}
+.gpb-guide-line {
+  stroke: rgba(74, 222, 128, 0.75);
+  stroke-width: 1.5;
+  stroke-dasharray: 5 5;
+  stroke-linecap: round;
+  transition: stroke 0.12s ease;
+}
+.gpb-guide-line.is-broken { stroke: #f85149; stroke-width: 2; }
+.gpb-guide-label {
+  fill: #bbf7d0;
+  font-size: 10.5px; font-weight: 600;
+  paint-order: stroke;
+  stroke: rgba(0, 0, 0, 0.7);
+  stroke-width: 3px;
+  stroke-linejoin: round;
+}
+.gpb-guide-label.is-broken { fill: #ffb1ad; }
+.gpb-guides-free {
+  left: 50%; top: auto; bottom: 26px;
+  transform: translateX(-50%);
+  z-index: 6;
+  padding: 5px 12px;
+  border-radius: 999px;
+  background: rgba(13, 17, 23, 0.85);
+  border: 1px solid rgba(74, 222, 128, 0.45);
+  color: #bbf7d0;
+  font-size: 12px; font-weight: 600;
+  white-space: nowrap;
+}
+
+/* =============================================================================
+   RotationPal header (Playground)
+   One row on desktop: back · title | rotations · Serve/Recv · System ·
+   Formation · legal status | Lineup · Hide panels · More · Close.
+   Every control is 36px tall. Pink only marks the active rotation, the
+   active phase and focus rings. Selectors carry two classes so they
+   outrank the module's `.rotationpal-module button` reset.
+   ============================================================================= */
+.gpb-hdr {
+  --hdr-h: 36px;
+  --hdr-pink: #f472b6;
+  position: relative;
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 14px;
+  background: #121722;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  flex: 0 0 auto;
+}
+.gpb-hdr-row3 { display: contents; }
+.gpb-hdr-actions { display: flex; align-items: center; gap: 4px; flex: 0 0 auto; }
+
+/* Focus rings: pink everywhere in the header. */
+.gpb-hdr :is(button, input):focus-visible {
+  outline: 2px solid var(--hdr-pink);
+  outline-offset: 2px;
+}
+
+/* Icon buttons (back, lineup, panels, more, close). */
+.gpb-hdr .gpb-hdr-icon {
+  width: var(--hdr-h); height: var(--hdr-h);
+  padding: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  flex: 0 0 auto;
+  background: transparent;
+  border: 0;
+  border-radius: 8px;
+  color: #aab4bf;
+  font-size: 18px; line-height: 1;
+}
+.gpb-hdr .gpb-hdr-icon:hover { background: rgba(255, 255, 255, 0.07); border-color: transparent; color: #fff; }
+.gpb-hdr .gpb-hdr-icon:active { transform: none; }
+.gpb-hdr .gpb-hdr-icon.is-on { color: #fff; background: rgba(255, 255, 255, 0.06); }
+
+/* Title + subtitle. */
+.gpb-hdr-titles {
+  display: flex; flex-direction: column; justify-content: center;
+  min-width: 0; max-width: 260px;
+  margin-right: 6px;
+}
+.gpb-hdr .gpb-head-title-btn {
+  margin: 0; padding: 1px 6px 1px 0;
+  gap: 6px;
+  border: 0;
+  background: transparent;
+  font-size: 16px; font-weight: 600;
+  letter-spacing: normal;
+  color: #e6edf3;
+  min-width: 0;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.gpb-hdr .gpb-head-title-btn:hover { background: transparent; border: 0; }
+.gpb-hdr .gpb-head-title-edit {
+  font-size: 12px; color: #8b949e;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+.gpb-hdr .gpb-head-title-btn:hover .gpb-head-title-edit,
+.gpb-hdr .gpb-head-title-btn:focus-visible .gpb-head-title-edit { opacity: 1; }
+.gpb-hdr .gpb-head-title-input {
+  min-width: 0; width: 240px;
+  padding: 2px 6px;
+  font-size: 16px; font-weight: 600;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--hdr-pink);
+  border-radius: 6px;
+}
+.gpb-hdr-sub {
+  font-size: 12px; color: #8b949e;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+/* Segmented controls (rotations, Serve/Recv). */
+.gpb-hdr-seg {
+  display: inline-flex; align-items: stretch;
+  height: var(--hdr-h);
+  padding: 3px;
+  gap: 2px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 9px;
+  flex: 0 0 auto;
+}
+.gpb-hdr .gpb-hdr-seg-btn {
+  min-width: 30px;
+  padding: 0 10px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: #aab4bf;
+  font-size: 13px; font-weight: 600;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.gpb-hdr .gpb-hdr-seg-btn:hover { background: rgba(255, 255, 255, 0.06); border-color: transparent; color: #fff; }
+.gpb-hdr .gpb-hdr-seg-btn:active { transform: none; }
+/* Active rotation: solid pink, dark text. */
+.gpb-hdr .gpb-hdr-rots .gpb-hdr-seg-btn.is-on,
+.gpb-hdr .gpb-hdr-rots .gpb-hdr-seg-btn.is-on:hover {
+  background: var(--hdr-pink);
+  border-color: var(--hdr-pink);
+  color: #1a0b14;
+}
+/* Active phase: pink outline, light pink text. */
+.gpb-hdr .gpb-hdr-modes .gpb-hdr-seg-btn.is-on,
+.gpb-hdr .gpb-hdr-modes .gpb-hdr-seg-btn.is-on:hover {
+  background: rgba(244, 114, 182, 0.08);
+  border-color: var(--hdr-pink);
+  color: #fbcfe8;
+}
+
+/* Dropdown chips (System, Formation). */
+.gpb-hdr-chipwrap { position: relative; flex: 0 0 auto; }
+.gpb-hdr .gpb-hdr-chip {
+  height: var(--hdr-h);
+  padding: 0 10px 0 12px;
+  display: inline-flex; align-items: center; gap: 8px;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  color: #d7dde4;
+  font-size: 13px; font-weight: 600;
+  white-space: nowrap;
+}
+.gpb-hdr .gpb-hdr-chip:hover,
+.gpb-hdr .gpb-hdr-chip.is-open { background: rgba(255, 255, 255, 0.06); border-color: rgba(255, 255, 255, 0.18); color: #fff; }
+.gpb-hdr .gpb-hdr-chip:active { transform: none; }
+.gpb-hdr-chevron { color: #8b949e; flex: 0 0 auto; transition: transform 0.15s ease; }
+.gpb-hdr-chip.is-open .gpb-hdr-chevron { transform: rotate(180deg); }
+
+/* Dropdown menus: dark solid, 8px radius, checkmark on the selected one. */
+.gpb-hdrmenu {
+  position: absolute;
+  top: calc(100% + 6px); left: 0;
+  z-index: 12000;
+  min-width: 230px;
+  padding: 4px;
+  display: flex; flex-direction: column;
+  background: #161b22;
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: 8px;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.5);
+}
+.gpb-hdr .gpb-hdrmenu-item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 10px;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  color: #d7dde4;
+  font-size: 13px; font-weight: 500;
+  text-align: left;
+  white-space: nowrap;
+}
+.gpb-hdr .gpb-hdrmenu-item:hover { background: rgba(255, 255, 255, 0.07); border-color: transparent; color: #fff; }
+.gpb-hdr .gpb-hdrmenu-item:active { transform: none; }
+.gpb-hdr .gpb-hdrmenu-item.is-selected { color: #fff; font-weight: 600; }
+.gpb-hdrmenu-check-mark { width: 14px; flex: 0 0 auto; color: var(--hdr-pink); font-weight: 700; }
+.gpb-hdrmenu-group {
+  padding: 8px 10px 4px;
+  font-size: 11.5px; font-weight: 600;
+  color: #8b949e;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+  margin-top: 4px;
+}
+.gpb-hdrmenu-check {
+  display: flex; align-items: center; gap: 8px;
+  margin-top: 4px;
+  padding: 9px 10px 6px;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+  font-size: 12.5px; color: #c9d1d9;
+  cursor: pointer;
+}
+.gpb-hdrmenu-check input { accent-color: var(--hdr-pink); width: 15px; height: 15px; margin: 0; }
+
+/* Legal status. */
+.gpb-hdr-legal {
+  margin-left: auto;
+  height: var(--hdr-h);
+  padding: 0 12px;
+  display: inline-flex; align-items: center;
+  border-radius: 8px;
+  font-size: 13px; font-weight: 600;
+  white-space: nowrap;
+  flex: 0 0 auto;
+}
+.gpb-hdr-legal.is-ok { color: #4ade80; background: rgba(74, 222, 128, 0.08); }
+.gpb-hdr .gpb-hdr-legal.is-bad {
+  color: #ff8f88;
+  background: rgba(248, 81, 73, 0.10);
+  border: 1px solid rgba(248, 81, 73, 0.35);
+}
+.gpb-hdr .gpb-hdr-legal.is-bad:hover { background: rgba(248, 81, 73, 0.16); border-color: rgba(248, 81, 73, 0.5); }
+
+/* "Re-arrange players for this system?" */
+.gpb-hdr-confirm {
+  position: absolute;
+  top: calc(100% + 6px); left: 50%;
+  transform: translateX(-50%);
+  z-index: 12001;
+  padding: 12px 14px;
+  display: flex; align-items: center; gap: 14px;
+  background: #161b22;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.5);
+}
+.gpb-hdr-confirm-text { font-size: 13px; color: #e6edf3; font-weight: 500; }
+.gpb-hdr-confirm-btns { display: flex; gap: 6px; }
+.gpb-hdr .gpb-hdr-confirm-yes,
+.gpb-hdr .gpb-hdr-confirm-keep {
+  height: 32px; padding: 0 12px;
+  border-radius: 7px;
+  font-size: 13px; font-weight: 600;
+  white-space: nowrap;
+}
+.gpb-hdr .gpb-hdr-confirm-yes { background: #e6edf3; border: 1px solid #e6edf3; color: #0d1117; }
+.gpb-hdr .gpb-hdr-confirm-yes:hover { background: #fff; border-color: #fff; }
+.gpb-hdr .gpb-hdr-confirm-keep { background: transparent; border: 1px solid rgba(255, 255, 255, 0.16); color: #d7dde4; }
+.gpb-hdr .gpb-hdr-confirm-keep:hover { background: rgba(255, 255, 255, 0.06); border-color: rgba(255, 255, 255, 0.24); }
+
+/* Overlap status click: the players involved pulse on the court. */
+.gpb-bubble.is-flagged {
+  animation: gpb-flag-pulse 0.65s ease-in-out 4;
+  box-shadow:
+    0 0 0 3px rgba(0,0,0,0.35),
+    0 0 0 6px rgba(248, 81, 73, 0.75),
+    0 0 22px rgba(248, 81, 73, 0.55);
+}
+@keyframes gpb-flag-pulse { 50% { transform: scale(1.08); } }
+
+/* Empty-spot placeholder: the role the system expects there. */
+.gpb-slot-add-role { color: var(--role-c); }
+
+/* Phones: back · name · ⋯ / rotations full width / phase, chips, status. */
+@media (max-width: 767px) {
+  .gpb-hdr {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-areas:
+      "back titles actions"
+      "rots rots rots"
+      "row3 row3 row3";
+    gap: 8px;
+    padding: 8px 10px 10px;
+  }
+  .gpb-hdr-back { grid-area: back; }
+  .gpb-hdr-titles { grid-area: titles; max-width: none; margin: 0; }
+  .gpb-hdr-actions { grid-area: actions; }
+  .gpb-hdr .gpb-hdr-desk { display: none; }
+  .gpb-hdr-rots { grid-area: rots; width: 100%; }
+  .gpb-hdr-rots .gpb-hdr-seg-btn { flex: 1 1 0; min-height: 0; }
+  .gpb-hdr-row3 {
+    grid-area: row3;
+    display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+  }
+  .gpb-hdr-legal { margin-left: 0; }
+  .gpb-hdr .gpb-head-title-input { width: 100%; }
+  .gpb-hdr-confirm { left: 10px; right: 10px; transform: none; flex-wrap: wrap; }
+}
+
+/* Light theme. */
+[data-theme="light"] .gpb-hdr { background: #f6f8fa; border-bottom-color: #d0d7de; }
+[data-theme="light"] .gpb-hdr .gpb-head-title-btn { color: #0d1117; }
+[data-theme="light"] .gpb-hdr :is(.gpb-hdr-icon, .gpb-hdr-seg-btn, .gpb-hdr-chip) { color: #3d434b; }
+[data-theme="light"] .gpb-hdr-seg { background: #fff; border-color: #d0d7de; }
+[data-theme="light"] .gpb-hdr .gpb-hdr-chip { border-color: #d0d7de; }
+[data-theme="light"] .gpb-hdr .gpb-hdr-modes .gpb-hdr-seg-btn.is-on { color: #be185d; }
+[data-theme="light"] :is(.gpb-hdrmenu, .gpb-hdr-confirm) { background: #fff; border-color: #d0d7de; }
+[data-theme="light"] .gpb-hdr .gpb-hdrmenu-item { color: #24292f; }
+
+/* =============================================================================
+   RotationPal — "Play as" (makeshift position)
+   ============================================================================= */
+/* On the bubble: the player's NATURAL role, small and dark, where the libero
+   "L" chip sits (a libero never plays as anything else). The fill is the
+   role being played. */
+.gpb-bubble-natural {
+  position: absolute;
+  bottom: calc(var(--gpb-bubble, 88px) * -0.09);
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 1px 6px;
+  background: #111418;
+  border: 1px dashed var(--bubble-edge);
+  border-radius: 7px;
+  color: #d0d7de;
+  font-size: 9.5px; font-weight: 800;
+  letter-spacing: 0.04em;
+  line-height: 1.35;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 2;
+}
+@media (max-width: 767px) {
+  .gpb-body.is-playground .gpb-bubble:has(.gpb-bubble-natural) .gpb-bubble-name { top: calc(100% + 11px); }
+}
+.gpb-bench-pill.is-natural { background: transparent; border-color: rgba(139, 148, 158, 0.35); color: #8b949e; }
+
+/* The roster row's menu opens inline, under the row's own line, so a
+   scrolling roster can never clip it. */
+.gpb-roster .gpb-bench-row:has(.gpb-playas-menu) { flex-wrap: wrap; flex-shrink: 0; background: rgba(255, 255, 255, 0.05); }
+.gpb-playas-menu {
+  flex: 1 0 100%;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 5px;
+  padding: 8px 0 2px;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+  cursor: default;
+}
+.gpb-playas-head { flex: 1 0 100%; font-size: 12px; font-weight: 600; color: #8b949e; }
+.gpb-roster .gpb-playas-item {
+  display: inline-flex; align-items: center; gap: 5px;
+  height: 26px;
+  padding: 0 7px;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 7px;
+  color: #c9d1d9;
+  font-size: 12px; font-weight: 600;
+  letter-spacing: normal; text-transform: none;
+}
+.gpb-roster .gpb-playas-item:hover { background: rgba(255, 255, 255, 0.07); color: #fff; }
+.gpb-roster .gpb-playas-item.is-on {
+  border-color: var(--role-c);
+  background: color-mix(in srgb, var(--role-c) 16%, transparent);
+  color: #fff;
+}
+.gpb-playas-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--role-c); }
+.gpb-playas-natural { font-size: 10px; font-weight: 500; color: #8b949e; }
+.gpb-roster .gpb-playas-item.is-reset { flex: 1 0 100%; justify-content: center; border-style: dashed; color: #8b949e; }
+
+/* =============================================================================
+   RotationPal — streamlined Substitutions panel (Playground)
+   ============================================================================= */
+.gpb-subs { padding: 14px 14px 16px; display: flex; flex-direction: column; gap: 16px; }
+.gpb-subs-head-row { display: flex; align-items: center; gap: 10px; }
+.gpb-subs-set { font-size: 15px; font-weight: 600; color: #e6edf3; }
+.gpb-subs-count {
+  font-size: 13px; color: #8b949e;
+  font-variant-numeric: tabular-nums;
+}
+.gpb-subs-count.is-warn { color: #fb923c; }
+.gpb-subs-count.is-full { color: #f87171; }
+.gpb-roster .gpb-subs-undo {
+  margin-left: auto;
+  flex: 0 0 auto;
+  width: 30px; height: 30px;
+  padding: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  color: #c9d1d9;
+  font-size: 15px; line-height: 1;
+}
+.gpb-roster .gpb-subs-undo:hover:not(:disabled) { background: rgba(255, 255, 255, 0.07); color: #fff; }
+.gpb-roster .gpb-subs-undo:disabled { opacity: 0.35; cursor: not-allowed; }
+.gpb-subs-track {
+  height: 3px;
+  margin-top: 9px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+.gpb-subs-fill { display: block; height: 100%; border-radius: inherit; background: #f472b6; transition: width 0.2s ease, background 0.2s ease; }
+.gpb-subs-track.is-warn .gpb-subs-fill { background: #fb923c; }
+.gpb-subs-track.is-full .gpb-subs-fill { background: #ef4444; }
+
+.gpb-subs-muted { color: #8b949e; }
+.gpb-roster .gpb-subs-link,
+.gpb-roster .gpb-subs-cancel {
+  flex: 0 0 auto;
+  padding: 2px 4px;
+  background: transparent;
+  border: 0;
+  color: #f472b6;
+  font-size: 12.5px; font-weight: 600;
+  letter-spacing: normal; text-transform: none;
+}
+.gpb-roster .gpb-subs-cancel { color: #8b949e; }
+.gpb-roster :is(.gpb-subs-link, .gpb-subs-cancel):hover { background: transparent; color: #fff; text-decoration: underline; }
+
+/* Sub out: who's coming off, play-as, and the bench. */
+.gpb-subs-out { display: flex; flex-direction: column; gap: 4px; }
+.gpb-subs-out-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 4px; }
+.gpb-subs-out-title { flex: 1 1 auto; min-width: 0; font-size: 14px; font-weight: 600; color: #e6edf3; }
+.gpb-subs-playas { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; margin-bottom: 6px; }
+.gpb-subs-playas-label { margin-right: 2px; font-size: 12px; color: #8b949e; }
+.gpb-roster .gpb-subs-playas-chip {
+  height: 26px;
+  padding: 0 8px;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  color: #8b949e;
+  font-size: 11.5px; font-weight: 600;
+  letter-spacing: normal;
+}
+.gpb-roster .gpb-subs-playas-chip:hover { color: #fff; border-color: var(--role-c); }
+.gpb-roster .gpb-subs-playas-chip.is-on {
+  background: color-mix(in srgb, var(--role-c) 18%, transparent);
+  border-color: var(--role-c);
+  color: #fff;
+}
+.gpb-roster .gpb-subs-playas-reset {
+  padding: 0 4px;
+  background: transparent; border: 0;
+  color: #8b949e;
+  font-size: 11.5px; font-weight: 500;
+  text-decoration: underline;
+}
+.gpb-subs-group {
+  margin-top: 6px;
+  font-size: 11.5px; font-weight: 600;
+  color: var(--role-c, #8b949e);
+}
+.gpb-roster .gpb-subs-cand {
+  display: flex; align-items: center; gap: 10px;
+  width: 100%;
+  min-height: 38px;
+  padding: 4px 8px;
+  margin: 0 -8px;
+  width: calc(100% + 16px);
+  background: transparent;
+  border: 0;
+  border-radius: 8px;
+  color: #c9d1d9;
+  text-align: left;
+  letter-spacing: normal;
+}
+.gpb-roster .gpb-subs-cand:hover { background: rgba(255, 255, 255, 0.06); color: #fff; }
+.gpb-subs-cand-num {
+  flex: 0 0 auto;
+  min-width: 26px; height: 26px;
+  padding: 0 4px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 7px;
+  background: var(--role-c);
+  color: #111418;
+  font-size: 12px; font-weight: 700;
+}
+.gpb-subs-cand-name { flex: 1 1 auto; min-width: 0; font-size: 13.5px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gpb-subs-cand-role {
+  flex: 0 0 auto;
+  padding: 1px 6px;
+  border: 1px solid color-mix(in srgb, var(--role-c) 50%, transparent);
+  border-radius: 5px;
+  color: var(--role-c);
+  font-size: 10.5px; font-weight: 700;
+}
+.gpb-subs-empty { padding: 4px 0; font-size: 12.5px; line-height: 1.4; color: #8b949e; }
+
+/* Libero: one line. */
+.gpb-subs-libero { display: flex; align-items: center; gap: 10px; font-size: 13px; }
+.gpb-subs-libero-text { flex: 1 1 auto; min-width: 0; line-height: 1.4; color: #c9d1d9; }
+.gpb-subs-libero-label { color: #8b949e; }
+.gpb-subs-libero-who { color: #fbbf24; font-weight: 600; }
+.gpb-roster .gpb-subs-switch {
+  position: relative;
+  flex: 0 0 auto;
+  width: 32px; height: 18px;
+  padding: 0;
+  background: rgba(255, 255, 255, 0.14);
+  border: 0;
+  border-radius: 9px;
+  transition: background 0.15s ease;
+}
+.gpb-roster .gpb-subs-switch.is-on { background: #f472b6; }
+.gpb-subs-switch-knob {
+  position: absolute; top: 2px; left: 2px;
+  width: 14px; height: 14px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform 0.15s ease;
+}
+.gpb-subs-switch.is-on .gpb-subs-switch-knob { transform: translateX(14px); }
+.gpb-subs-libero-edit .gpb-liberotab { padding: 0; }
+
+/* This set: plain lines. */
+.gpb-subs-log { display: flex; flex-direction: column; }
+.gpb-subs-log-label { margin-bottom: 4px; font-size: 13px; font-weight: 600; color: #e6edf3; }
+.gpb-subs-log > .gpb-subs-muted { font-size: 12.5px; }
+.gpb-subs-log-line { display: flex; align-items: center; gap: 4px; min-height: 28px; }
+.gpb-subs-log-text { flex: 1 1 auto; min-width: 0; font-size: 13px; line-height: 1.35; color: #c9d1d9; }
+.gpb-roster .gpb-subs-x {
+  flex: 0 0 auto;
+  width: 22px; height: 22px;
+  padding: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: transparent;
+  border: 0;
+  border-radius: 5px;
+  color: #6e7681;
+  font-size: 14px; line-height: 1;
+}
+.gpb-roster .gpb-subs-x:hover { background: rgba(248, 81, 73, 0.14); color: #ff7b72; }
+.gpb-subs-log .gpb-linemenu-btn {
+  width: 22px; height: 22px; padding: 0;
+  background: transparent; border: 0; border-radius: 5px;
+  color: #8b949e;
+}
+.gpb-subs-rowflag {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px;
+  margin-top: 6px;
+  font-size: 12px; color: #f0a500;
+}
+
+[data-theme="light"] .gpb-roster :is(.gpb-subs-set, .gpb-subs-log-label, .gpb-subs-out-title) { color: #0d1117; }
+[data-theme="light"] .gpb-roster :is(.gpb-subs-log-text, .gpb-subs-libero-text, .gpb-subs-cand) { color: #24292f; }
+[data-theme="light"] .gpb-subs-track { background: #e6e9ee; }
+[data-theme="light"] .gpb-roster .gpb-subs-undo { color: #24292f; border-color: #d0d7de; }
+
+/* =============================================================================
+   RotationPal right panel — "Rotation N · Serve", "All rotations", "Notes",
+   then Subs. Same type and muted labels as the roster; role colour only on
+   numbers and dots. The panel (.gpb-col-subs) scrolls when it's too tall.
+   ============================================================================= */
+.gpb-ro { display: flex; flex-direction: column; gap: 22px; padding: 14px 14px 0; }
+.gpb-roster .gpb-ro-title {
+  margin: 0 0 8px;
+  font-size: 13px; font-weight: 600;
+  letter-spacing: normal; text-transform: none;
+  color: #e6edf3;
+}
+.gpb-ro-title-row { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.gpb-ro-muted { color: #6e7681; }
+.gpb-ro-num {
+  color: var(--role-c, #c9d1d9);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+/* This rotation: label left, value right, one compact line each. */
+.gpb-ro-facts { margin: 0; display: flex; flex-direction: column; }
+.gpb-ro-fact {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  min-height: 26px;
+  font-size: 12.5px;
+}
+.gpb-ro-fact dt { flex: 0 0 auto; color: #8b949e; }
+.gpb-ro-fact dd { margin: 0; min-width: 0; text-align: right; color: #c9d1d9; }
+.gpb-ro-legal {
+  display: block;
+  width: 100%;
+  margin-top: 8px;
+  font-size: 12.5px; font-weight: 600;
+  line-height: 1.35;
+  text-align: left;
+}
+.gpb-ro-legal.is-ok { color: #3fb950; }
+.gpb-roster .gpb-ro-legal.is-bad {
+  padding: 7px 9px;
+  background: rgba(248, 81, 73, 0.08);
+  border: 1px solid rgba(248, 81, 73, 0.30);
+  border-radius: 8px;
+  color: #f85149;
+  font: inherit; font-size: 12.5px; font-weight: 600;
+  letter-spacing: normal; text-transform: none;
+  cursor: pointer;
+}
+.gpb-roster .gpb-ro-legal.is-bad:hover { background: rgba(248, 81, 73, 0.14); }
+.gpb-ro-more { font-weight: 500; color: #e57373; }
+
+/* All rotations: 3 × 2 small courts, net at the top. */
+.gpb-ro-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.gpb-roster .gpb-ro-thumb {
+  display: flex; flex-direction: column; gap: 4px;
+  min-width: 0;
+  padding: 5px 5px 6px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  color: inherit;
+  font: inherit;
+  letter-spacing: normal; text-transform: none;
+  cursor: pointer;
+  transition: border-color 0.12s ease, background 0.12s ease;
+}
+.gpb-roster .gpb-ro-thumb:hover { background: rgba(255, 255, 255, 0.05); border-color: rgba(255, 255, 255, 0.16); }
+.gpb-roster .gpb-ro-thumb.is-current { border-color: #f472b6; box-shadow: 0 0 0 1px #f472b6; }
+.gpb-ro-thumb-head { display: flex; align-items: center; justify-content: space-between; padding: 0 1px; }
+.gpb-ro-thumb-no { font-size: 11px; font-weight: 600; color: #8b949e; font-variant-numeric: tabular-nums; }
+.gpb-ro-thumb.is-current .gpb-ro-thumb-no { color: #f472b6; }
+.gpb-ro-thumb-dot { width: 6px; height: 6px; border-radius: 50%; }
+.gpb-ro-thumb-dot.is-ok { background: #3fb950; }
+.gpb-ro-thumb-dot.is-bad { background: #f85149; }
+.gpb-ro-thumb-court {
+  position: relative;
+  display: block;
+  aspect-ratio: 1 / 1;
+  background: rgba(88, 166, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-top: 2px solid rgba(255, 255, 255, 0.32);   /* the net */
+  border-radius: 3px;
+}
+.gpb-ro-thumb-p {
+  position: absolute;
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+}
+
+/* Notes. */
+.gpb-ro-saved { font-size: 11px; color: #6e7681; }
+.gpb-ro-notes {
+  display: block;
+  width: 100%;
+  min-height: 64px;
+  padding: 8px 10px;
+  resize: vertical;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: 8px;
+  color: #e6edf3;
+  font: inherit; font-size: 13px; line-height: 1.45;
+}
+.gpb-ro-notes::placeholder { color: #6e7681; }
+.gpb-ro-notes:focus { outline: none; border-color: rgba(244, 114, 182, 0.6); }
+
+/* Subs under the overview: a divider, and the compact header. */
+.gpb-col-subs .gpb-ro ~ .gpb-subs { margin-top: 22px; border-top: 1px solid rgba(255, 255, 255, 0.06); }
+.gpb-col-subs .gpb-subs .gpb-subs-head .gpb-ro-title { margin-bottom: 6px; }
+.gpb-col-subs .gpb-subs .gpb-subs-set { font-size: 13px; }
+.gpb-subs-more { position: relative; flex: 0 0 auto; }
+.gpb-roster .gpb-subs-head-row .gpb-subs-more-btn { margin-left: 0; font-size: 14px; letter-spacing: 1px; }
+.gpb-subs-more-menu {
+  position: absolute; right: 0; top: calc(100% + 4px); z-index: 20;
+  min-width: 130px;
+  padding: 4px;
+  background: #1c1c21;
+  border: 1px solid #2e2e35;
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+.gpb-roster .gpb-subs-more-item {
+  display: block; width: 100%;
+  padding: 7px 10px;
+  background: transparent; border: 0; border-radius: 6px;
+  color: #e6edf3;
+  font: inherit; font-size: 13px; text-align: left;
+  letter-spacing: normal; text-transform: none;
+  cursor: pointer;
+}
+.gpb-roster .gpb-subs-more-item:hover { background: rgba(255, 255, 255, 0.07); }
+
+/* Front / back pairs, under the Subs header. */
+.gpb-fb { display: flex; flex-direction: column; gap: 8px; }
+.gpb-fb > .gpb-subs-log-label { margin-bottom: 0; }
+.gpb-fb-card {
+  padding: 8px 10px 7px;
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+}
+.gpb-fb-row { display: flex; align-items: center; gap: 8px; }
+.gpb-fb-side { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; gap: 3px; transition: opacity 0.15s ease; }
+.gpb-fb-side.is-off { opacity: 0.4; }
+.gpb-fb-label { font-size: 10.5px; color: #8b949e; }
+.gpb-fb-who { display: flex; align-items: center; gap: 7px; min-width: 0; }
+.gpb-fb-num {
+  flex: 0 0 auto;
+  min-width: 24px; height: 24px;
+  padding: 0 4px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--role-c) 18%, transparent);
+  color: var(--role-c);
+  font-size: 12px; font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.gpb-fb-name { min-width: 0; font-size: 13px; font-weight: 500; color: #e6edf3; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gpb-roster .gpb-fb-swap {
+  flex: 0 0 auto;
+  align-self: flex-end;
+  width: 26px; height: 24px;
+  padding: 0;
+  background: transparent; border: 0; border-radius: 6px;
+  color: #8b949e;
+  font-size: 14px; line-height: 1;
+  letter-spacing: normal; text-transform: none;
+  cursor: pointer;
+}
+.gpb-roster .gpb-fb-swap:hover { background: rgba(255, 255, 255, 0.07); color: #fff; }
+.gpb-fb-x { align-self: flex-start; margin: -4px -6px 0 0; }
+.gpb-fb-meta { margin-top: 6px; font-size: 11px; color: #6e7681; }
+.gpb-roster .gpb-fb-add {
+  width: 100%;
+  padding: 8px 10px;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 8px;
+  color: #c9d1d9;
+  font: inherit; font-size: 12.5px; font-weight: 600;
+  letter-spacing: normal; text-transform: none;
+  cursor: pointer;
+}
+.gpb-roster .gpb-fb-add:hover { border-color: rgba(244, 114, 182, 0.6); color: #fff; background: rgba(244, 114, 182, 0.06); }
+.gpb-fb-pick {
+  padding: 8px 10px 10px;
+  border: 1px solid rgba(244, 114, 182, 0.35);
+  border-radius: 8px;
+}
+.gpb-fb-pick-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+.gpb-fb-pick-title { font-size: 12.5px; font-weight: 600; color: #e6edf3; }
+.gpb-fb-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.gpb-roster .gpb-fb-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  max-width: 100%;
+  padding: 3px 9px 3px 3px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: 8px;
+  color: #c9d1d9;
+  font: inherit; font-size: 12px;
+  letter-spacing: normal; text-transform: none;
+  cursor: pointer;
+}
+.gpb-roster .gpb-fb-chip:hover { background: rgba(255, 255, 255, 0.08); color: #fff; }
+.gpb-fb-chip-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gpb-fb-none { font-size: 12px; }
+.gpb-fb-warn {
+  margin-top: 8px;
+  padding: 6px 8px;
+  background: rgba(251, 191, 36, 0.08);
+  border: 1px solid rgba(251, 191, 36, 0.28);
+  border-radius: 6px;
+  color: #fbbf24;
+  font-size: 11.5px; line-height: 1.35;
+}
+
+[data-theme="light"] .gpb-fb-card { background: #fff; border-color: #d0d7de; }
+[data-theme="light"] .gpb-fb-name, [data-theme="light"] .gpb-fb-pick-title { color: #0d1117; }
+[data-theme="light"] .gpb-roster .gpb-fb-add, [data-theme="light"] .gpb-roster .gpb-fb-chip { color: #24292f; border-color: #d0d7de; }
+[data-theme="light"] .gpb-roster .gpb-ro-title { color: #0d1117; }
+[data-theme="light"] .gpb-ro-fact dd { color: #24292f; }
+[data-theme="light"] .gpb-roster .gpb-ro-thumb { background: #fff; border-color: #d0d7de; }
+[data-theme="light"] .gpb-ro-thumb-court { background: #f6f8fa; border-color: #d0d7de; border-top-color: #8c959f; }
+[data-theme="light"] .gpb-ro-notes { background: #fff; border-color: #d0d7de; color: #0d1117; }
+[data-theme="light"] .gpb-col-subs .gpb-ro ~ .gpb-subs { border-top-color: #e6e9ee; }
+[data-theme="light"] .gpb-subs-more-menu { background: #fff; border-color: #d0d7de; }
+[data-theme="light"] .gpb-roster .gpb-subs-more-item { color: #24292f; }

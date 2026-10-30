@@ -8,7 +8,7 @@ import { readEvents, removeEvent } from '../utils/teamEvents';
 import { deleteTournamentGame } from '../utils/tournaments';
 import { deletePlayerCompletely } from '../utils/playerCrud';
 import { isClubFormat } from '../utils/teamFormat';
-import { IconChart, IconRotate, IconClipboard, IconArrowRight, IconSwap, IconPencil, IconCheck } from '../components/Icons';
+import { IconChart, IconRotate, IconClipboard, IconArrowRight, IconPencil, IconCheck } from '../components/Icons';
 import StandingsWidget from '../components/dashboard/StandingsWidget';
 import NextUpWidget from '../components/dashboard/NextUpWidget';
 import ScheduleWidget from '../components/dashboard/ScheduleWidget';
@@ -16,7 +16,7 @@ import CalendarWidget from '../components/dashboard/CalendarWidget';
 import RosterPositionWidget from '../components/dashboard/RosterPositionWidget';
 import Fab from '../components/dashboard/Fab';
 import TournamentHost from '../components/TournamentHost';
-import FullscreenButton from '../components/FullscreenButton';
+import AppHeader from '../components/AppHeader';
 import { ConfirmDelete } from '../components/dashboard/EditModeKit';
 import DayAddChooser from '../components/dashboard/DayAddChooser';
 import AddPlayerModal from '../components/modals/AddPlayerModal';
@@ -38,7 +38,7 @@ export default function TeamLaunch({
   onStartLive,
   onSelectGame,
 }) {
-  const { currentUser, logout } = useAuth();
+  const { currentUser } = useAuth();
   const { addToast } = useToast();
   const {
     completedGames, schedule, players, tournaments,
@@ -235,67 +235,37 @@ export default function TeamLaunch({
 
   return (
     <div className={`vp-home dash-page${editing ? ' dash-editing' : ''}`}>
-      <header className="vp-home-topbar dash-topbar" style={teamStyle}>
-        <div className="vp-home-brand dash-topbar-brand">
-          <span className="vp-home-brand-name">
-            Volleyball<span className="vp-home-brand-accent">Pal</span>
-          </span>
-        </div>
-
-        <div className="dash-topbar-team">
-          <button
-            type="button"
-            className="dash-topbar-team-name"
-            onClick={canOpenTeamDetails ? onOpenTeamDetails : undefined}
-            disabled={!canOpenTeamDetails}
-            title={canOpenTeamDetails ? 'Open team details' : team.name}
-          >
-            {team.name}
-          </button>
-          <span className="dash-topbar-team-sep">—</span>
-          <span className="dash-topbar-team-rec">
-            <span className="dash-topbar-team-w" style={{ color }}>{w}</span>
-            <span className="dash-topbar-team-dash">–</span>
-            <span className="dash-topbar-team-l">{l}</span>
-          </span>
-        </div>
-
-        {canSwitchTeam && (
-          <button className="vp-tl-topbar-btn" onClick={handleSwitchTeam}>
-            <IconSwap size={13} /> Switch team
-          </button>
+      <AppHeader
+        brand
+        teamName={team.name}
+        record={`${w}-${l}`}
+        onSwitchTeam={canSwitchTeam ? handleSwitchTeam : undefined}
+        menuItems={canOpenTeamDetails ? [{ key: 'details', label: 'Team details', onClick: onOpenTeamDetails }] : []}
+        actions={(
+          <>
+            {/* The two dashboard-level actions side by side: rearrange
+                what's there, or add something new. */}
+            {canEdit && (
+              <button
+                type="button"
+                className={`ah-btn${editing ? ' is-on' : ''}`}
+                onClick={() => setEditMode(v => !v)}
+                aria-pressed={editing}
+                title={editing ? 'Finish editing the dashboard' : 'Edit the dashboard inline'}
+              >
+                {editing ? <IconCheck size={14} /> : <IconPencil size={13} />}
+                {editing ? 'Done' : 'Edit'}
+              </button>
+            )}
+            <Fab
+              team={team}
+              leagueTeams={leagueTeams}
+              onRefresh={refresh}
+              onEventsChanged={reloadEvents}
+            />
+          </>
         )}
-
-        {/* Sits immediately beside the + so the two dashboard-level actions —
-            add something new, or rearrange what's there — read as a pair. */}
-        {canEdit && (
-          <button
-            type="button"
-            className={`dash-edit-toggle${editing ? ' is-active' : ''}`}
-            onClick={() => setEditMode(v => !v)}
-            aria-pressed={editing}
-            title={editing ? 'Finish editing the dashboard' : 'Edit the dashboard inline'}
-          >
-            <span className="dash-edit-toggle-icon">
-              {editing ? <IconCheck size={13} /> : <IconPencil size={12} />}
-            </span>
-            {editing ? 'Done' : 'Edit'}
-          </button>
-        )}
-
-        <FullscreenButton className="vp-tl-topbar-btn vp-tl-topbar-btn-icon" />
-
-        <Fab
-          team={team}
-          leagueTeams={leagueTeams}
-          onRefresh={refresh}
-          onEventsChanged={reloadEvents}
-        />
-        <div className="vp-home-userbar">
-          <span className="vp-home-username">{currentUser?.name || currentUser?.username}</span>
-          <button className="vp-home-logout" onClick={logout}>Logout</button>
-        </div>
-      </header>
+      />
 
       <main className="dash-main" style={teamStyle}>
         {editing && (

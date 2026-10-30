@@ -11,11 +11,12 @@ import PlayerDetail from './PlayerDetail';
 import GameSummary from './GameSummary';
 import PlayerGameDetail from './PlayerGameDetail';
 import InboxModal from '../components/modals/InboxModal';
-import FullscreenButton from '../components/FullscreenButton';
+import AppHeader from '../components/AppHeader';
+import { IconRefresh, IconMail, IconSettings } from '../components/Icons';
 
 const TABS = ['Schedule', 'Standings', 'Averages', 'Roster'];
 
-export default function TeamDashboard({ team, onBack, onPreGame, onStartLive, onResumeGame, onTeamDetails }) {
+export default function TeamDashboard({ team, onBack, onSwitchTeam, onPreGame, onStartLive, onResumeGame, onTeamDetails }) {
   const { currentUser } = useAuth();
   const data = useData();
   const { players, schedule, completedGames, playerGameStats, leagueTeams, leagueResults, accounts, coachAssignments, refresh } = data;
@@ -52,7 +53,6 @@ export default function TeamDashboard({ team, onBack, onPreGame, onStartLive, on
   const isTeamAdmin = isAdmin || (currentUser?.role === 'coach' && (currentUser?.teamIds || []).includes(team.id));
 
   const teamColor = team.color || '#1a3a8f';
-  const headerBg = `linear-gradient(135deg, ${teamColor}, ${teamColor}CC)`;
 
   return (
     <div
@@ -64,78 +64,50 @@ export default function TeamDashboard({ team, onBack, onPreGame, onStartLive, on
         '--team-color-30': teamColor + '4D',
       }}
     >
-      {/* ── Compact top bar (44px) ── */}
-      <div className="app-header" style={{ background: headerBg }}>
-        <button className="app-header-back" onClick={onBack} title="Back">‹</button>
-
-        <span className="app-header-title">{team.name}</span>
-
-        <div className="app-header-actions">
-          <FullscreenButton className="app-header-btn" />
-
-          {/* Refresh */}
-          <button
-            className="app-header-btn"
-            onClick={() => refresh()}
-            title="Refresh"
-          >
-            ↻
-          </button>
-
-          {/* Inbox (coaches + admins) */}
-          {isCoachOrAdmin && (
-            <button
-              className="app-header-btn"
-              onClick={() => setShowInbox(true)}
-              title="Inbox"
-            >
-              ✉
-              {unreadCount > 0 && (
-                <span className="header-badge">{unreadCount > 9 ? '9+' : unreadCount}</span>
-              )}
+      <AppHeader
+        onBack={onBack}
+        teamName={team.name}
+        section="statspal"
+        onSwitchTeam={onSwitchTeam}
+        tabs={TABS.map(t => ({ key: t, label: t }))}
+        activeTab={tab}
+        onTabChange={setTab}
+        actions={(
+          <>
+            <button type="button" className="ah-btn ah-icon" onClick={() => refresh()} title="Refresh" aria-label="Refresh">
+              <IconRefresh size={16} />
             </button>
-          )}
 
-          {/* Start Game (coaches + admins) */}
-          {isCoachOrAdmin && (
-            <button
-              className="app-header-btn app-header-btn-gold"
-              onClick={() => onPreGame(team)}
-              title="Start Game"
-            >
-              ▶ Start
-            </button>
-          )}
+            {/* Inbox (coaches + admins) */}
+            {isCoachOrAdmin && (
+              <button type="button" className="ah-btn ah-icon" onClick={() => setShowInbox(true)} title="Inbox" aria-label="Inbox">
+                <IconMail size={16} />
+                {unreadCount > 0 && (
+                  <span className="ah-count">{unreadCount > 9 ? '9+' : unreadCount}</span>
+                )}
+              </button>
+            )}
 
-          {/* Admin — coaches see this for their own team, admins always see it */}
-          {isTeamAdmin && (
-            <button
-              className="app-header-btn"
-              onClick={() => onTeamDetails(team)}
-              title="Admin"
-            >
-              ⚙
-            </button>
-          )}
-        </div>
-      </div>
+            {/* Admin — coaches see this for their own team, admins always see it */}
+            {isTeamAdmin && (
+              <button type="button" className="ah-btn ah-icon" onClick={() => onTeamDetails(team)} title="Team settings" aria-label="Team settings">
+                <IconSettings size={16} />
+              </button>
+            )}
+
+            {/* Start Game (coaches + admins) — the page's primary action */}
+            {isCoachOrAdmin && (
+              <button type="button" className="ah-btn is-primary" onClick={() => onPreGame(team)} title="Start Game">
+                ▶ Start
+              </button>
+            )}
+          </>
+        )}
+      />
 
       {/* ── Scrollable content area ── */}
       <div className="app-content">
         <div className="page-wrap">
-
-          {/* Top tab bar */}
-          <div className="tab-bar">
-            {TABS.map(t => (
-              <button
-                key={t}
-                className={`tab-btn${tab === t ? ' active' : ''}`}
-                onClick={() => setTab(t)}
-              >
-                {t}
-              </button>
-            ))}
-          </div>
 
           {tab === 'Schedule' && (
             <ScheduleTab

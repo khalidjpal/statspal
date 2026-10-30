@@ -1,0 +1,284 @@
+/* AppHeader — the one top header (Dashboard, RotationPal, StatsPal,
+   PracticePal). Solid, flat, one rule underneath: no gradients, no glows.
+
+   Every selector is two classes deep so it outranks page-level button
+   resets such as `.rotationpal-module button` (one class + one element).
+
+   No z-index or transform on the header itself: it must not become a
+   stacking context, because some pages render their modals from inside
+   header actions (the dashboard's + New menu) and those need to sit over
+   the whole page. */
+.ah.ah {
+  --ah-bg: #111114;
+  --ah-rule: #26262b;
+  --ah-muted: #8a8a93;
+  --ah-text: #ececf1;
+  --ah-pink: #f472b6;
+  position: relative;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 64px;
+  margin: 0;
+  padding: 0 24px;
+  background: var(--ah-bg);
+  border-bottom: 1px solid var(--ah-rule);
+  color: var(--ah-text);
+  /* The app font, stated outright so the header reads the same inside
+     modules that set their own. */
+  font-family: 'Space Grotesk', -apple-system, BlinkMacSystemFont, sans-serif;
+  text-align: left;
+}
+
+/* ── Left: back / wordmark, divider, team + section ── */
+.ah .ah-left { display: flex; align-items: center; gap: 14px; min-width: 0; flex: 0 1 auto; }
+.ah .ah-wordmark {
+  font-size: 18px; font-weight: 700; letter-spacing: -0.01em;
+  color: var(--ah-text);
+  white-space: nowrap;
+}
+.ah .ah-wordmark span { color: var(--ah-pink); }
+.ah .ah-divider { align-self: center; width: 1px; height: 28px; background: var(--ah-rule); flex: 0 0 auto; }
+
+.ah .ah-team { position: relative; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.ah .ah-team-line { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.ah .ah-team-name {
+  font-size: 16px; font-weight: 600; line-height: 1.2;
+  color: var(--ah-text);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.ah .ah-team-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  min-width: 0;
+  height: auto;
+  margin: -2px -6px;
+  padding: 2px 6px;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.ah .ah-team-btn:hover { background: rgba(255, 255, 255, 0.06); }
+.ah .ah-team-btn:active { transform: none; }
+.ah .ah-chev { flex: 0 0 auto; color: var(--ah-muted); }
+.ah .ah-record {
+  flex: 0 0 auto;
+  padding: 1px 8px;
+  border: 1px solid var(--ah-rule);
+  border-radius: 999px;
+  color: var(--ah-muted);
+  font-size: 12px; font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.ah .ah-section {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 13px; line-height: 1.2;
+  color: var(--ah-muted);
+  white-space: nowrap;
+}
+.ah .ah-section svg { color: var(--sec); flex: 0 0 auto; }
+
+/* ── Centre: tabs ── */
+.ah .ah-tabs {
+  display: flex; align-items: stretch; gap: 4px;
+  align-self: stretch;
+  margin: 0 auto;
+}
+.ah .ah-tab {
+  position: relative;
+  display: inline-flex; align-items: center;
+  height: auto;
+  padding: 0 12px;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  color: var(--ah-muted);
+  font: inherit;
+  font-size: 14px; font-weight: 500;
+  text-transform: none; letter-spacing: normal;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.ah .ah-tab:hover { color: var(--ah-text); background: transparent; }
+.ah .ah-tab:active { transform: none; }
+.ah .ah-tab.is-active { color: var(--ah-pink); }
+.ah .ah-tab.is-active::after {
+  content: '';
+  position: absolute; left: 12px; right: 12px; bottom: -1px;
+  height: 2px;
+  border-radius: 2px 2px 0 0;
+  background: var(--ah-pink);
+}
+
+/* ── Right: actions, fullscreen, account ── */
+.ah .ah-right {
+  display: flex; align-items: center; gap: 8px;
+  margin-left: auto;
+  flex: 0 0 auto;
+}
+.ah.has-tabs .ah-right { margin-left: 0; }
+
+/* The header button. Pages give their own actions this class too. */
+.ah .ah-btn {
+  position: relative;
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  box-sizing: border-box;
+  height: 36px;
+  min-width: 0;
+  padding: 0 12px;
+  background: transparent;
+  border: 1px solid var(--ah-rule);
+  border-radius: 8px;
+  box-shadow: none;
+  color: var(--ah-text);
+  font: inherit;
+  font-size: 13.5px; font-weight: 500;
+  letter-spacing: normal; text-transform: none;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+.ah .ah-btn:hover { background: rgba(255, 255, 255, 0.06); border-color: var(--ah-rule); }
+.ah .ah-btn:active { transform: none; }
+.ah .ah-btn:focus-visible { outline: 2px solid var(--ah-pink); outline-offset: 2px; }
+.ah .ah-btn:disabled { opacity: 0.5; cursor: default; }
+.ah .ah-icon { width: 36px; padding: 0; }
+.ah .ah-back { border-color: transparent; color: var(--ah-muted); padding-left: 8px; }
+.ah .ah-back:hover { color: var(--ah-text); }
+/* The page's one primary action. */
+.ah .ah-btn.is-primary {
+  background: var(--ah-pink);
+  border-color: var(--ah-pink);
+  color: #1a0b14;
+  font-weight: 600;
+}
+.ah .ah-btn.is-primary:hover { background: #f78cc6; border-color: #f78cc6; }
+.ah .ah-btn.is-on { background: rgba(244, 114, 182, 0.12); border-color: rgba(244, 114, 182, 0.45); color: var(--ah-pink); }
+/* Small count badge on an icon button (unread mail). */
+.ah .ah-count {
+  position: absolute; top: -5px; right: -5px;
+  min-width: 16px; height: 16px; padding: 0 4px;
+  box-sizing: border-box;
+  border-radius: 999px;
+  background: var(--ah-pink);
+  color: #1a0b14;
+  font-size: 10px; font-weight: 700; line-height: 16px;
+  text-align: center;
+}
+
+.ah .ah-user { position: relative; }
+.ah .ah-userbtn { border-color: transparent; padding: 0 8px 0 4px; gap: 8px; }
+.ah .ah-userbtn.is-open { background: rgba(255, 255, 255, 0.06); }
+.ah .ah-avatar {
+  display: inline-grid; place-items: center;
+  width: 28px; height: 28px;
+  border-radius: 50%;
+  background: rgba(244, 114, 182, 0.16);
+  color: var(--ah-pink);
+  font-size: 12.5px; font-weight: 700;
+}
+.ah .ah-username { max-width: 140px; overflow: hidden; text-overflow: ellipsis; }
+.ah .ah-user-inline { display: none; }
+
+/* Dropdowns (team list, account). */
+.ah .ah-menu {
+  position: absolute; top: calc(100% + 8px);
+  z-index: 300;
+  min-width: 200px;
+  padding: 6px;
+  box-sizing: border-box;
+  background: #17171b;
+  border: 1px solid var(--ah-rule);
+  border-radius: 10px;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.5);
+}
+.ah .ah-user-menu { right: 0; }
+.ah .ah-team-menu { left: -6px; max-height: 60vh; overflow-y: auto; }
+.ah .ah-menu-who {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 6px 8px 9px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--ah-rule);
+}
+.ah .ah-menu-name { font-size: 13.5px; font-weight: 600; color: var(--ah-text); }
+.ah .ah-badge {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(244, 114, 182, 0.14);
+  color: var(--ah-pink);
+  font-size: 11px; font-weight: 600;
+}
+.ah .ah-menu-item {
+  display: flex; align-items: center; gap: 8px;
+  width: 100%;
+  height: auto;
+  padding: 8px;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  color: #c9c9d1;
+  font: inherit;
+  font-size: 13.5px; font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+}
+.ah .ah-menu-item:hover { background: rgba(255, 255, 255, 0.06); color: var(--ah-text); }
+.ah .ah-menu-item:active { transform: none; }
+.ah .ah-menu-item.is-current { color: var(--ah-text); }
+.ah .ah-menu-check { display: inline-flex; width: 14px; color: var(--ah-pink); }
+
+.ah .ah-more { display: none; }
+
+/* ── Phones ── */
+@media (max-width: 767px) {
+  .ah.ah { flex-wrap: wrap; gap: 10px; min-height: 56px; padding: 0 12px; }
+  .ah .ah-left { flex: 1 1 0; min-height: 56px; gap: 10px; }
+  .ah .ah-back-lbl, .ah .ah-wordmark, .ah .ah-wordmark + .ah-divider { display: none; }
+  .ah .ah-back { width: 36px; padding: 0; }
+  .ah .ah-divider { height: 24px; }
+  .ah .ah-team-name { font-size: 15px; }
+
+  .ah .ah-more { display: inline-flex; flex: 0 0 auto; }
+
+  .ah .ah-tabs {
+    order: 3;
+    flex: 1 0 100%;
+    margin: 0 -12px;
+    padding: 0 6px;
+    height: 44px;
+    overflow-x: auto;
+    scrollbar-width: none;
+    border-top: 1px solid var(--ah-rule);
+  }
+  .ah .ah-tabs::-webkit-scrollbar { display: none; }
+
+  /* The ⋯ panel: actions, fullscreen and the account, stacked. */
+  .ah .ah-right { display: none; }
+  .ah.is-more-open .ah-right {
+    display: flex;
+    flex-direction: column; align-items: stretch; gap: 8px;
+    position: absolute; top: calc(100% + 6px); right: 8px;
+    z-index: 300;
+    width: min(300px, calc(100vw - 16px));
+    max-height: calc(100dvh - 80px);
+    overflow-y: auto;
+    padding: 10px;
+    box-sizing: border-box;
+    background: #17171b;
+    border: 1px solid var(--ah-rule);
+    border-radius: 12px;
+    box-shadow: 0 14px 32px rgba(0, 0, 0, 0.55);
+  }
+  .ah.is-more-open .ah-right > * { width: 100%; }
+  .ah.is-more-open .ah-right .ah-btn { justify-content: flex-start; height: 40px; }
+  .ah.is-more-open .ah-right .ah-icon { width: 100%; padding: 0 12px; }
+  .ah.is-more-open .ah-right .ah-icon::after { content: attr(aria-label); font-size: 13.5px; }
+  .ah .ah-user { display: none; }
+  .ah.is-more-open .ah-user-inline { display: block; border-top: 1px solid var(--ah-rule); padding-top: 6px; }
+}

@@ -7596,3 +7596,286 @@
   text-overflow: ellipsis;
 }
 
+/* =================================================================
+   RotationPal landing (team home). The header is the shared AppHeader
+   (src/components/AppHeader.jsx).
+   ================================================================= */
+.rotationpal-module .rp-land {
+  --land-pink: #f472b6;
+  --land-muted: #8b949e;
+  --land-rule: rgba(255, 255, 255, 0.08);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Page: two halves, Gameplan | Playground ── */
+.rotationpal-module .rp-land-main {
+  flex: 1 1 auto;
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 28px 24px 40px;
+  box-sizing: border-box;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 32px;
+  align-items: stretch;
+}
+/* Each half runs to the bottom of the page; when its lists run out the
+   rest simply stays empty. */
+.rotationpal-module .rp-land-half {
+  display: flex; flex-direction: column; gap: 22px;
+  min-width: 0;
+}
+/* A full-height rule between the halves, so both read as columns that run
+   down the page even when their lists are short. */
+.rotationpal-module .rp-land-half + .rp-land-half {
+  margin-left: -16px;
+  padding-left: 16px;
+  border-left: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+/* ── The slim bars at the top of each half. The whole bar is clickable;
+   its button is the keyboard way in. ── */
+.rotationpal-module .rp-land-bar {
+  --bar-hue: #f472b6;
+  display: flex; align-items: center; gap: 14px;
+  box-sizing: border-box;
+  min-height: 80px;
+  padding: 14px 16px;
+  background: #111114;
+  border: 1px solid #26262b;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: border-color 0.12s ease, background 0.12s ease;
+}
+.rotationpal-module .rp-land-bar.is-playground { --bar-hue: #34d399; }
+.rotationpal-module .rp-land-bar:hover {
+  background: #141418;
+  border-color: color-mix(in srgb, var(--bar-hue) 40%, #26262b);
+}
+.rotationpal-module .rp-land-bar-icon {
+  flex: 0 0 auto;
+  display: inline-grid; place-items: center;
+  width: 44px; height: 44px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--bar-hue) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--bar-hue) 35%, transparent);
+  color: var(--bar-hue);
+}
+.rotationpal-module .rp-land-bar-text { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.rotationpal-module .rp-land-bar-title { font-size: 16px; font-weight: 600; color: #ececf1; }
+.rotationpal-module .rp-land-bar-sub {
+  font-size: 13px; color: #8a8a93;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+/* Landing buttons: outline by default, solid pink for the one to press. */
+.rotationpal-module .rp-land-btn {
+  flex: 0 0 auto;
+  display: inline-flex; align-items: center; justify-content: center;
+  height: 36px;
+  padding: 0 14px;
+  background: transparent;
+  border: 1px solid #34343b;
+  border-radius: 8px;
+  box-shadow: none;
+  color: #ececf1;
+  font-size: 13.5px; font-weight: 500;
+  white-space: nowrap;
+}
+.rotationpal-module .rp-land-btn:hover { background: rgba(255, 255, 255, 0.06); border-color: #44444c; }
+.rotationpal-module .rp-land-btn:active { transform: none; }
+.rotationpal-module .rp-land-btn.is-solid {
+  background: var(--land-pink);
+  border-color: var(--land-pink);
+  color: #1a0b14;
+  font-weight: 600;
+}
+.rotationpal-module .rp-land-btn.is-solid:hover { background: #f78cc6; border-color: #f78cc6; }
+
+/* ── Next up: the one game that matters now ── */
+.rotationpal-module .rp-land-next {
+  display: flex; flex-direction: column; gap: 6px;
+  padding: 18px 20px;
+  background: #111114;
+  border: 1px solid #26262b;
+  border-radius: 12px;
+}
+.rotationpal-module .rp-land-next-top { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.rotationpal-module .rp-land-next-eyebrow { font-size: 12px; font-weight: 600; color: #6e6e78; }
+.rotationpal-module .rp-land-next-when { font-size: 12.5px; font-weight: 600; color: var(--land-pink); white-space: nowrap; }
+.rotationpal-module .rp-land-next-opp {
+  font-size: 26px; font-weight: 700; line-height: 1.15; letter-spacing: -0.01em;
+  color: #fff;
+  overflow-wrap: anywhere;
+}
+.rotationpal-module .rp-land-next-meta { font-size: 13.5px; color: #8a8a93; }
+.rotationpal-module .rp-land-next-foot {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  margin-top: 10px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+.rotationpal-module .rp-land-next-status {
+  display: inline-flex; align-items: center; gap: 8px;
+  font-size: 13px; color: #8a8a93;
+}
+.rotationpal-module .rp-land-next-status .rp-land-dot { background: #3a3a42; }
+.rotationpal-module .rp-land-next-status.is-ready { color: #d0d0d8; }
+.rotationpal-module .rp-land-next-status.is-ready .rp-land-dot { background: var(--land-pink); }
+
+/* "3 past games need a score →" — one faint line at the column's foot. */
+.rotationpal-module .rp-land-past {
+  align-self: flex-start;
+  margin: auto 0 0;
+  padding: 6px 0;
+  background: transparent;
+  border: 0;
+  color: #6e6e78;
+  font-size: 12.5px; font-weight: 500;
+  text-align: left;
+}
+.rotationpal-module button.rp-land-past:hover { background: transparent; color: var(--land-pink); }
+.rotationpal-module button.rp-land-past:active { transform: none; }
+
+/* The lists under the cards are clearly secondary: small, gray, faint rules. */
+.rotationpal-module .rp-land-sub { padding: 0 4px; }
+.rotationpal-module .rp-land-h2 {
+  margin: 0 0 4px;
+  font-size: 12px; font-weight: 600;
+  color: #6e6e78;
+}
+.rotationpal-module .rp-land-empty { margin: 8px 0 0; font-size: 13px; color: #8a8a93; }
+
+.rotationpal-module .rp-land-list { list-style: none; margin: 0; padding: 0; }
+.rotationpal-module .rp-land-list > li + li { border-top: 1px solid rgba(255, 255, 255, 0.05); }
+.rotationpal-module .rp-land-row {
+  display: flex; align-items: center; gap: 10px;
+  width: calc(100% + 16px);
+  height: 40px;
+  padding: 0 8px;
+  margin: 0 -8px;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  color: #8a8a93;
+  font-size: 13.5px; font-weight: 400;
+  text-align: left;
+}
+.rotationpal-module .rp-land-row:hover { background: rgba(255, 255, 255, 0.035); border-color: transparent; }
+.rotationpal-module .rp-land-row:active { transform: none; }
+.rotationpal-module .rp-land-row:hover .rp-land-opp,
+.rotationpal-module .rp-land-row:hover .rp-land-name { color: #d0d0d8; }
+
+/* Pink dot = this game already has a plan. The empty slot keeps the
+   dates lined up either way. */
+.rotationpal-module .rp-land-dot { flex: 0 0 6px; width: 6px; height: 6px; border-radius: 50%; }
+.rotationpal-module .rp-land-dot.is-on { background: var(--land-pink); }
+.rotationpal-module .rp-land-date { flex: 0 0 92px; font-variant-numeric: tabular-nums; }
+.rotationpal-module .rp-land-opp,
+.rotationpal-module .rp-land-name {
+  flex: 1 1 auto; min-width: 0;
+  color: #b4b4bd;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.rotationpal-module .rp-land-where { flex: 0 0 auto; }
+.rotationpal-module .rp-land-edited { flex: 0 0 auto; white-space: nowrap; text-align: right; }
+
+/* Recent sessions: thumbnail · name · time. The row opens the session
+   through a full-size button underneath; the name button sits on top and
+   renames it. */
+.rotationpal-module .rp-land-srow {
+  position: relative;
+  display: flex; align-items: center; gap: 12px;
+  margin: 0 -8px;
+  padding: 8px;
+  border-radius: 8px;
+  color: #8a8a93;
+  font-size: 13.5px;
+}
+.rotationpal-module .rp-land-list > li.rp-land-srow + li.rp-land-srow { border-top-color: rgba(255, 255, 255, 0.05); }
+.rotationpal-module .rp-land-srow:hover { background: rgba(255, 255, 255, 0.035); }
+.rotationpal-module .rp-land-sopen {
+  position: absolute; inset: 0;
+  width: 100%; height: 100%;
+  margin: 0; padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: inherit;
+}
+.rotationpal-module .rp-land-sopen:hover { background: transparent; }
+.rotationpal-module .rp-land-sopen:active { transform: none; }
+.rotationpal-module .rp-land-thumb {
+  position: relative;
+  flex: 0 0 56px;
+  width: 56px; height: 56px;
+  pointer-events: none;
+}
+.rotationpal-module .rp-land-thumb-court { fill: #16161b; stroke: #2c2c33; stroke-width: 2; }
+.rotationpal-module .rp-land-thumb-net { stroke: #6e6e78; stroke-width: 3; stroke-linecap: round; }
+.rotationpal-module .rp-land-thumb-line { stroke: #2c2c33; stroke-width: 1.5; }
+.rotationpal-module .rp-land-sname {
+  position: relative;
+  flex: 0 1 auto; min-width: 0;
+  max-width: calc(100% - 56px - 110px);
+  margin: 0 -4px;
+  padding: 3px 4px;
+  background: transparent;
+  border: 0;
+  border-radius: 5px;
+  color: #b4b4bd;
+  font-size: 13.5px; font-weight: 500;
+  text-align: left;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  cursor: text;
+}
+.rotationpal-module .rp-land-sname:hover { background: rgba(255, 255, 255, 0.06); color: #ececf1; }
+.rotationpal-module .rp-land-sname:active { transform: none; }
+.rotationpal-module .rp-land-rename {
+  position: relative;
+  flex: 1 1 auto; min-width: 0;
+  height: 30px;
+  margin: 0 -4px;
+  padding: 0 6px;
+  background: #0b0b0e;
+  border: 1px solid var(--land-pink);
+  border-radius: 6px;
+  color: #ececf1;
+  font: inherit;
+  font-size: 13.5px;
+  outline: none;
+}
+.rotationpal-module .rp-land-srow .rp-land-edited { position: relative; margin-left: auto; pointer-events: none; }
+
+.rotationpal-module .rp-land-more {
+  margin-top: 4px;
+  padding: 6px 0;
+  background: transparent;
+  border: 0;
+  color: #6e6e78;
+  font-size: 12.5px; font-weight: 500;
+}
+.rotationpal-module .rp-land-more:hover { background: transparent; color: var(--land-pink); }
+.rotationpal-module .rp-land-more:active { transform: none; }
+
+/* ── Phones ── */
+@media (max-width: 640px) {
+  .rotationpal-module .rp-land-main { padding: 16px 14px 32px; }
+  .rotationpal-module .rp-land-bar { gap: 12px; padding: 12px; }
+  .rotationpal-module .rp-land-bar-icon { width: 40px; height: 40px; }
+  .rotationpal-module .rp-land-bar-sub { white-space: normal; }
+  .rotationpal-module .rp-land-btn { padding: 0 12px; }
+  .rotationpal-module .rp-land-next { padding: 16px; }
+  .rotationpal-module .rp-land-next-opp { font-size: 22px; }
+  .rotationpal-module .rp-land-date { flex-basis: 84px; }
+}
+/* Halves stack (Gameplan first) once side by side would get cramped; the
+   columns then just take the height they need. */
+@media (max-width: 820px) {
+  .rotationpal-module .rp-land-main { grid-template-columns: minmax(0, 1fr); gap: 36px; }
+  .rotationpal-module .rp-land-half + .rp-land-half { margin-left: 0; padding-left: 0; border-left: 0; }
+  .rotationpal-module .rp-land-past { margin-top: 0; }
+}
+

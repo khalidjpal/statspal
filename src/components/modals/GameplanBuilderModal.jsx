@@ -1,14 +1,21 @@
 import {
-  createContext, useContext, memo, useEffect, useLayoutEffect,
+  createContext, useContext, memo, Fragment, useEffect, useLayoutEffect,
   useMemo, useRef, useState, useCallback, useSyncExternalStore,
 } from 'react';
 import {
   DndContext, DragOverlay, useDraggable, useDroppable,
-  PointerSensor, KeyboardSensor, useSensors, useSensor,
+  MouseSensor, TouchSensor, KeyboardSensor, useSensors, useSensor,
 } from '@dnd-kit/core';
+
+// A press only becomes a drag after this much movement — anything less is a
+// click/tap. Shared by court bubbles and roster rows.
+const DRAG_START_PX = 5;
 import { supabase } from '../../supabase';
 import { useToast } from '../../contexts/ToastContext';
-import { IconImport, IconPanelRight } from '../Icons';
+import { IconImport, IconPanelRight, IconArrowLeft, IconUsers } from '../Icons';
+import {
+  ROLE_COLORS, ROLE_COLOR_NONE, ROLE_INK, ROLE_INK_NONE, roleBubbleVars, roleTagOf,
+} from '../../modules/rotationpal/roleColors';
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 //
@@ -73,26 +80,6 @@ function clampToSafe(p) {
   };
 }
 
-// ─── Pair-based colors ──
-// Each pair of opposite slots (idx 0↔3, 1↔4, 2↔5) shares one palette entry.
-// Liberos take the darker variant of the player they're paired with (set up
-// via the sub-pair UI). Unpaired liberos default to gold.
-const PAIR_PALETTE = [
-  { bg: 'linear-gradient(135deg, #38bdf8 0%, #0369a1 100%)', glow: 'rgba(56,189,248,0.55)',  edge: 'rgba(186,230,253,0.55)', label: 'Pair 1' },
-  { bg: 'linear-gradient(135deg, #34d399 0%, #047857 100%)', glow: 'rgba(52,211,153,0.55)',  edge: 'rgba(167,243,208,0.55)', label: 'Pair 2' },
-  { bg: 'linear-gradient(135deg, #c084fc 0%, #7e22ce 100%)', glow: 'rgba(192,132,252,0.55)', edge: 'rgba(233,213,255,0.55)', label: 'Pair 3' },
-];
-const PAIR_PALETTE_DARK = [
-  { bg: 'linear-gradient(135deg, #075985 0%, #082f49 100%)', glow: 'rgba(7,89,133,0.65)',   edge: 'rgba(56,189,248,0.45)' },
-  { bg: 'linear-gradient(135deg, #064e3b 0%, #022c22 100%)', glow: 'rgba(6,78,59,0.65)',    edge: 'rgba(52,211,153,0.45)' },
-  { bg: 'linear-gradient(135deg, #581c87 0%, #2e1065 100%)', glow: 'rgba(88,28,135,0.65)',  edge: 'rgba(192,132,252,0.45)' },
-];
-const LIBERO_DEFAULT = {
-  bg: 'linear-gradient(135deg, #fbbf24 0%, #b45309 100%)',
-  glow: 'rgba(251,191,36,0.65)',
-  edge: 'rgba(254,240,138,0.65)',
-};
-
 function isLibero(player) {
   return (player?.position || '').toUpperCase() === 'L';
 }
@@ -117,32 +104,14 @@ function liberosOf(roster, plan) {
   return (roster || []).filter(p => p && (isLibero(p) || ids.has(p.id)));
 }
 
-function getColorFor(player, arrayIdx, plan) {
-  if (!player) return PAIR_PALETTE[0];
-  if (isLiberoIn(plan, player)) {
-    // Find sub pair, if any
-    const subs = plan?.subs || [];
-    const pair = subs.find(p => p.a === player.id || p.b === player.id);
-    if (pair) {
-      const otherPid = pair.a === player.id ? pair.b : pair.a;
-      const otherIdx = (plan?.assigned_players || []).indexOf(otherPid);
-      if (otherIdx >= 0) {
-        return PAIR_PALETTE_DARK[otherIdx % 3];
-      }
-    }
-    return LIBERO_DEFAULT;
-  }
-  if (arrayIdx < 0) return PAIR_PALETTE[0];
-  return PAIR_PALETTE[arrayIdx % 3];
-}
-
+// A bubble (and its roster row) is filled with the player's role colour —
+// the same map the roster badges use. Liberos (roster or session) are gold.
+// `arrayIdx` is unused now that colour follows role, not slot; it stays so
+// every caller keeps its signature.
 function colorVarsFor(player, arrayIdx, plan) {
-  const c = getColorFor(player, arrayIdx, plan);
-  return {
-    '--bubble-bg':   c.bg,
-    '--bubble-glow': c.glow,
-    '--bubble-edge': c.edge,
-  };
+  const lib = isLiberoIn(plan, player);
+  const tag = lib ? 'L' : roleTagFor(player);
+  return roleBubbleVars(roleColorFor(player, lib), ROLE_INK[tag] || ROLE_INK_NONE);
 }
 
 // ─── Geometry helpers ──
@@ -384,6 +353,119 @@ function snapToLegalAndSeparate(playerId, droppedPos, plan, rotation, mode, play
   return { x, y };
 }
 
+// ─── Live overlap guides (court-bubble drag) ──
+//
+// While a bubble is dragged, every overlap rule that involves its slot
+// becomes one guide: a boundary at the neighbour's centre on one axis.
+// 'gt' means the dragged centre must be greater than `v` on that axis
+// (right of / behind), 'lt' means less (left of / in front of). The legal
+// zone is simply the box those boundaries leave. Built once per drag from
+// the same stationary snapshot the drag pipeline checks against.
+const GUIDE_X_RIGHT_OF = { P3: 'P4', P2: 'P3', P6: 'P5', P1: 'P6' };  // I must be right of…
+const GUIDE_X_LEFT_OF  = { P4: 'P3', P3: 'P2', P5: 'P6', P6: 'P1' };  // I must be left of…
+const GUIDE_Y_BEHIND   = { P5: 'P4', P6: 'P3', P1: 'P2' };            // I must be behind…
+const GUIDE_Y_FRONT_OF = { P4: 'P5', P3: 'P6', P2: 'P1' };            // I must be in front of…
+
+let dragGuideSeq = 0;
+function buildDragGuide(d, courtW, courtH, activeMode, cx, cy) {
+  const id = ++dragGuideSeq;
+  const slot = d.draggedSlot;
+  if (activeMode === 'serve' && slot === 'P1') {
+    return { id, serverFree: true, cx, cy, constraints: [], neighborPids: [] };
+  }
+  const pidBySlot = {};
+  for (const pid in d.otherSlots) pidBySlot[d.otherSlots[pid]] = pid;
+  const constraints = [];
+  const add = (map, axis, dir, word) => {
+    const nSlot = map[slot];
+    const pid = nSlot && pidBySlot[nSlot];
+    const c = pid && d.otherCenters[pid];
+    if (!c) return;
+    constraints.push({
+      axis, dir, nSlot, pid, nx: c.x, ny: c.y,
+      v: axis === 'x' ? c.x : c.y,
+      label: `${word} ${nSlot}`,
+    });
+  };
+  add(GUIDE_Y_FRONT_OF, 'y', 'lt', 'in front of');
+  add(GUIDE_Y_BEHIND,   'y', 'gt', 'behind');
+  add(GUIDE_X_LEFT_OF,  'x', 'lt', 'left of');
+  add(GUIDE_X_RIGHT_OF, 'x', 'gt', 'right of');
+  if (d.draggedIsLibero) {
+    constraints.push({ axis: 'y', dir: 'gt', v: courtH / 2, nSlot: null, pid: null, label: 'Libero: back row only' });
+  }
+  const R = d.radius;
+  const zone = {
+    minX: COURT_INNER_PAD + R, maxX: courtW - COURT_INNER_PAD - R,
+    minY: COURT_INNER_PAD + R, maxY: courtH - COURT_INNER_PAD - R,
+  };
+  for (const c of constraints) {
+    if (c.axis === 'x') {
+      if (c.dir === 'gt') zone.minX = Math.max(zone.minX, c.v); else zone.maxX = Math.min(zone.maxX, c.v);
+    } else if (c.dir === 'gt') zone.minY = Math.max(zone.minY, c.v); else zone.maxY = Math.min(zone.maxY, c.v);
+  }
+  return {
+    id, serverFree: false, cx, cy, constraints, zone, radius: R,
+    neighborPids: constraints.map(c => c.pid).filter(Boolean),
+  };
+}
+function guideBroken(c, cx, cy) {
+  const val = c.axis === 'x' ? cx : cy;
+  return c.dir === 'gt' ? val <= c.v : val >= c.v;
+}
+// Each guide runs from the neighbour toward the dragged player and a little
+// past them, so the line visibly connects the two; the label sits at the
+// dragged player's end. Coordinates are px in court space.
+function guideGeometry(c, cx, cy, R, courtW, courtH) {
+  if (c.axis === 'x') {
+    const from = c.ny;
+    let dir = Math.sign(cy - from);
+    if (!dir) dir = cy > courtH / 2 ? -1 : 1;
+    let end = cy + dir * (R + 12);
+    if (Math.abs(end - from) < R * 2) end = from + dir * R * 2;
+    end = Math.max(16, Math.min(courtH - 10, end));
+    const start = from - dir * (R * 0.6);
+    return {
+      x1: c.v, y1: start, x2: c.v, y2: end,
+      tx: Math.max(40, Math.min(courtW - 40, c.v)), ty: dir > 0 ? Math.min(courtH - 4, end + 12) : Math.max(12, end - 6),
+    };
+  }
+  if (c.nx == null) {
+    // Libero half-court line: spans the full width.
+    return { x1: COURT_INNER_PAD, y1: c.v, x2: courtW - COURT_INNER_PAD, y2: c.v, tx: courtW / 2, ty: c.v - 6 };
+  }
+  const from = c.nx;
+  let dir = Math.sign(cx - from);
+  if (!dir) dir = cx > courtW / 2 ? -1 : 1;
+  let end = cx + dir * (R + 12);
+  if (Math.abs(end - from) < R * 2) end = from + dir * R * 2;
+  end = Math.max(16, Math.min(courtW - 16, end));
+  const start = from - dir * (R * 0.6);
+  return {
+    x1: start, y1: c.v, x2: end, y2: c.v,
+    tx: Math.max(40, Math.min(courtW - 40, end)), ty: c.v - 6,
+  };
+}
+// Per-frame update during a drag — direct DOM, no React render.
+function paintDragGuides(svg, guide, cx, cy, courtW, courtH) {
+  if (!svg || !guide || guide.serverFree) return;
+  guide.constraints.forEach((c, i) => {
+    const g = guideGeometry(c, cx, cy, guide.radius, courtW, courtH);
+    const broken = guideBroken(c, cx, cy);
+    const line = svg.querySelector(`[data-gl="${i}"]`);
+    const text = svg.querySelector(`[data-gt="${i}"]`);
+    if (line) {
+      line.setAttribute('x1', g.x1); line.setAttribute('y1', g.y1);
+      line.setAttribute('x2', g.x2); line.setAttribute('y2', g.y2);
+      line.classList.toggle('is-broken', broken);
+    }
+    if (text) {
+      text.setAttribute('x', g.tx); text.setAttribute('y', g.ty);
+      text.classList.toggle('is-broken', broken);
+    }
+  });
+}
+
 // ─── Sub pairing helpers ──
 //
 // `subs` is an array of { a: pid, b: pid }. Order doesn't matter — the libero
@@ -423,26 +505,297 @@ function pairSub(pair, playerById) {
   return pairOpponent(pair, starter);
 }
 
-// Row label ("front row" / "back row") used by the Playground sub flow.
-//
-// A player standing on the court has a real answer: read the slot they
-// occupy in the ACTIVE rotation. A bench player has no slot, so we fall
-// back to the row their ROLE plays — L/DS are back-row specialists, every
-// other role is a front-row player. That's what makes a confirmed pair read
-// "Taliyah (back row) → in for Audrenah (front row)": Audrenah's row comes
-// from where she's actually standing, Taliyah's from what she plays.
-function rowLabelFor(pid, effLineup, rotation, playerById) {
-  const idx = (effLineup || []).indexOf(pid);
-  if (idx >= 0) {
-    return FRONT_SLOTS.has(slotInRotation(`P${idx + 1}`, rotation)) ? 'front row' : 'back row';
-  }
-  return isSubRole(playerById?.[pid]) ? 'back row' : 'front row';
+// Short role tag ("Taliyah — DS"). Common spellings collapse to one of
+// S, OH, MB, OPP, L, DS so the tag is always short and never truncated; an
+// unrecognised position shows its first four letters, none at all is blank.
+function roleTagFor(player) {
+  return roleTagOf(player?.position);
 }
 
-// Short role tag for the candidate list ("Taliyah — DS"). Falls back to a
-// neutral word so a player with no position set still reads cleanly.
-function roleTagFor(player) {
-  return (player?.position || '').trim().toUpperCase() || 'PLAYER';
+// Playground bench grouping, in display order. Liberos (roster L or a
+// session libero) and DS share one group; no role or an unrecognised one
+// lands in "Other" at the bottom.
+const BENCH_GROUPS = [
+  { key: 'S',     label: 'Setters',         color: ROLE_COLORS.S },
+  { key: 'OH',    label: 'Outside hitters', color: ROLE_COLORS.OH },
+  { key: 'MB',    label: 'Middle blockers', color: ROLE_COLORS.MB },
+  { key: 'OPP',   label: 'Opposites',       color: ROLE_COLORS.OPP },
+  { key: 'L',     label: 'Liberos / DS',    color: ROLE_COLORS.L },
+  { key: 'OTHER', label: 'Other',           color: ROLE_COLOR_NONE },
+];
+function benchGroupOf(player, isLib) {
+  const tag = roleTagFor(player);
+  if (isLib || tag === 'L' || tag === 'DS') return 'L';
+  return ['S', 'OH', 'MB', 'OPP'].includes(tag) ? tag : 'OTHER';
+}
+
+// ─── "Play as" (makeshift position) ──
+// A player standing in for another role, in this plan only — the roster
+// table is never touched. Two sources:
+//   • auto: from the player's lineup SLOT (serving order, not court zone)
+//     and the plan's system. A natural role that differs from what the
+//     system expects in that slot means playing the slot's role. It's
+//     derived (playAsStateFor), never stored, so it follows every system
+//     switch, placement and sub by itself, and a player keeps it through all
+//     six rotations. Liberos and DS are never auto-assigned.
+//   • manual: the coach's pick, stored as
+//     plan.play_as = { [pid]: { role, manual: true } }. It wins over auto and
+//     survives system changes; picking the natural role pins them as
+//     themselves. "Reset to natural" deletes it, handing them back to auto.
+// Older plans stored bare strings here — auto picks saved as if chosen, the
+// reason they never followed the system. Those are ignored, so the auto
+// role is simply recalculated on load.
+// While a player holds a lineup slot, the modal's playerById hands out a
+// copy with `position` set to the played role (so colour, grouping, receive
+// shapes and soft checks all read it) and `natural_position` keeping the
+// real one. On the bench they're their natural selves again.
+const PLAY_AS_ROLES = ['S', 'OH', 'MB', 'OPP', 'DS'];
+const AUTO_PLAY_AS_FROM = ['S', 'OH', 'MB', 'OPP'];
+// { [pid]: role } of the coach's manual picks.
+function manualPlayAsOf(plan) {
+  const raw = plan?.play_as && typeof plan.play_as === 'object' ? plan.play_as : {};
+  const out = {};
+  for (const [pid, v] of Object.entries(raw)) {
+    if (v && typeof v === 'object' && v.manual && PLAY_AS_ROLES.includes(v.role)) out[pid] = v.role;
+  }
+  return out;
+}
+// The play_as map with `pid` pinned to `role` (manual), or — with no role —
+// handed back to auto. Legacy string entries are dropped on the way.
+function withPlayAs(plan, pid, role) {
+  const next = {};
+  for (const [p, r] of Object.entries(manualPlayAsOf(plan))) next[p] = { role: r, manual: true };
+  if (role) next[pid] = { role, manual: true };
+  else delete next[pid];
+  return next;
+}
+// The play_as map with `pids` handed back to auto (they left the court).
+function withoutPlayAs(plan, pids) {
+  let next = withPlayAs(plan, null, null);
+  for (const pid of pids) if (pid) delete next[pid];
+  return next;
+}
+// The role the system expects of a player with natural role `naturalTag` in
+// lineup index `idx`, when it differs from their own; otherwise null.
+function autoPlayAsRole(systemKey, idx, naturalTag) {
+  if (!AUTO_PLAY_AS_FROM.includes(naturalTag)) return null;
+  const role = SYSTEMS[systemKey].roles[idx];
+  return role && role !== naturalTag ? role : null;
+}
+// Everyone holding a lineup slot whose role isn't simply their own:
+// { [pid]: { role, natural, manual } }. `role` is null for a player the
+// coach pinned to their natural role.
+function playAsStateFor(plan, rosterById) {
+  const out = {};
+  if (!plan) return out;
+  const manual = manualPlayAsOf(plan);
+  const sys = systemOf(plan);
+  slotLineupOf(plan).forEach((pid, idx) => {
+    const p = pid && rosterById[pid];
+    if (!p || isLiberoIn(plan, p)) return;
+    const natural = roleTagFor(p);
+    const isManual = pid in manual;
+    const role = isManual ? manual[pid] : autoPlayAsRole(sys, idx, natural);
+    if (!isManual && !role) return;
+    out[pid] = { role: role === natural ? null : role, natural, manual: isManual };
+  });
+  return out;
+}
+// ─── Offensive system (saved on the plan as `system`) ──
+// `roles` is the role each lineup index (R1 P1..P6) is meant for. Opposite
+// slots (idx i / i+3) always hold matching roles so every rotation stays
+// balanced. The empty-spot placeholders and the receive shapes read this.
+const SYSTEMS = {
+  '5-1-oh': { chip: '5-1 · OH follows S', label: '5-1 (Outside follows setter)', roles: ['S', 'OH', 'MB', 'OPP', 'OH', 'MB'], setFrom: 'back' },
+  '5-1-mb': { chip: '5-1 · MB follows S', label: '5-1 (Middle follows setter)',  roles: ['S', 'MB', 'OH', 'OPP', 'MB', 'OH'], setFrom: 'back' },
+  '6-2':    { chip: '6-2',                label: '6-2',                          roles: ['S', 'OH', 'MB', 'S', 'OH', 'MB'],   setFrom: 'back' },
+  '4-2':    { chip: '4-2',                label: '4-2',                          roles: ['S', 'OH', 'MB', 'S', 'OH', 'MB'],   setFrom: 'front' },
+};
+const DEFAULT_SYSTEM = '5-1-oh';
+function systemOf(plan) {
+  return SYSTEMS[plan?.system] ? plan.system : DEFAULT_SYSTEM;
+}
+
+// Re-seat the placed starters so each lands on a lineup index meant for
+// their role. Exact role matches first, then a setter/opposite stand-in for
+// the other, then everyone left in their original order. Returns the new
+// assigned array and an old-index → new-index map.
+function rearrangeForSystem(assigned, systemKey, playerById) {
+  const roles = SYSTEMS[systemKey].roles;
+  const placed = assigned
+    .map((pid, idx) => ({ pid, idx, tag: roleTagFor(playerById[pid]) }))
+    .filter(p => p.pid);
+  const out = [null, null, null, null, null, null];
+  const used = new Set();
+  const fill = (accept) => {
+    roles.forEach((role, i) => {
+      if (out[i]) return;
+      const hit = placed.find(p => !used.has(p.pid) && accept(role, p.tag));
+      if (hit) { out[i] = hit.pid; used.add(hit.pid); }
+    });
+  };
+  fill((role, tag) => role === tag);
+  const STAND_IN = { S: ['OPP'], OPP: ['S'] };
+  fill((role, tag) => (STAND_IN[role] || []).includes(tag));
+  for (const p of placed) {
+    if (used.has(p.pid)) continue;
+    const free = out.findIndex(x => !x);
+    if (free < 0) break;
+    out[free] = p.pid;
+    used.add(p.pid);
+  }
+  const moved = {};
+  for (const p of placed) moved[p.idx] = out.indexOf(p.pid);
+  return { assigned: out, moved };
+}
+
+// ─── Serve-receive formations (saved per rotation as `receive_formations`) ──
+const RECEIVE_SHAPES = {
+  3: { label: '3-person',     lanes: [{ x: 20, y: 62 }, { x: 50, y: 68 }, { x: 80, y: 62 }] },
+  4: { label: '4-person',     lanes: [{ x: 15, y: 58 }, { x: 38, y: 67 }, { x: 62, y: 67 }, { x: 85, y: 58 }] },
+  5: { label: '5-person (W)', lanes: [{ x: 14, y: 55 }, { x: 32, y: 72 }, { x: 50, y: 52 }, { x: 68, y: 72 }, { x: 86, y: 55 }] },
+};
+const RECEIVE_HIDE = { P4: { x: 16, y: 14 }, P3: { x: 50, y: 12 }, P2: { x: 84, y: 14 } };
+const SETTER_RELEASE_BACK = { P1: { x: 84, y: 42 }, P6: { x: 62, y: 46 }, P5: { x: 30, y: 46 } };
+
+// Nudge positions (keyed by slot) until every overlap rule holds: front-row
+// players in front of the back-row player behind them, and left-to-right
+// order within each row. Pairs that are out of order are pulled apart
+// around their midpoint; a few passes settle any chain.
+function legalizeBySlot(bySlot) {
+  // A full bubble apart, so a fixed pair is legal AND visibly separate.
+  const GAP = BUBBLE_SEPARATION + 3;
+  const X_ORDER = [['P4', 'P3'], ['P3', 'P2'], ['P5', 'P6'], ['P6', 'P1']];
+  const Y_ORDER = [['P4', 'P5'], ['P3', 'P6'], ['P2', 'P1']];
+  // Spread out bubbles that would sit on top of each other first; the
+  // ordering passes below run last, so the overlap rules always win.
+  const slots = Object.keys(bySlot);
+  for (let pass = 0; pass < 8; pass++) {
+    for (let i = 0; i < slots.length; i++) {
+      for (let j = i + 1; j < slots.length; j++) {
+        const a = bySlot[slots[i]], b = bySlot[slots[j]];
+        const dx = b.x - a.x, dy = b.y - a.y;
+        const d = Math.hypot(dx, dy);
+        if (d >= BUBBLE_SEPARATION + 3) continue;
+        const push = (BUBBLE_SEPARATION + 3 - d) / 2;
+        const ux = d > 0.01 ? dx / d : 1, uy = d > 0.01 ? dy / d : 0;
+        bySlot[slots[i]] = { x: a.x - ux * push, y: a.y - uy * push };
+        bySlot[slots[j]] = { x: b.x + ux * push, y: b.y + uy * push };
+      }
+    }
+  }
+  for (let pass = 0; pass < 24; pass++) {
+    let changed = false;
+    for (const s of Object.keys(bySlot)) bySlot[s] = clampToSafe(bySlot[s]);
+    for (const [axis, pairs] of [['x', X_ORDER], ['y', Y_ORDER]]) {
+      for (const [a, b] of pairs) {
+        const pa = bySlot[a], pb = bySlot[b];
+        if (!pa || !pb || pa[axis] <= pb[axis] - GAP) continue;
+        const mid = (pa[axis] + pb[axis]) / 2;
+        bySlot[a] = { ...pa, [axis]: mid - GAP / 2 - 0.1 };
+        bySlot[b] = { ...pb, [axis]: mid + GAP / 2 + 0.1 };
+        changed = true;
+      }
+    }
+    if (!changed) break;
+  }
+  return bySlot;
+}
+
+// Receive positions for everyone on court at rotation `r`, as { pid: {x,y} }.
+// `shapeKey` is 3 / 4 / 5 (passers) or a formation_presets row via `preset`.
+// Liberos and DS always pass, then outsides, then back-row players; the
+// running setter releases to the net, the other front-row players hide.
+function buildReceiveFormation(plan, r, shapeKey, preset, playerById, fallbackPos) {
+  const sys = SYSTEMS[systemOf(plan)];
+  const lineup = effectiveLineupAt(plan, r);
+  const seats = lineup.map((pid, idx) => (pid ? {
+    pid, idx,
+    slot: slotInRotation(`P${idx + 1}`, r),
+    sysRole: sys.roles[idx],
+    tag: isLiberoIn(plan, playerById[pid]) ? 'L' : roleTagFor(playerById[pid]),
+  } : null)).filter(Boolean);
+  const front = (s) => FRONT_SLOTS.has(s.slot);
+  const bySlot = {};
+
+  if (preset) {
+    // Lineup index → preset marker, from the system's roles (a second
+    // setter in a 6-2 / 4-2 stands in the preset's OPP spot).
+    const count = {};
+    const markerOf = sys.roles.map(role => {
+      count[role] = (count[role] || 0) + 1;
+      if (role === 'S') return count.S === 1 ? 'S' : 'OPP';
+      if (role === 'OPP') return 'OPP';
+      return `${role}${count[role]}`;
+    });
+    const src = preset.rotations?.[r]?.receive || {};
+    for (const s of seats) {
+      const p = src[markerOf[s.idx]];
+      bySlot[s.slot] = p ? { x: p.x, y: p.y } : fallbackPos(s.pid, s.idx, r);
+    }
+  } else {
+    // The real setters on court by roster position; the system's setter
+    // seats only when nobody on court is listed as a setter.
+    const tagged = seats.filter(s => s.tag === 'S');
+    const setters = tagged.length ? tagged : seats.filter(s => s.sysRole === 'S');
+    const active = sys.setFrom === 'front'
+      ? (setters.find(front) || setters[0])
+      : (setters.find(s => !front(s)) || setters[0]);
+    const rank = (s) => {
+      if (s.tag === 'L' || s.tag === 'DS') return 0;
+      if (s.tag === 'OH') return 1;
+      if (!front(s)) return s.tag === 'MB' ? 3 : 2;
+      return s.tag === 'MB' ? 5 : 4;
+    };
+    const pool = seats.filter(s => s !== active).sort((a, b) => rank(a) - rank(b));
+    const lanes = RECEIVE_SHAPES[shapeKey].lanes;
+    const passers = pool.slice(0, lanes.length)
+      .sort((a, b) => (SLOT_POS[a.slot].x - SLOT_POS[b.slot].x) || (front(a) - front(b)));
+    const spread = lanes.length - passers.length;
+    passers.forEach((s, i) => {
+      // Fewer passers than lanes: use the outer lanes, centred.
+      const lane = lanes[Math.min(lanes.length - 1, i + Math.floor(spread / 2))];
+      bySlot[s.slot] = { ...lane };
+    });
+    for (const s of seats) {
+      if (bySlot[s.slot]) continue;
+      if (s === active) {
+        bySlot[s.slot] = front(s) ? { x: 72, y: 14 } : { ...(SETTER_RELEASE_BACK[s.slot] || SLOT_POS[s.slot]) };
+      } else if (front(s)) {
+        bySlot[s.slot] = { ...RECEIVE_HIDE[s.slot] };
+      } else {
+        bySlot[s.slot] = { x: SLOT_POS[s.slot].x, y: 86 };
+      }
+    }
+  }
+  // The libero stays deep in the back half.
+  for (const s of seats) {
+    if (s.tag === 'L' && bySlot[s.slot].y < 55) bySlot[s.slot] = { ...bySlot[s.slot], y: 55 };
+  }
+  legalizeBySlot(bySlot);
+  const out = {};
+  for (const s of seats) out[s.pid] = bySlot[s.slot];
+  return out;
+}
+
+// Jersey number ascending; players without a number go last, by name.
+function byJersey(a, b) {
+  const na = parseInt(a.jersey_number, 10);
+  const nb = parseInt(b.jersey_number, 10);
+  const ha = Number.isFinite(na), hb = Number.isFinite(nb);
+  if (ha && hb && na !== nb) return na - nb;
+  if (ha !== hb) return ha ? -1 : 1;
+  return (a.name || '').localeCompare(b.name || '');
+}
+function roleColorFor(player, isLib = false) {
+  if (isLib) return ROLE_COLORS.L;
+  return ROLE_COLORS[roleTagFor(player)] || ROLE_COLOR_NONE;
+}
+
+// "#13" for a player, or their display name when there is no jersey number.
+function jerseyTag(player, nameMode = 'last') {
+  if (!player) return '';
+  return player.jersey_number ? `#${player.jersey_number}` : nameIn(player, nameMode);
 }
 
 // Detect pending subs when we move from rotation `from` to rotation `to`.
@@ -505,6 +858,16 @@ function fbPairAnchorIdx(plan, pair) {
   const assigned = plan?.assigned_players || [];
   const fi = assigned.indexOf(pair.front);
   return fi >= 0 ? fi : assigned.indexOf(pair.back);
+}
+
+// The rotations a pair swaps IN: those where its slot has just crossed the
+// front/back line coming from the rotation before (6 → 1 wraps). Two per
+// cycle for any pair with a starter; none for a dormant one.
+function fbPairSwapRotations(plan, pair) {
+  const idx = fbPairAnchorIdx(plan, pair);
+  if (idx < 0) return [];
+  const isFront = (r) => FRONT_SLOTS.has(slotInRotation(`P${idx + 1}`, r));
+  return [1, 2, 3, 4, 5, 6].filter(r => isFront(r) !== isFront(r === 1 ? 6 : r - 1));
 }
 
 function detectFrontBackCrossings(plan, fromRot, toRot) {
@@ -605,14 +968,7 @@ function evaluateFbBatch(plan, queue, selected, fromRot, toRot, playerById, name
 // enforces this by skipping front-row slots in the auto-swap step.
 function effectiveLineupAt(plan, rotation) {
   if (!plan) return [null, null, null, null, null, null];
-  const arr = (plan.assigned_players || [null,null,null,null,null,null]).slice();
-
-  // (2) Replay regular subs.
-  for (const e of plan.sub_log || []) {
-    if (!e || typeof e.atIdx !== 'number') continue;
-    if (e.atIdx < 0 || e.atIdx > 5) continue;
-    arr[e.atIdx] = e.toPid;
-  }
+  const arr = slotLineupOf(plan);
 
   // (3) Libero auto-swap. Only fires when libero_auto is on.
   if (plan.libero_auto !== false) {
@@ -634,6 +990,38 @@ function effectiveLineupAt(plan, rotation) {
     }
   }
 
+  return arr;
+}
+
+// Where each player in `lineup` stands at `rotation` in `mode` (serve /
+// receive): their stored spot, else the starter's they stand in for (a
+// libero lands where the MB was), else the default for the slot — clamped
+// onto the court. The court and the rotation thumbnails both read this.
+function positionsAt(plan, lineup, rotation, mode) {
+  if (!plan) return {};
+  const stored = plan.formations?.[rotation]?.[mode] || {};
+  const baseAssigned = plan.assigned_players || [];
+  const out = {};
+  lineup.forEach((pid, idx) => {
+    if (!pid) return;
+    const original = baseAssigned[idx];
+    const raw = stored[pid]
+      || (original && stored[original])
+      || defaultPositionFor(idx, rotation);
+    out[pid] = clampToSafe(raw);
+  });
+  return out;
+}
+
+// Steps 1–2 above: who holds each lineup index (serving order) once the
+// regular subs are replayed — no libero swap, so the same at every rotation.
+function slotLineupOf(plan) {
+  const arr = (plan?.assigned_players || [null,null,null,null,null,null]).slice();
+  for (const e of plan?.sub_log || []) {
+    if (!e || typeof e.atIdx !== 'number') continue;
+    if (e.atIdx < 0 || e.atIdx > 5) continue;
+    arr[e.atIdx] = e.toPid;
+  }
   return arr;
 }
 
@@ -807,17 +1195,19 @@ function rosterSubStatus(plan, pid, playerById, nameMode = 'last') {
   }
 
   const fbPartners = [];
+  const fbTags = [];
   for (const fp of plan.fb_pairs || []) {
     if (fp.front === pid || fp.back === pid) {
       const other = playerById?.[fp.front === pid ? fp.back : fp.front];
-      if (other) fbPartners.push(nameIn(other, nameMode));
+      if (other) { fbPartners.push(nameIn(other, nameMode)); fbTags.push(jerseyTag(other, nameMode)); }
     }
   }
   const subPartners = [];
+  const subTags = [];
   for (const pr of plan.subs || []) {
     if (pr.a === pid || pr.b === pid) {
       const other = playerById?.[pairOpponent(pr, pid)];
-      if (other) subPartners.push(nameIn(other, nameMode));
+      if (other) { subPartners.push(nameIn(other, nameMode)); subTags.push(jerseyTag(other, nameMode)); }
     }
   }
   if (fbPartners.length || subPartners.length) {
@@ -829,6 +1219,8 @@ function rosterSubStatus(plan, pid, playerById, nameMode = 'last') {
       typeLabel: fb ? 'Pair' : 'Sub',
       label: fb ? `Front/Back pair with ${who}` : `Sub pair with ${who}`,
       partner: who,
+      // "#13" (or a name when there's no number) for the roster's note.
+      partnerTags: [...new Set(fb ? fbTags : subTags)].join(', '),
     };
   }
   return free;
@@ -995,9 +1387,14 @@ async function fetchPlans(scheduleGameId) {
   return { data: data || [], error };
 }
 async function upsertPlan(plan) {
+  // play_as is only sent once a plan actually uses it, so plans without a
+  // makeshift player keep saving on databases that predate the column
+  // (playas.sql at the repo root adds it).
+  const { play_as: playAs, ...rest } = plan;
+  const row = playAs && Object.keys(playAs).length ? plan : rest;
   const { data, error } = await supabase
     .from('game_plans')
-    .upsert(plan, { onConflict: 'id' })
+    .upsert(row, { onConflict: 'id' })
     .select()
     .single();
   return { data, error };
@@ -1451,6 +1848,16 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
   // controls the Apply Preset dropdown; presetMgrOpen opens the manager;
   // presetEditing holds the preset row being edited (or a fresh stub).
   const [presets, setPresets] = useState([]);
+  // Playground header: which chip menu is open ('system' | 'formation'),
+  // a system change waiting on "Re-arrange players?", the formation
+  // menu's "Apply to all rotations" box, and the players flashed on the
+  // court after clicking the overlap status.
+  const [hdrMenu, setHdrMenu] = useState(null);
+  const [sysConfirm, setSysConfirm] = useState(null);
+  const [applyAllRots, setApplyAllRots] = useState(false);
+  const [flagPids, setFlagPids] = useState([]);
+  const flagTimerRef = useRef(null);
+  useEffect(() => () => clearTimeout(flagTimerRef.current), []);
   const [presetError, setPresetError] = useState(null);
   const [presetTick, setPresetTick] = useState(0);
   const [applyPickerOpen, setApplyPickerOpen] = useState(false);
@@ -1519,6 +1926,14 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
   // collapsed so the court stays on screen.
   const isPhone = useIsPhone();
   const [phoneSubsOpen, setPhoneSubsOpen] = useState(false);
+  // The Substitutions panel's inline libero settings ("Change"). Lives here
+  // so the roster's Libero box can open the same settings.
+  const [subsLibOpen, setSubsLibOpen] = useState(false);
+  function openLiberoSettings() {
+    setSubsLibOpen(true);
+    if (isPhone) setPhoneSubsOpen(true);
+    else setPanelsHidden(false);
+  }
   const [phoneRosterOpen, setPhoneRosterOpen] = useState(false);
   useEffect(() => {
     if (!overflowOpen) return;
@@ -1613,7 +2028,9 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
         return an - bn;
       });
   }, [players, team?.id]);
-  const playerById = useMemo(() => {
+  // Players exactly as the roster has them. `playerById` (below, once the
+  // on-court lineup is known) layers this plan's "play as" roles on top.
+  const rosterById = useMemo(() => {
     const m = {};
     for (const p of roster) m[p.id] = p;
     return m;
@@ -1699,6 +2116,8 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
       addToast(`Save failed: ${err.message || 'Supabase error'}`, 'error');
     }
   }, [addToast]);
+  // When the last autosave landed — the Notes box's "Saved".
+  const [lastSavedAt, setLastSavedAt] = useState(0);
   const scheduleSave = useCallback((plan) => {
     if (isScheme) return; // schemes persist only via explicit Save
     queuedSaveRef.current = plan;
@@ -1711,6 +2130,7 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
         ? await upsertPlaygroundSession(p, playgroundSession.id)
         : await upsertPlan(p);
       if (result.error) handleSaveError(result.error);
+      else setLastSavedAt(Date.now());
     }, 250);
   }, [handleSaveError, isPlayground, playgroundSession, isScheme]);
   useEffect(() => {
@@ -1758,10 +2178,10 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
         if (!pid) return;
         positions[pid] = activePlan.formations?.[r]?.serve?.[pid] || defaultPositionFor(idx, r);
       });
-      if (validateFormation(positions, lineup, r, playerById).length) out.push(r);
+      if (validateFormation(positions, lineup, r, rosterById).length) out.push(r);
     }
     return out;
-  }, [isScheme, activePlan, playerById]);
+  }, [isScheme, activePlan, rosterById]);
   const saveSchemeNow = useCallback(async () => {
     if (!isScheme || !activePlan) return;
     if (schemeServeIssues.length) {
@@ -1802,26 +2222,86 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
     [activePlan, activeRotation],
   );
 
+  // Who holds a lineup slot playing another role (auto from slot + system,
+  // or the coach's pick): { pid: { role, natural, manual } }. Keyed as a
+  // string so playerById (and every memoised bubble reading it) only
+  // changes when this actually does.
+  const playAsKey = useMemo(
+    () => JSON.stringify(playAsStateFor(activePlan, rosterById)),
+    [activePlan, rosterById],
+  );
+  const playerById = useMemo(() => {
+    const live = JSON.parse(playAsKey);
+    const pids = Object.keys(live);
+    if (pids.length === 0) return rosterById;
+    const m = { ...rosterById };
+    for (const pid of pids) {
+      const { role, manual } = live[pid];
+      m[pid] = role
+        ? { ...rosterById[pid], position: role, natural_position: rosterById[pid].position, play_as: role, play_as_manual: manual }
+        : { ...rosterById[pid], play_as_manual: manual };
+    }
+    return m;
+  }, [rosterById, playAsKey]);
+
+  // Latest plans, for actions that land later (a toast's Undo) and must
+  // apply to the plan as it is then, not as it was when the toast went up.
+  const plansRef = useRef(plans);
+  useLayoutEffect(() => { plansRef.current = plans; }, [plans]);
+  const patchPlanById = useCallback((planId, fn) => {
+    const cur = plansRef.current.find(p => p.id === planId);
+    if (!cur) return;
+    const patch = fn(cur);
+    if (!patch) return;
+    const next = { ...cur, ...patch, updated_at: new Date().toISOString() };
+    plansRef.current = plansRef.current.map(p => (p.id === planId ? next : p));
+    setPlans(curr => curr.map(p => (p.id === planId ? next : p)));
+    scheduleSave(next);
+  }, [scheduleSave]);
+
+  // Say so when the auto play-as changes under the coach — a system switch,
+  // a placement or a sub puts someone in a slot meant for another role
+  // ("Bravo playing as MB · Undo", where Undo pins her as herself). Quiet on
+  // load and when switching plans; auto is per slot, so rotating never
+  // changes it.
+  const autoSeenRef = useRef({ planId: null, map: {} });
+  const rosterReady = Object.keys(rosterById).length > 0;
+  useEffect(() => {
+    const state = JSON.parse(playAsKey);
+    const auto = {};
+    for (const [pid, s] of Object.entries(state)) if (!s.manual && s.role) auto[pid] = s.role;
+    const seen = autoSeenRef.current;
+    const planId = activePlan && rosterReady ? activePlan.id : null;
+    autoSeenRef.current = { planId, map: auto };
+    if (!planId || seen.planId !== planId) return;
+    const changed = Object.entries(auto)
+      .filter(([pid, role]) => seen.map[pid] !== role)
+      .map(([pid, role]) => ({ pid, role, natural: state[pid].natural, name: nameIn(rosterById[pid], nameMode) || 'Player' }));
+    if (changed.length === 0) return;
+    // One toast per change, however many it moved ("Kim playing as MB",
+    // or "Kim → MB, Diaz → OH"); Undo pins them all as themselves.
+    const message = changed.length === 1
+      ? `${changed[0].name} playing as ${changed[0].role}`
+      : `Now playing: ${changed.map(c => `${c.name} → ${c.role}`).join(', ')}`;
+    addToast(message, 'info', {
+      label: 'Undo',
+      onClick: () => patchPlanById(planId, cur => {
+        let plan = cur;
+        for (const c of changed) plan = { ...plan, play_as: withPlayAs(plan, c.pid, c.natural) };
+        return { play_as: plan.play_as };
+      }),
+    });
+  }, [playAsKey, activePlan, rosterReady, rosterById, nameMode, addToast, patchPlanById]);
+
   // ── Derived: positions of bubbles in the current view ──
   // Defensive clamp guarantees every rendered bubble is visible inside the
   // court — even if a historical stored position is out of bounds.
   // A libero who auto-subs into an MB's slot inherits the MB's drawn
   // position so the bubble lands exactly where the MB was.
-  const currentPositions = useMemo(() => {
-    if (!activePlan) return {};
-    const stored = activePlan.formations?.[activeRotation]?.[activeMode] || {};
-    const baseAssigned = activePlan.assigned_players || [];
-    const out = {};
-    effectiveLineup.forEach((pid, idx) => {
-      if (!pid) return;
-      const original = baseAssigned[idx];
-      const raw = stored[pid]
-        || (original && stored[original])
-        || defaultPositionFor(idx, activeRotation);
-      out[pid] = clampToSafe(raw);
-    });
-    return out;
-  }, [activePlan, effectiveLineup, activeRotation, activeMode]);
+  const currentPositions = useMemo(
+    () => positionsAt(activePlan, effectiveLineup, activeRotation, activeMode),
+    [activePlan, effectiveLineup, activeRotation, activeMode],
+  );
 
   // ── Validation against the *committed* positions only (not mid-drag) ──
   const violations = useMemo(() => {
@@ -1923,28 +2403,74 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
     let subs = activePlan.subs || [];
     if (oldPid) subs = subs.filter(p => p.a !== oldPid && p.b !== oldPid);
 
-    patchActivePlan({ assigned_players: newAssigned, formations, subs });
+    // Placing a player is a planning edit: the slot starts fresh. Any logged
+    // substitution at this index would be replayed over the new player by
+    // effectiveLineupAt, so the add would silently not show.
+    const sub_log = (activePlan.sub_log || []).filter(e => e.atIdx !== idx);
+
+    // Play as: the player who left, and the newcomer, both go back to auto —
+    // which gives the newcomer the slot's role if it isn't theirs (with a
+    // toast and Undo, from the play-as watcher).
+    const play_as = withoutPlayAs(activePlan, [oldPid, newPlayer.id]);
+
+    patchActivePlan({ assigned_players: newAssigned, formations, subs, sub_log, play_as });
+    setSubFlow(curr => (curr && curr.outIdx === idx ? null : curr));
     return true;
   }, [activePlan, activeRotation, activeMode, patchActivePlan, flashWarning]);
 
+  // Removing a bubble is a planning edit, not a substitution: the slot is
+  // emptied outright and nothing is written to sub_log.
+  //
+  // The bubble the coach clicked can be on court three ways, and each one
+  // has to actually leave an empty slot behind:
+  //   • a starter            → clear assigned_players[idx]
+  //   • a logged substitute  → same slot; the sub_log entries at that index
+  //                            are dropped too, or effectiveLineupAt would
+  //                            replay them and put a player straight back
+  //                            (which also overrode anyone added there later)
+  //   • a libero auto-swap   → the libero's pairing is dropped; the slot
+  //                            belongs to the middle they cover, who returns
   const removePlayerFromPlan = useCallback((playerId) => {
     if (!activePlan) return;
-    const idx = (activePlan.assigned_players || []).indexOf(playerId);
+    const assigned = activePlan.assigned_players || [];
+    const shownIdx = effectiveLineup.indexOf(playerId);
+    const idx = assigned.indexOf(playerId) >= 0 ? assigned.indexOf(playerId) : shownIdx;
     if (idx < 0) return;
-    const newAssigned = [...activePlan.assigned_players];
+
+    const lps = activePlan.libero_pairs || {};
+    if (assigned[idx] !== playerId && lps[playerId] && !(activePlan.sub_log || []).some(e => e.atIdx === idx)) {
+      const { [playerId]: _dropped, ...rest } = lps;
+      void _dropped;
+      patchActivePlan({ libero_pairs: rest });
+      if (subFlow?.outIdx === idx) setSubFlow(null);
+      return;
+    }
+
+    const newAssigned = [...assigned];
     newAssigned[idx] = null;
+    // Everyone tied to this slot's history leaves with it.
+    const slotLog = (activePlan.sub_log || []).filter(e => e.atIdx === idx);
+    const gone = new Set([playerId, assigned[idx], ...slotLog.flatMap(e => [e.fromPid, e.toPid])].filter(Boolean));
+    const sub_log = (activePlan.sub_log || []).filter(e => e.atIdx !== idx);
     const formations = { ...(activePlan.formations || {}) };
     for (let r = 1; r <= 6; r++) {
       const rd = { ...(formations[r] || { serve: {}, receive: {} }) };
       for (const mode of ['serve','receive']) {
-        const md = { ...(rd[mode] || {}) }; delete md[playerId];
+        const md = { ...(rd[mode] || {}) };
+        for (const pid of gone) delete md[pid];
         rd[mode] = md;
       }
       formations[r] = rd;
     }
-    const subs = (activePlan.subs || []).filter(p => p.a !== playerId && p.b !== playerId);
-    patchActivePlan({ assigned_players: newAssigned, formations, subs });
-  }, [activePlan, patchActivePlan]);
+    const subs = (activePlan.subs || []).filter(p => !gone.has(p.a) && !gone.has(p.b));
+    // Back on the bench, everyone who left is their natural self again.
+    const play_as = withoutPlayAs(activePlan, gone);
+    patchActivePlan({ assigned_players: newAssigned, formations, subs, sub_log, play_as });
+    // An open "who's coming off?" step for this slot would otherwise keep
+    // judging every bench player against a slot that no longer has anyone
+    // in it — which blocked all of them from being added.
+    if (subFlow && (subFlow.outIdx === idx || gone.has(subFlow.outPid))) setSubFlow(null);
+  }, [activePlan, effectiveLineup, subFlow, patchActivePlan]);
 
   // ── Reset every bubble's position in the *current* formation back to its
   //    default rotational zone center. Useful when a bubble has drifted off
@@ -2000,6 +2526,13 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
   const dragStateRef = useRef({ active: false });
   const rafRef = useRef(null);
   const settleTimeoutsRef = useRef({});
+  // Overlap guides shown while a court bubble is dragged. State is set once
+  // when the drag lifts and once on drop; the per-frame line updates go
+  // straight to the SVG through guideSvgRef.
+  const [dragGuide, setDragGuide] = useState(null);
+  const guideSvgRef = useRef(null);
+  // Roster row ↔ court bubble hover link (mouse only).
+  const [hoverPid, setHoverPid] = useState(null);
 
   // Latest commit fn lives in a ref so the per-drag listener (created at
   // pointerdown time) can call the freshest implementation without forming
@@ -2096,7 +2629,7 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
       const dy = ev.clientY - d.startCursorY;
 
       if (d.pending) {
-        if (Math.hypot(dx, dy) < 3) return;
+        if (Math.hypot(dx, dy) <= DRAG_START_PX) return;
         d.pending = false;
         // Lift effect (instant, direct DOM, no transition, no shadow change).
         d.bubble.style.transition = 'none';
@@ -2104,6 +2637,13 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
         d.bubble.style.scale = '1.12';
         d.bubble.style.filter = 'brightness(1.15)';
         d.bubble.style.cursor = 'grabbing';
+        const crLift = courtRef.current.getBoundingClientRect();
+        d.courtW = crLift.width;
+        d.courtH = crLift.height;
+        d.guide = buildDragGuide(d, crLift.width, crLift.height, activeMode,
+          d.currentX + d.radius, d.currentY + d.radius);
+        setHoverPid(null);
+        setDragGuide(d.guide);
       }
 
       ev.preventDefault();
@@ -2222,6 +2762,13 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
           d.bubble.classList.remove('is-violation');
           if (tooltipRef.current) tooltipRef.current.style.opacity = '0';
         }
+        // Green border while the spot is legal (the server on Serve has no
+        // overlap rules, so it gets neither colour).
+        if (d.guide && !d.guide.serverFree) {
+          d.bubble.classList.toggle('is-drag-legal', !d.violationMsg);
+          paintDragGuides(guideSvgRef.current, d.guide,
+            d.currentX + d.radius, d.currentY + d.radius, d.courtW, d.courtH);
+        }
       });
     }
 
@@ -2240,6 +2787,14 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
       }
       try { d.bubble.releasePointerCapture(d.pointerId); } catch { /* noop */ }
       if (tooltipRef.current) tooltipRef.current.style.opacity = '0';
+      d.bubble.classList.remove('is-drag-legal');
+      if (d.guide) {
+        // Fade the guides out, then unmount — unless a newer drag has
+        // already replaced them.
+        const gid = d.guide.id;
+        setDragGuide(g => (g && g.id === gid ? { ...g, leaving: true } : g));
+        setTimeout(() => setDragGuide(g => (g && g.id === gid ? null : g)), 220);
+      }
 
       // No movement → was a click. Let it propagate to the court click
       // handler (used by the click-to-place flow).
@@ -2292,7 +2847,7 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
     court.addEventListener('pointermove', move, { passive: false });
     court.addEventListener('pointerup', up);
     court.addEventListener('pointercancel', up);
-  }, [activePlan, effectiveLineup, currentPositions, activeRotation, playerById, nameMode, bubbleSize]);
+  }, [activePlan, effectiveLineup, currentPositions, activeRotation, activeMode, playerById, nameMode, bubbleSize]);
 
   // Cleanup on unmount.
   useEffect(() => () => {
@@ -2371,10 +2926,102 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
       addToast('Pick a starting player — the pair follows that player’s lineup slot', 'error');
       return;
     }
+    // A libero on court is there by the automatic swap; they come off on
+    // their own, so there's nobody to sub out here.
+    const assignedHere = (activePlan.assigned_players || [])[outIdx];
+    if (subMode !== 'fb' && assignedHere !== outPid && isLiberoIn(activePlan, rosterById[outPid])) {
+      addToast('The libero comes off on their own — tap the player they cover instead', 'info');
+      return;
+    }
     setSelectedRosterId(null);
+    setPlayAsMenuPid(null);
+    // The panel is where the next step happens, so make sure it's showing.
+    if (isPhone) setPhoneSubsOpen(true);
+    else setPanelsHidden(false);
     setSubFlow(prev => (prev?.outPid === outPid ? null : { outPid, outIdx }));
   }
   function cancelSubFlow() { setSubFlow(null); }
+  // Leave "Set up a pair…" without building one.
+  function cancelPairSetup() { setSubMode('sub'); setSubFlow(null); setFbDraft(null); }
+
+  // Play as: the coach's pick — pinned, and kept through system changes
+  // (picking the natural role pins them as themselves). null is "Reset to
+  // natural": the pin goes and the slot's auto role applies again.
+  function setPlayAs(pid, role) {
+    if (!activePlan || !rosterById[pid]) return;
+    patchActivePlan({ play_as: withPlayAs(activePlan, pid, role || null) });
+  }
+  // Roster row whose "Play as" menu is open (on-court rows only).
+  const [playAsMenuPid, setPlayAsMenuPid] = useState(null);
+
+  // "Alcazar #5 in for Bravo #3".
+  function subLine(entry) {
+    const tag = (pid) => {
+      const p = rosterById[pid];
+      if (!p) return 'Player';
+      const nm = nameIn(p, nameMode) || p.name;
+      return p.jersey_number ? `${nm} #${p.jersey_number}` : nm;
+    };
+    return `${tag(entry.toPid)} in for ${tag(entry.fromPid)}`;
+  }
+
+  // Reverse one logged substitution. Later subs at the same spot were made
+  // on top of it, so they go too; a sub pair left with no swap between its
+  // two players is dropped, so neither stays "paired" for nothing.
+  function reverseSubPatch(plan, at) {
+    const log = plan.sub_log || [];
+    if (at < 0 || at >= log.length) return null;
+    const e = log[at];
+    const sub_log = log.filter((x, j) => j !== at && !(j > at && x.atIdx === e.atIdx));
+    const swapped = (a, b) => sub_log.some(x =>
+      (x.fromPid === a && x.toPid === b) || (x.fromPid === b && x.toPid === a));
+    const subs = (plan.subs || []).filter(p => !p.inPid || swapped(p.a, p.b));
+    return { sub_log, subs };
+  }
+  function reverseSubAt(at) {
+    if (!activePlan) return;
+    const patch = reverseSubPatch(activePlan, at);
+    if (patch) patchActivePlan(patch);
+  }
+
+  // One substitution, straight in: `inPid` replaces whoever stands at
+  // `outIdx`. Counts toward the set's 12 and leaves a toast with Undo.
+  function makeSub(outIdx, inPid) {
+    if (!activePlan || outIdx < 0) return false;
+    const outPid = effectiveLineup[outIdx];
+    if (!outPid || !inPid || inPid === outPid) return false;
+    if ((activePlan.assigned_players || [])[outIdx] !== outPid && isLiberoIn(activePlan, rosterById[outPid])) {
+      addToast('The libero comes off on their own — sub the player they cover instead', 'info');
+      return false;
+    }
+    if (isLiberoIn(activePlan, rosterById[inPid])) {
+      addToast('A libero comes on automatically — link them in the Libero row', 'info');
+      return false;
+    }
+    const elig = setSubEligibility(activePlan, outIdx, inPid, playerById, nameMode);
+    const entry = elig.ok ? buildRegularSubEntry(outIdx, inPid) : null;
+    if (!entry) {
+      addToast(elig.reason || 'That substitution is not legal under the set rules', 'error');
+      return false;
+    }
+    // Record the pair alongside the swap. The engine treats {a,b} as
+    // unordered (pairStarter/pairSub infer direction from roles), so we also
+    // stamp `inPid` — we KNOW who walked on here. Order-independent dedupe.
+    const subs = [...(activePlan.subs || [])];
+    const key = [outPid, inPid].sort().join('::');
+    const exists = subs.some(p => [p.a, p.b].sort().join('::') === key);
+    patchActivePlan({
+      sub_log: [...(activePlan.sub_log || []), entry],
+      ...(exists ? {} : { subs: [...subs, { a: outPid, b: inPid, inPid }] }),
+    });
+    setSubFlow(null);
+    const planId = activePlan.id;
+    addToast(subLine(entry), 'info', {
+      label: 'Undo',
+      onClick: () => patchPlanById(planId, p => reverseSubPatch(p, (p.sub_log || []).findIndex(x => x.id === entry.id))),
+    });
+    return true;
+  }
 
   // ── Front Row / Back Row Pairs ──
   //
@@ -2428,6 +3075,17 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
     }
     patchActivePlan({ fb_pairs: [...(activePlan.fb_pairs || []), { front: frontPid, back: backPid }] });
     setFbDraft(null);
+    setSubMode('sub');
+  }
+  // The right panel's "+ Add front/back pair": both picked at once, the
+  // starter as front and the bench player as back. Same pair rules as above.
+  function addFrontBackPair(frontPid, backPid) {
+    if (!activePlan || !frontPid || !backPid || frontPid === backPid) return;
+    if (fbPairClash(activePlan.fb_pairs, frontPid, backPid)) {
+      addToast('One of those players is already in a Front/Back pair', 'error');
+      return;
+    }
+    patchActivePlan({ fb_pairs: [...(activePlan.fb_pairs || []), { front: frontPid, back: backPid }] });
   }
   // Edit an existing pair's roles in place — no delete-and-recreate. The
   // stored roles stay the source of truth; this is the only thing that
@@ -2522,44 +3180,14 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
   // dismissing a crossing means "leave the lineup alone", not "don't rotate".
   const cancelFbSwap = useCallback(() => applyFbBatch([]), [applyFbBatch]);
 
-  // Removing a confirmed pair line in Playground reads as "undo this
-  // substitution", so it drops BOTH the pairing and the swaps it produced —
-  // same release as removeFrontBackPair, same helper.
-  function removePlaygroundPair(idx) {
-    if (!activePlan) return;
-    const subs = [...(activePlan.subs || [])];
-    if (idx < 0 || idx >= subs.length) return;
-    const { a, b } = subs[idx];
-    subs.splice(idx, 1);
-    patchActivePlan({ subs, sub_log: subLogWithout(activePlan, a, b) });
-    setSubFlow(null);
-  }
-
   // Step 2: pick who comes in. This both records the PAIR (plan.subs, so the
   // relationship survives and drives pair lines / bench hints) and applies
   // the physical sub through the existing engine — one tap, no separate
   // "now actually sub them in" step.
   function confirmSubFlow(inPid) {
     if (!activePlan || !subFlow) return;
-    const { outPid, outIdx } = subFlow;
-    if (!inPid || inPid === outPid) return;
-    const entry = buildRegularSubEntry(outIdx, inPid);
-    if (!entry) {
-      addToast('That substitution is not legal under FIVB rules', 'error');
-      return;
-    }
-    // Record the pair alongside the swap. The engine treats {a,b} as
-    // unordered (pairStarter/pairSub infer direction from roles), so we also
-    // stamp `inPid` — we KNOW who walked on here, and the confirmed-pair line
-    // must never render backwards. Order-independent dedupe.
-    const subs = [...(activePlan.subs || [])];
-    const key = [outPid, inPid].sort().join('::');
-    const exists = subs.some(p => [p.a, p.b].sort().join('::') === key);
-    patchActivePlan({
-      sub_log: [...(activePlan.sub_log || []), entry],
-      ...(exists ? {} : { subs: [...subs, { a: outPid, b: inPid, inPid }] }),
-    });
-    setSubFlow(null);
+    if (effectiveLineup[subFlow.outIdx] !== subFlow.outPid) { setSubFlow(null); return; }
+    makeSub(subFlow.outIdx, inPid);
   }
 
   // ── Libero pairing operations ──
@@ -2641,6 +3269,91 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
       return;
     }
     refreshPresets();
+  }
+
+  // ── Header: system + receive formation ──
+  // System: one plan field, saved with the session. With nobody placed it
+  // just switches; with players on court the coach chooses whether to
+  // re-seat them for the new system or keep everyone where they are.
+  function chooseSystem(key) {
+    setHdrMenu(null);
+    if (!activePlan || key === systemOf(activePlan)) return;
+    if ((activePlan.assigned_players || []).some(Boolean)) {
+      setSysConfirm(key);
+      return;
+    }
+    patchActivePlan({ system: key });
+  }
+  function confirmSystem(rearrange) {
+    const key = sysConfirm;
+    setSysConfirm(null);
+    if (!activePlan || !key) return;
+    if (!rearrange) { patchActivePlan({ system: key }); return; }
+    // Seat by natural role (or the coach's pinned one) — not the auto role
+    // the old system gave them, or a second setter playing OPP in a 5-1
+    // would be seated as an OPP for good.
+    const manual = manualPlayAsOf(activePlan);
+    const seatById = { ...rosterById };
+    for (const [pid, role] of Object.entries(manual)) {
+      if (rosterById[pid]) seatById[pid] = { ...rosterById[pid], position: role };
+    }
+    const { assigned, moved } = rearrangeForSystem(activePlan.assigned_players || [], key, seatById);
+    // Anyone who changed lineup index drops their stored spots, so they
+    // fall back to the default spot for their new slot in every rotation.
+    const movedPids = new Set();
+    for (const [from, to] of Object.entries(moved)) {
+      if (Number(from) !== to) movedPids.add(activePlan.assigned_players[from]);
+    }
+    const formations = { ...(activePlan.formations || {}) };
+    for (let r = 1; r <= 6; r++) {
+      const rd = { ...(formations[r] || { serve: {}, receive: {} }) };
+      for (const mode of ['serve', 'receive']) {
+        const md = { ...(rd[mode] || {}) };
+        for (const pid of movedPids) delete md[pid];
+        rd[mode] = md;
+      }
+      formations[r] = rd;
+    }
+    // Logged subs are tied to a lineup index — follow the starter.
+    const sub_log = (activePlan.sub_log || []).map(e => (
+      moved[e.atIdx] != null && moved[e.atIdx] >= 0 ? { ...e, atIdx: moved[e.atIdx] } : e
+    ));
+    patchActivePlan({ system: key, assigned_players: assigned, formations, sub_log });
+    setSubFlow(null);
+  }
+
+  // Formation: move the current rotation (or all six) into a receive shape.
+  // The shapes are rebuilt legal under the overlap rules before saving.
+  function chooseFormation(key) {
+    setHdrMenu(null);
+    if (!activePlan) return;
+    const preset = key.startsWith('preset:') ? presets.find(p => `preset:${p.id}` === key) : null;
+    if (key.startsWith('preset:') && !preset) return;
+    const rots = applyAllRots ? [1, 2, 3, 4, 5, 6] : [activeRotation];
+    const formations = { ...(activePlan.formations || {}) };
+    const receive_formations = { ...(activePlan.receive_formations || {}) };
+    const fallbackPos = (pid, idx, r) => {
+      const stored = activePlan.formations?.[r]?.receive || {};
+      const original = (activePlan.assigned_players || [])[idx];
+      return stored[pid] || (original && stored[original]) || defaultPositionFor(idx, r);
+    };
+    for (const r of rots) {
+      const shape = preset ? null : Number(key);
+      const pos = buildReceiveFormation(activePlan, r, shape, preset, playerById, fallbackPos);
+      const rd = { ...(formations[r] || { serve: {}, receive: {} }) };
+      rd.receive = { ...(rd.receive || {}), ...pos };
+      formations[r] = rd;
+      receive_formations[r] = key;
+    }
+    patchActivePlan({ formations, receive_formations });
+  }
+
+  // Legal status → highlight the players involved on the court for a moment.
+  function flashViolations() {
+    const pids = [...new Set(violations.map(v => v.playerId))];
+    setFlagPids(pids);
+    clearTimeout(flagTimerRef.current);
+    flagTimerRef.current = setTimeout(() => setFlagPids([]), 2600);
   }
 
   // Apply a preset to the active plan: copy the preset's role-keyed
@@ -2894,6 +3607,7 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
       libero_pairs: {},
       sub_log: [],
       fb_pairs: [],
+      play_as: {},
     });
     setSubFlow(null);
   }
@@ -2921,14 +3635,37 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
     if (!activePlan) return;
     const log = activePlan.sub_log || [];
     if (log.length === 0) return;
-    patchActivePlan({ sub_log: log.slice(0, -1) });
+    reverseSubAt(log.length - 1);
   }
 
   // ── Roster click ──
   function onRosterClick(player) {
     if (!activePlan) return;
+    // An on-court row opens its small "Play as" menu (not for a libero —
+    // they are always the libero).
+    if (onCourtIds.has(player.id)) {
+      setSelectedRosterId(null);
+      if (!isLiberoIn(activePlan, rosterById[player.id])) {
+        setPlayAsMenuPid(curr => (curr === player.id ? null : player.id));
+      }
+      return;
+    }
     if ((activePlan.assigned_players || []).includes(player.id)) {
       setSelectedRosterId(null);
+      return;
+    }
+    // Playground: while any spot is empty, a bench player goes straight in —
+    // into the empty spot the system expects their role in, otherwise the
+    // first empty spot (P1 → P6 in the current rotation).
+    const gaps = [0, 1, 2, 3, 4, 5]
+      .filter(i => !effectiveLineup[i])
+      .sort((a, b) => slotInRotation(`P${a + 1}`, activeRotation).localeCompare(slotInRotation(`P${b + 1}`, activeRotation)));
+    if (isPlayground && !subFlow && gaps.length > 0 && !onCourtIds.has(player.id)
+        && !isLiberoIn(activePlan, player)) {
+      const roles = SYSTEMS[systemOf(activePlan)].roles;
+      const tag = roleTagFor(player);
+      const target = gaps.find(i => roles[i] === tag) ?? gaps[0];
+      if (replacePlayerAtIdx(target, player)) setSelectedRosterId(null);
       return;
     }
     setSelectedRosterId(curr => curr === player.id ? null : player.id);
@@ -2980,8 +3717,13 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
 
   // ── dnd-kit drag handlers (covers BOTH bubble repositioning and
   //    bench → court placement, all via DragOverlay) ──
+  // Mouse: a drag starts only after DRAG_START_PX of movement, so a click
+  // on a roster row stays a click. Touch: a short press-and-hold, so a
+  // swipe still scrolls the roster; moving more than DRAG_START_PX during
+  // the hold reads as a scroll, not a drag.
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 3 } }),
+    useSensor(MouseSensor, { activationConstraint: { distance: DRAG_START_PX } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 180, tolerance: DRAG_START_PX } }),
     useSensor(KeyboardSensor),
   );
   // dnd-kit only handles bench → court drops now. Court bubbles use native
@@ -2999,42 +3741,70 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
     });
     setSelectedRosterId(null);
   }
+  // Roster → court drop. Dropping on a bubble swaps that player out (they
+  // go to the bench); on an empty spot fills it; on open court fills the
+  // nearest empty spot (or, with the court full, swaps the nearest player).
+  // Released off the court, nothing happens.
   function handleDragEnd() {
     const drag = benchDrag;
-    const dropPos = benchDropPos;
+    const targetIdx = benchDropTargetIdx;
     setBenchDrag(null);
     setBenchDropPos(null);
-    if (!drag || drag.kind !== 'bench' || !dropPos) return;
-    const slot = zoneFor(dropPos.x, dropPos.y);
-    const targetIdx = slotToArrayIdx(slot, activeRotation);
-    if (targetIdx >= 0) {
-      replacePlayerAtIdx(targetIdx, drag.player, clampToSafe(dropPos));
+    if (!drag || drag.kind !== 'bench' || targetIdx < 0) return;
+    // Playground: dropped on a player who is on court, it's a substitution.
+    // An empty spot is still filled as a lineup edit.
+    if (isPlayground && effectiveLineup[targetIdx]) {
+      makeSub(targetIdx, drag.player.id);
+      return;
     }
+    replacePlayerAtIdx(targetIdx, drag.player);
   }
   function handleDragCancel() { setBenchDrag(null); setBenchDropPos(null); }
 
-  // Track cursor as % of court while a bench drag is in progress so the
-  // drop position can be reconstructed at release. Not used for court bubble
-  // drags (those track via the bubble's own pointer handlers).
+  // Pointer position (as % of the court) during a roster drag, from
+  // dnd-kit's own move events so mouse and touch both report it. Off the
+  // court it's null, which is what makes a drop there a no-op.
+  function handleDragMove(event) {
+    if (!benchDrag) return;
+    const a = event.activatorEvent;
+    const pt = a?.touches?.[0] || a?.changedTouches?.[0] || a;
+    const rect = courtRef.current?.getBoundingClientRect();
+    if (!pt || pt.clientX == null || !rect) return;
+    const x = pt.clientX + event.delta.x;
+    const y = pt.clientY + event.delta.y;
+    const inside = x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom;
+    const next = inside
+      ? { x: ((x - rect.left) / rect.width) * 100, y: ((y - rect.top) / rect.height) * 100 }
+      : null;
+    setBenchDropPos(prev => (
+      prev === next || (prev && next && prev.x === next.x && prev.y === next.y) ? prev : next
+    ));
+  }
   const benchDragActive = !!benchDrag;
-  useEffect(() => {
-    if (!benchDragActive) { setBenchDropPos(null); return; }
-    function onMove(e) {
-      const rect = courtRef.current?.getBoundingClientRect();
-      if (!rect) return;
-      const inside =
-        e.clientX >= rect.left && e.clientX <= rect.right &&
-        e.clientY >= rect.top  && e.clientY <= rect.bottom;
-      if (!inside) return;
-      const px = ((e.clientX - rect.left) / rect.width)  * 100;
-      const py = ((e.clientY - rect.top)  / rect.height) * 100;
-      setBenchDropPos(prev =>
-        prev && prev.x === px && prev.y === py ? prev : { x: px, y: py },
-      );
-    }
-    window.addEventListener('pointermove', onMove);
-    return () => window.removeEventListener('pointermove', onMove);
-  }, [benchDragActive]);
+
+  // Which lineup index a roster drop at `benchDropPos` would land in.
+  // Hit-tests the bubbles and empty spots with the real bubble radius.
+  const benchDropTargetIdx = useMemo(() => {
+    if (!benchDrag || !benchDropPos || !courtSize.width || !courtSize.height) return -1;
+    const rx = (bubbleSize / 2 / courtSize.width) * 100;
+    const ry = (bubbleSize / 2 / courtSize.height) * 100;
+    const dist = (c) => Math.hypot((benchDropPos.x - c.x) / rx, (benchDropPos.y - c.y) / ry);
+    const centres = [0, 1, 2, 3, 4, 5].map(i => {
+      const pid = effectiveLineup[i];
+      return {
+        idx: i,
+        filled: !!pid,
+        c: pid ? currentPositions[pid] : SLOT_POS[slotInRotation(`P${i + 1}`, activeRotation)],
+      };
+    }).filter(e => e.c);
+    const hit = centres.find(e => dist(e.c) <= 1);
+    if (hit) return hit.idx;
+    const empties = centres.filter(e => !e.filled);
+    const pool = empties.length ? empties : centres;
+    let best = -1, bestD = Infinity;
+    for (const e of pool) { const d = dist(e.c); if (d < bestD) { bestD = d; best = e.idx; } }
+    return best;
+  }, [benchDrag, benchDropPos, courtSize.width, courtSize.height, bubbleSize, effectiveLineup, currentPositions, activeRotation]);
 
   // ── Rotation switch: detect pending subs and pop the dialog ──
   const handleRotationClick = useCallback((targetRotation) => {
@@ -3044,17 +3814,27 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
     // Playground: Front/Back pairs own the rotation-crossing prompt. The
     // legacy plan.subs popup is skipped here so a single rotation click can
     // never raise two competing dialogs — Gameplan keeps it unchanged.
+    // Pair swaps happen on their own: every crossing goes through the same
+    // cumulative check the review popup used (12 per set, one partner per
+    // starter), the legal ones land in one write, and a toast says who came
+    // in. A refused swap is skipped and said out loud.
     if (isPlayground) {
       const crossings = detectFrontBackCrossings(activePlan, activeRotation, targetRotation);
       if (crossings.length === 0) { setActiveRotation(targetRotation); return; }
-      // All crossings ride in one popup, every row included by default — the
-      // coach switches off what they don't want rather than confirming each.
-      setFbSwap({
-        fromRot: activeRotation,
-        toRot: targetRotation,
-        queue: crossings,
-        selected: crossings.map(() => true),
-      });
+      const batch = evaluateFbBatch(
+        activePlan, crossings, crossings.map(() => true),
+        activeRotation, targetRotation, playerById, nameMode,
+      );
+      if (batch.entries.length) {
+        patchActivePlan({ sub_log: [...(activePlan.sub_log || []), ...batch.entries] });
+        const tag = (pid) => jerseyTag(playerById[pid], nameMode);
+        batch.entries.forEach(e => addToast(`⇄ ${tag(e.toPid)} in for ${tag(e.fromPid)}`, 'info'));
+      }
+      const blocked = batch.rows.filter(r => !r.ok);
+      if (blocked.length) {
+        addToast(`${blocked.length} pair swap${blocked.length > 1 ? 's' : ''} skipped — ${blocked[0].reason}`, 'error');
+      }
+      setActiveRotation(targetRotation);
       return;
     }
 
@@ -3074,7 +3854,7 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
       queue: unconfirmed,
       cursor: 0,
     });
-  }, [activeRotation, activePlan, playerById, isPlayground]);
+  }, [activeRotation, activePlan, playerById, isPlayground, nameMode, patchActivePlan, addToast]);
 
   function confirmCurrentSub() {
     if (!subPopup || !activePlan) return;
@@ -3111,6 +3891,18 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
   );
   const courtIsFull = onCourtIds.size === 6;
 
+  // Who an empty spot's "+ Add player" picker offers: bench players who may
+  // start (a libero never does), by jersey number.
+  const addChoices = useMemo(() => {
+    if (!activePlan) return [];
+    return roster
+      .filter(p => !onCourtIds.has(p.id) && !isLiberoIn(activePlan, p))
+      .sort(byJersey);
+  }, [activePlan, roster, onCourtIds]);
+  function fillEmptySlot(idx, player) {
+    if (replacePlayerAtIdx(idx, player)) setSelectedRosterId(null);
+  }
+
   // Step-2 candidate set: who may come in for the player picked in step 1.
   // Only bench players, never a libero (they ride the free auto-swap path,
   // not the 6-per-set regular sub counter), and only swaps the FIVB engine
@@ -3131,17 +3923,51 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
     );
   }, [subFlow, subMode, activePlan, roster, onCourtIds, playerById, nameMode]);
 
+  // Front/back pairs for the right panel: each card's members, who's on
+  // court now, and the rotations it swaps in. Plus the "+ Add" chips —
+  // starters (a pair anchors to a lineup slot) and bench players, DS / L
+  // first, leaving out anyone already paired and session liberos (theirs is
+  // the free libero swap, not a pair).
+  const fbCards = useMemo(() => {
+    if (!activePlan) return [];
+    return (activePlan.fb_pairs || []).map((pair, i) => ({
+      i,
+      front: playerById[pair.front] || null,
+      back: playerById[pair.back] || null,
+      onCourt: onCourtIds.has(pair.front) ? pair.front : onCourtIds.has(pair.back) ? pair.back : null,
+      swapRots: fbPairSwapRotations(activePlan, pair),
+    })).filter(c => c.front && c.back);
+  }, [activePlan, playerById, onCourtIds]);
+  const fbChoices = useMemo(() => {
+    if (!activePlan) return { front: [], back: [] };
+    const taken = new Set();
+    for (const fp of activePlan.fb_pairs || []) { taken.add(fp.front); taken.add(fp.back); }
+    const assigned = activePlan.assigned_players || [];
+    const front = assigned
+      .map(pid => playerById[pid])
+      .filter(p => p && !taken.has(p.id) && !isLiberoIn(activePlan, p))
+      .sort(byJersey);
+    const dsFirst = (p) => (['DS', 'L'].includes(roleTagFor(p)) ? 0 : 1);
+    const back = roster
+      .filter(p => !assigned.includes(p.id) && !onCourtIds.has(p.id) && !taken.has(p.id) && !isLiberoIn(activePlan, p))
+      .sort((a, b) => dsFirst(a) - dsFirst(b) || byJersey(a, b));
+    return { front, back };
+  }, [activePlan, roster, playerById, onCourtIds]);
+
   // Roster eligibility while a substitution is being set up: who can take
   // this slot, and if not, why. Drives the greyed-out rows on the left.
   const rosterEligibility = useMemo(() => {
     const map = {};
     if (!activePlan || !isPlayground || !subFlow || subMode === 'fb') return map;
+    // A sub step whose player has left the court (removed, undone) has no
+    // slot to judge against — never let it grey out the whole bench.
+    if (effectiveLineup[subFlow.outIdx] !== subFlow.outPid) return map;
     for (const p of roster) {
       if (onCourtIds.has(p.id) || isLiberoIn(activePlan, p)) continue;
       map[p.id] = setSubEligibility(activePlan, subFlow.outIdx, p.id, playerById, nameMode);
     }
     return map;
-  }, [activePlan, isPlayground, subFlow, subMode, roster, onCourtIds, playerById, nameMode]);
+  }, [activePlan, isPlayground, subFlow, subMode, roster, onCourtIds, effectiveLineup, playerById, nameMode]);
 
   // ── Libero tab data ──
   // Who is a libero right now (roster "L" + this session's designations).
@@ -3228,13 +4054,6 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
     patchActivePlan({ formations });
   }
 
-  // The legend only appears once at least one player is off the default
-  // state — an empty roster shouldn't carry a key to nothing.
-  const showStatusLegend = useMemo(
-    () => Object.values(subStatusByPid).some(s => s.kind !== 'available'),
-    [subStatusByPid],
-  );
-
   const allValid = violations.length === 0;
   const tipTarget = useMemo(() => {
     if (!violations.length) return null;
@@ -3265,6 +4084,7 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
         if (presetMgrOpen) { setPresetMgrOpen(false); return; }
         if (presetEditing) { setPresetEditing(null); return; }
         if (overflowOpen) { setOverflowOpen(false); return; }
+        if (sysConfirm) { setSysConfirm(null); return; }
         if (subPopup) { setSubPopup(null); return; }
         // Esc on the crossing review reads as "leave the lineup alone" — it
         // makes none of the batch's swaps, but the rotation still completes.
@@ -3272,6 +4092,8 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
         if (pairPopup) { setPairPopup(null); return; }
         if (fbDraft) { setFbDraft(null); return; }
         if (subFlow) { setSubFlow(null); return; }
+        if (subMode === 'fb') { setSubMode('sub'); return; }
+        if (playAsMenuPid) { setPlayAsMenuPid(null); return; }
         if (selectedRosterId) { setSelectedRosterId(null); return; }
         if (benchDrag) return;
         onClose?.();
@@ -3299,7 +4121,7 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
       window.removeEventListener('keydown', onKey);
       document.body.style.overflow = '';
     };
-  }, [onClose, benchDrag, selectedRosterId, pairPopup, subPopup, subFlow, fbDraft, fbSwap, cancelFbSwap, overflowOpen, applyPickerOpen, presetMgrOpen, presetEditing, handleRotationClick, importOpen, importPick, importBusy]);
+  }, [onClose, benchDrag, selectedRosterId, pairPopup, subPopup, subFlow, subMode, playAsMenuPid, fbDraft, fbSwap, cancelFbSwap, overflowOpen, sysConfirm, applyPickerOpen, presetMgrOpen, presetEditing, handleRotationClick, importOpen, importPick, importBusy]);
 
   // The picked-out player is identified by array index, so a rotation change
   // or a plan switch would silently re-target the flow. Drop it instead.
@@ -3323,84 +4145,162 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
             behind the ⋯ menu, so the three stacked bands collapse to one and
             the reclaimed height goes to the court. */}
         {isPlayground ? (
-          <div className="gpb-slimbar">
-            <span className="gpb-slim-eyebrow" title="Playground">⌒</span>
-
-            <PlaygroundHeaderEditor
-              name={(activePlan && activePlan.name) || playgroundSession.name || 'Untitled Session'}
-              onCommit={(name) => patchActivePlan({ name })}
-            />
-
-            <div className="gpb-slim-sep" aria-hidden="true" />
-
-            <div className="gpb-slim-rots" role="group" aria-label="Rotation">
-              {[1, 2, 3, 4, 5, 6].map(r => {
-                const f = activePlan?.formations?.[r];
-                const isConfigured = !!f && (
-                  Object.keys(f.serve || {}).length > 0 ||
-                  Object.keys(f.receive || {}).length > 0
-                );
-                return (
-                  <button
-                    key={r}
-                    type="button"
-                    className={[
-                      'gpb-slim-rot',
-                      r === activeRotation ? 'active' : '',
-                      isConfigured ? 'configured' : '',
-                    ].filter(Boolean).join(' ')}
-                    onClick={() => handleRotationClick(r)}
-                    title={`Rotation ${r}${isConfigured ? ' · set up' : ' · empty'} (press ${r})`}
-                  >{r}</button>
-                );
-              })}
-            </div>
-
-            <div className="gpb-slim-modes" role="group" aria-label="Phase">
-              <button
-                type="button"
-                className={`gpb-slim-mode${activeMode === 'serve' ? ' active' : ''}`}
-                onClick={() => setActiveMode('serve')}
-                title="Serve (press S)"
-              >Serve</button>
-              <button
-                type="button"
-                className={`gpb-slim-mode${activeMode === 'receive' ? ' active' : ''}`}
-                onClick={() => setActiveMode('receive')}
-                title="Serve Receive (press R)"
-              >Recv</button>
-            </div>
-
-            <span className={`gpb-slim-status ${allValid ? 'ok' : 'bad'}`}>
-              {allValid ? '✓ LEGAL' : '✗ ILLEGAL'}
-            </span>
-
-            <div className="gpb-slim-spacer" />
-
-            {/* Hides the subs / Front-Back / libero rail so the court takes the
-                whole width. Lives in the bar, not the ⋯ menu, because it is a
-                view control you toggle constantly. */}
+          <header className="gpb-hdr">
             <button
               type="button"
-              className={`gpb-slim-btn gpb-panels-btn${panelsHidden ? ' is-on' : ''}`}
-              onClick={() => setPanelsHidden(v => !v)}
-              aria-pressed={panelsHidden}
-              title={panelsHidden
-                ? 'Show the subs, Front/Back and libero panels'
-                : 'Hide the subs, Front/Back and libero panels for a full-width court'}
-            >
-              <IconPanelRight size={13} />
-              <span className="gpb-panels-btn-label">{panelsHidden ? 'Show panels' : 'Hide panels'}</span>
-            </button>
+              className="gpb-hdr-icon gpb-hdr-back"
+              onClick={onClose}
+              aria-label="Back"
+              title="Back"
+            ><IconArrowLeft size={18} /></button>
+
+            <div className="gpb-hdr-titles">
+              <PlaygroundHeaderEditor
+                name={(activePlan && activePlan.name) || playgroundSession.name || 'Untitled Session'}
+                onCommit={(name) => patchActivePlan({ name })}
+              />
+              <div className="gpb-hdr-sub">
+                {[team?.name, activePlan?.updated_at
+                  ? new Date(activePlan.updated_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+                  : null].filter(Boolean).join(' · ')}
+              </div>
+            </div>
+
+            <div className="gpb-hdr-seg gpb-hdr-rots" role="group" aria-label="Rotation">
+              {[1, 2, 3, 4, 5, 6].map(r => (
+                <button
+                  key={r}
+                  type="button"
+                  className={`gpb-hdr-seg-btn${r === activeRotation ? ' is-on' : ''}`}
+                  aria-pressed={r === activeRotation}
+                  onClick={() => handleRotationClick(r)}
+                  title={`Rotation ${r} (press ${r})`}
+                >{r}</button>
+              ))}
+            </div>
+
+            <div className="gpb-hdr-row3">
+              <div className="gpb-hdr-seg gpb-hdr-modes" role="group" aria-label="Phase">
+                <button
+                  type="button"
+                  className={`gpb-hdr-seg-btn${activeMode === 'serve' ? ' is-on' : ''}`}
+                  aria-pressed={activeMode === 'serve'}
+                  onClick={() => setActiveMode('serve')}
+                  title="Serve (press S)"
+                >Serve</button>
+                <button
+                  type="button"
+                  className={`gpb-hdr-seg-btn${activeMode === 'receive' ? ' is-on' : ''}`}
+                  aria-pressed={activeMode === 'receive'}
+                  onClick={() => setActiveMode('receive')}
+                  title="Serve receive (press R)"
+                >Recv</button>
+              </div>
+
+              {activePlan && (
+                <HdrChipMenu
+                  id="system"
+                  open={hdrMenu === 'system'}
+                  onToggle={() => setHdrMenu(m => (m === 'system' ? null : 'system'))}
+                  onClose={() => setHdrMenu(null)}
+                  label={SYSTEMS[systemOf(activePlan)].chip}
+                  ariaLabel="Offensive system"
+                >
+                  {Object.entries(SYSTEMS).map(([key, s]) => (
+                    <HdrMenuItem
+                      key={key}
+                      selected={systemOf(activePlan) === key}
+                      onClick={() => chooseSystem(key)}
+                    >{s.label}</HdrMenuItem>
+                  ))}
+                </HdrChipMenu>
+              )}
+
+              {activePlan && activeMode === 'receive' && (() => {
+                const cur = activePlan.receive_formations?.[activeRotation] || null;
+                const curPreset = cur?.startsWith('preset:') ? presets.find(p => `preset:${p.id}` === cur) : null;
+                const label = curPreset ? curPreset.name
+                  : RECEIVE_SHAPES[cur] ? RECEIVE_SHAPES[cur].label
+                  : 'Formation';
+                return (
+                  <HdrChipMenu
+                    id="formation"
+                    open={hdrMenu === 'formation'}
+                    onToggle={() => setHdrMenu(m => (m === 'formation' ? null : 'formation'))}
+                    onClose={() => setHdrMenu(null)}
+                    label={label}
+                    ariaLabel="Serve-receive formation"
+                  >
+                    {Object.entries(RECEIVE_SHAPES).map(([key, s]) => (
+                      <HdrMenuItem key={key} selected={cur === key} onClick={() => chooseFormation(key)}>
+                        {s.label}
+                      </HdrMenuItem>
+                    ))}
+                    {presets.length > 0 && <div className="gpb-hdrmenu-group">Saved presets</div>}
+                    {presets.map(p => (
+                      <HdrMenuItem
+                        key={p.id}
+                        selected={cur === `preset:${p.id}`}
+                        onClick={() => chooseFormation(`preset:${p.id}`)}
+                      >{p.name || 'Untitled preset'}</HdrMenuItem>
+                    ))}
+                    <label className="gpb-hdrmenu-check">
+                      <input
+                        type="checkbox"
+                        checked={applyAllRots}
+                        onChange={e => setApplyAllRots(e.target.checked)}
+                      />
+                      Apply to all rotations
+                    </label>
+                  </HdrChipMenu>
+                );
+              })()}
+
+              {allValid ? (
+                <span className="gpb-hdr-legal is-ok">✓ Legal</span>
+              ) : (() => {
+                const slots = [...new Set(violations.map(v => {
+                  const idx = effectiveLineup.indexOf(v.playerId);
+                  return idx >= 0 ? slotInRotation(`P${idx + 1}`, activeRotation) : null;
+                }).filter(Boolean))].sort();
+                return (
+                  <button
+                    type="button"
+                    className="gpb-hdr-legal is-bad"
+                    onClick={flashViolations}
+                    title={violations.map(v => v.reason).join('\n')}
+                  >Overlap: {slots.join(' / ')}</button>
+                );
+              })()}
+            </div>
+
+            <div className="gpb-hdr-actions">
+              <button
+                type="button"
+                className={`gpb-hdr-icon gpb-hdr-desk${rosterCollapsed ? '' : ' is-on'}`}
+                onClick={() => setRosterCollapsed(c => !c)}
+                aria-pressed={!rosterCollapsed}
+                aria-label={rosterCollapsed ? 'Show lineup' : 'Hide lineup'}
+                title={rosterCollapsed ? 'Show lineup' : 'Hide lineup'}
+              ><IconUsers size={17} /></button>
+              <button
+                type="button"
+                className={`gpb-hdr-icon gpb-hdr-desk${panelsHidden ? ' is-on' : ''}`}
+                onClick={() => setPanelsHidden(v => !v)}
+                aria-pressed={panelsHidden}
+                aria-label={panelsHidden ? 'Show panels' : 'Hide panels'}
+                title={panelsHidden ? 'Show panels' : 'Hide panels'}
+              ><IconPanelRight size={17} /></button>
 
             <div className="gpb-slim-more" ref={overflowRef}>
               <button
                 type="button"
-                className={`gpb-slim-btn${overflowOpen ? ' is-on' : ''}`}
+                className={`gpb-hdr-icon${overflowOpen ? ' is-on' : ''}`}
                 onClick={() => setOverflowOpen(o => !o)}
                 aria-expanded={overflowOpen}
                 aria-haspopup="menu"
-                title="More actions"
+                aria-label="More"
+                title="More"
               >⋯</button>
 
               {overflowOpen && activePlan && (
@@ -3437,20 +4337,20 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
                   {/* The preset apply/manage entries lived here. They're gone
                       with the gameplan toolbar's — the playground is where
                       sessions are BUILT, so there is nothing to import into it. */}
-                  {/* On a phone the roster is its own collapsible section, so
-                      the show/hide item gives way to the panels toggle, which
-                      leaves the bar there. */}
-                  {isPhone ? (
-                    <button
-                      type="button" role="menuitem" className="gpb-slimmenu-item"
-                      onClick={() => { setPanelsHidden(v => !v); setOverflowOpen(false); }}
-                      aria-pressed={panelsHidden}
-                    >{panelsHidden ? '▤  Show subs panel' : '▤  Hide subs panel'}</button>
-                  ) : (
-                    <button
-                      type="button" role="menuitem" className="gpb-slimmenu-item"
-                      onClick={() => { setRosterCollapsed(c => !c); setOverflowOpen(false); }}
-                    >{rosterCollapsed ? '▶  Show roster' : '◀  Hide roster'}</button>
+                  {/* Phone: Lineup and Hide panels live here instead of
+                      the bar. Desktop has them as icon buttons. */}
+                  {isPhone && (
+                    <>
+                      <button
+                        type="button" role="menuitem" className="gpb-slimmenu-item"
+                        onClick={() => { setPhoneRosterOpen(o => !o); setOverflowOpen(false); }}
+                      >{phoneRosterOpen ? 'Hide lineup' : 'Show lineup'}</button>
+                      <button
+                        type="button" role="menuitem" className="gpb-slimmenu-item"
+                        onClick={() => { setPanelsHidden(v => !v); setOverflowOpen(false); }}
+                        aria-pressed={panelsHidden}
+                      >{panelsHidden ? 'Show panels' : 'Hide panels'}</button>
+                    </>
                   )}
                   <button
                     type="button" role="menuitem" className="gpb-slimmenu-item"
@@ -3475,6 +4375,24 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
                     />
                   </label>
 
+                  <div className="gpb-slimmenu-sep" />
+                  <button
+                    type="button" role="menuitem" className="gpb-slimmenu-item"
+                    onClick={() => {
+                      setOverflowOpen(false);
+                      setSubFlow(null);
+                      setFbDraft(null);
+                      setSubMode('fb');
+                      if (isPhone) setPhoneSubsOpen(true); else setPanelsHidden(false);
+                    }}
+                    title="Link a starter with a bench player who swaps in whenever they cross the front/back line"
+                  >⇄  Set up a pair…</button>
+                  <button
+                    type="button" role="menuitem" className="gpb-slimmenu-item"
+                    onClick={() => { setOverflowOpen(false); startNewSet(); }}
+                    title="Clear this set's substitutions and starter/sub locks"
+                  >New set</button>
+
                   {/* Phone: close moves in here, so the bar keeps one button. */}
                   {isPhone && (
                     <>
@@ -3482,22 +4400,36 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
                       <button
                         type="button" role="menuitem" className="gpb-slimmenu-item"
                         onClick={() => { setOverflowOpen(false); onClose(); }}
-                      >×  Close playground</button>
+                      >Close</button>
                     </>
                   )}
                 </div>
               )}
             </div>
 
-            <span className="gpb-slim-sep gpb-slim-sep-close" aria-hidden="true" />
+              <button
+                type="button"
+                className="gpb-hdr-icon gpb-hdr-desk"
+                onClick={onClose}
+                aria-label="Close"
+                title="Close"
+              >×</button>
+            </div>
 
-            <button
-              type="button"
-              className="gpb-slim-btn gpb-slim-close"
-              onClick={onClose}
-              aria-label="Close"
-            >×</button>
-          </div>
+            {/* System change with players already placed: re-seat them for
+                the new system, or keep everyone where they are. */}
+            {sysConfirm && (
+              <div className="gpb-hdr-confirm" role="dialog" aria-label="Change system">
+                <div className="gpb-hdr-confirm-text">
+                  Re-arrange players for {SYSTEMS[sysConfirm].label}?
+                </div>
+                <div className="gpb-hdr-confirm-btns">
+                  <button type="button" className="gpb-hdr-confirm-yes" onClick={() => confirmSystem(true)}>Yes</button>
+                  <button type="button" className="gpb-hdr-confirm-keep" onClick={() => confirmSystem(false)}>Keep positions</button>
+                </div>
+              </div>
+            )}
+          </header>
         ) : (<>
 
         {/* HEADER */}
@@ -3726,6 +4658,7 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
         <DndContext
           sensors={sensors}
           onDragStart={handleDragStart}
+          onDragMove={handleDragMove}
           onDragEnd={handleDragEnd}
           onDragCancel={handleDragCancel}
           autoScroll={false}
@@ -3794,13 +4727,22 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
                     bubbleSize={bubbleSize}
                     tooltipRef={tooltipRef}
                     tooltipTextRef={tooltipTextRef}
+                    dragGuide={dragGuide}
+                    guideSvgRef={guideSvgRef}
+                    hoverPid={hoverPid}
+                    onHoverPid={setHoverPid}
+                    addChoices={addChoices}
+                    onFillSlot={fillEmptySlot}
+                    slotRoles={isPlayground ? SYSTEMS[systemOf(activePlan)].roles : null}
+                    flagPids={flagPids}
+                    dropTargetIdx={benchDropTargetIdx}
                   />
                 </div>
               );
 
               const rosterHead = (
                 <div className="gpb-roster-head">
-                  <span>ROSTER</span>
+                  <span>Roster <span className="gpb-count-badge">{roster.length}</span></span>
                   <span className="gpb-roster-count">{onCourtIds.size}/6 in plan</span>
                 </div>
               );
@@ -3810,55 +4752,27 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
               const subChrome = isScheme ? null : (<>
                   {/* FIVB sub counter + undo. Only regular subs count; libero
                       auto-swaps are unlimited and free. */}
+                  {!isPlayground && (
                   <div className="gpb-sub-counter-bar">
-                    {isPlayground ? (
-                      <>
-                        <span className="gpb-set-badge" title="Substitution rules apply per set">
-                          SET {activePlan.set_number || 1}
-                        </span>
-                        <span className={`gpb-sub-counter${setSubCount(activePlan) >= SET_SUB_LIMIT ? ' is-full' : ''}`}>
-                          <strong>{setSubCount(activePlan)}</strong>/{SET_SUB_LIMIT} subs
-                        </span>
-                        <button
-                          type="button"
-                          className="gpb-sub-undo"
-                          onClick={undoLastSub}
-                          disabled={(activePlan.sub_log || []).length === 0}
-                          title="Undo last substitution"
-                        >
-                          ↶
-                        </button>
-                        <button
-                          type="button"
-                          className="gpb-sub-newset"
-                          onClick={startNewSet}
-                          title="Clear this set's substitutions and starter/sub locks"
-                        >
-                          New Set
-                        </button>
-                      </>
-                    ) : (
-                      <>
-                        <span className={`gpb-sub-counter${regularSubCount(activePlan) >= 6 ? ' is-full' : ''}`}>
-                          Subs: <strong>{regularSubCount(activePlan)}</strong>/6
-                        </span>
-                        <button
-                          type="button"
-                          className="gpb-sub-undo"
-                          onClick={undoLastSub}
-                          disabled={(activePlan.sub_log || []).length === 0}
-                          title="Undo last substitution"
-                        >
-                          ↶ Undo
-                        </button>
-                      </>
-                    )}
+                    <span className={`gpb-sub-counter${regularSubCount(activePlan) >= 6 ? ' is-full' : ''}`}>
+                      Subs: <strong>{regularSubCount(activePlan)}</strong>/6
+                    </span>
+                    <button
+                      type="button"
+                      className="gpb-sub-undo"
+                      onClick={undoLastSub}
+                      disabled={(activePlan.sub_log || []).length === 0}
+                      title="Undo last substitution"
+                    >
+                      ↶ Undo
+                    </button>
                   </div>
+                  )}
 
                   {/* Dedicated Libero pairing panel. Gameplan keeps it inline
                       here (and it self-hides unless the roster has an L);
-                      the Playground mounts it inside SubFlowPanel's "Libero"
-                      tab so the three substitution surfaces live together. */}
+                      the Playground mounts it behind the Libero row's
+                      "Change" in PlaygroundSubsPanel. */}
                   {!isPlayground && (
                     <LiberoPairingPanel
                       roster={roster}
@@ -3875,26 +4789,36 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
                       the court, then who's IN from the bench). Gameplan keeps
                       the original one-tap Pair Subs popup — same component,
                       two flows, so neither surface changes under the other. */}
+                  {/* Playground: the streamlined Substitutions panel — set
+                      counter, direct sub-out list, one libero row, and the
+                      set's log. Gameplan keeps the Pair Subs popup below. */}
                   {isPlayground ? (
-                    <SubFlowPanel
-                      subFlow={subFlow}
+                    <PlaygroundSubsPanel
+                      setNumber={activePlan.set_number || 1}
+                      used={setSubCount(activePlan)}
+                      onUndo={undoLastSub}
                       mode={subMode}
-                      onModeChange={(m) => { setSubMode(m); setSubFlow(null); }}
+                      subFlow={subFlow}
+                      outPlayer={subFlow ? playerById[subFlow.outPid] : null}
+                      naturalOut={subFlow ? rosterById[subFlow.outPid] : null}
                       candidates={subCandidates}
-                      pairs={activePlan.subs || []}
-                      fbPairs={activePlan.fb_pairs || []}
-                      playerById={playerById}
-                      effectiveLineup={effectiveLineup}
-                      activeRotation={activeRotation}
-                      onCancel={cancelSubFlow}
                       onPickIn={subMode === 'fb' ? beginFrontBackPair : confirmSubFlow}
-                      onUnpair={removePlaygroundPair}
+                      onCancel={subMode === 'fb' ? cancelPairSetup : cancelSubFlow}
+                      onSetPlayAs={setPlayAs}
+                      log={activePlan.sub_log || []}
+                      subLine={subLine}
+                      onReverse={reverseSubAt}
+                      playerById={playerById}
                       onUnpairFb={removeFrontBackPair}
+                      onFlipFbRoles={flipFrontBackRoles}
+                      fbCards={fbCards}
+                      fbChoices={fbChoices}
+                      onAddPair={addFrontBackPair}
+                      rotation={activeRotation}
                       fbDraft={fbDraft}
                       onFbDraftFront={setFbDraftFront}
                       onFbDraftCancel={cancelFbDraft}
                       onFbDraftConfirm={commitFbDraft}
-                      onFlipFbRoles={flipFrontBackRoles}
                       rowIssues={rowIssues}
                       onSetPairRows={setPairRows}
                       onSwapPairSpots={swapPairSpots}
@@ -3905,14 +4829,19 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
                         coverCandidates: liberoCoverCandidates,
                         pairs: activePlan.libero_pairs || {},
                         auto: activePlan.libero_auto !== false,
+                        rosterById,
                         onDesignate: designateLibero,
                         onUndesignate: undesignateLibero,
                         onSetPair: setLiberoPair,
                         onToggleAuto: toggleLiberoAuto,
                         onAutoDetect: autoDetectLibero,
                       }}
+                      libOpen={subsLibOpen}
+                      setLibOpen={setSubsLibOpen}
+                      onNewSet={startNewSet}
                     />
-                  ) : (
+                  ) : null}
+                  {!isPlayground && (
                   <div className="gpb-pair-bar">
                     <button
                       type="button"
@@ -3963,7 +4892,7 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
 
               // One roster row. Playground groups these under On Court /
               // Bench headings; the other surfaces keep a single flat list.
-              const renderRosterRow = (p) => {
+              const renderRosterRow = (p, courtNo = null, liberoIn = false) => {
                       const onCourt = onCourtIds.has(p.id);
                       const idx = (activePlan.assigned_players || []).indexOf(p.id);
                       const isSelected = selectedRosterId === p.id;
@@ -3994,7 +4923,9 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
                         <BenchRow
                           key={p.id}
                           player={p}
-                          isOnCourt={onCourt}
+                          isOnCourt={onCourt || liberoIn}
+                          courtNo={courtNo}
+                          liberoIn={liberoIn}
                           isSelected={isSelected}
                           pairs={pairs}
                           playerById={playerById}
@@ -4007,12 +4938,122 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
                           blockedReason={elig && !elig.ok ? elig.reason : null}
                           onSubIn={() => applyRegularSub(subInIdx, p.id)}
                           onClick={() => onRosterClick(p)}
+                          linked={hoverPid === p.id}
+                          onHover={setHoverPid}
+                          playAsOpen={playAsMenuPid === p.id && onCourt}
+                          naturalTag={roleTagFor(rosterById[p.id] || p)}
+                          onSetPlayAs={(role) => { setPlayAs(p.id, role); setPlayAsMenuPid(null); }}
+                          onClosePlayAs={() => setPlayAsMenuPid(null)}
                         />
                       );
               };
 
-              const onCourtRoster = roster.filter(p => onCourtIds.has(p.id));
-              const benchRoster   = roster.filter(p => !onCourtIds.has(p.id));
+              // On-court rows read as the role being played (play-as colour
+              // and tag); the bench is always natural.
+              const onCourtRoster = roster.filter(p => onCourtIds.has(p.id)).map(p => playerById[p.id] || p);
+              // Playground lists liberos in the Libero box under the six,
+              // so not on the bench too. DS players stay on the bench.
+              const libBoxIds = new Set(isPlayground ? liberos.map(l => l.id) : []);
+              // Who holds each lineup slot, libero swap left out — the On
+              // court rows. A starter the libero is in for keeps their row,
+              // so they're not on the bench either.
+              const slotHolders = slotLineupOf(activePlan);
+              const slotHolderIds = new Set(isPlayground ? slotHolders.filter(Boolean) : []);
+              const benchRoster   = roster.filter(p => !onCourtIds.has(p.id) && !libBoxIds.has(p.id) && !slotHolderIds.has(p.id));
+
+              // Bench: one plain list, no subheaders — by role (S, OH, MB,
+              // OPP, L/DS, other) and then jersey number, so the same roles
+              // still sit together.
+              const renderByPosition = (players) => BENCH_GROUPS.flatMap(g => players
+                .filter(p => benchGroupOf(p, isLiberoIn(activePlan, p)) === g.key)
+                .sort(byJersey)
+                .map(p => renderRosterRow(p)));
+
+              // On court like an official lineup sheet: the six who hold the
+              // lineup slots (starters and regular subs — never the libero),
+              // in court-position order for this rotation, P1 … P6 top to
+              // bottom: lineup index i stands at slotInRotation(P{i+1}). A
+              // starter the libero is in for stays in their row, dimmed, with
+              // an "L in" mark. Follows every rotation, sub and move. An
+              // empty spot is a faded row with the role the system wants.
+              const courtRoles = SYSTEMS[systemOf(activePlan)].roles;
+              const renderByCourtPosition = () => slotHolders
+                .map((pid, idx) => ({ pid, idx, pos: slotInRotation(`P${idx + 1}`, activeRotation) }))
+                .sort((a, b) => a.pos.localeCompare(b.pos))
+                .map(({ pid, idx, pos }) => {
+                  const p = pid && (playerById[pid] || rosterById[pid]);
+                  const courtNo = pos.slice(1);
+                  const liberoIn = !!pid && !!effectiveLineup[idx] && effectiveLineup[idx] !== pid;
+                  if (p) return renderRosterRow(p, courtNo, liberoIn);
+                  const role = courtRoles[idx];
+                  return (
+                    <div
+                      key={`empty-${pos}`}
+                      className="gpb-bench-row on-court is-empty-spot"
+                      style={{ '--role-c': ROLE_COLORS[role] || ROLE_COLOR_NONE }}
+                    >
+                      <span className="gpb-lineup-no">{courtNo}</span>
+                      <div className="gpb-bench-mid">
+                        <div className="gpb-bench-line">
+                          <span className="gpb-bench-name">Empty</span>
+                          {role && <span className="gpb-bench-role">{role}</span>}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                });
+
+              // The lineup sheet's libero box, under the six: "L" (and "L2"),
+              // dimmed while off court this rotation. A click opens the
+              // libero settings in the Substitutions panel.
+              const liberoKey = (e) => {
+                if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openLiberoSettings(); }
+              };
+              const renderLiberoBox = () => (
+                <div className="gpb-libbox" aria-label="Libero">
+                  {liberos.length === 0 ? (
+                    <div
+                      role="button"
+                      tabIndex={0}
+                      className="gpb-bench-row gpb-libbox-row is-empty-spot"
+                      style={{ '--role-c': ROLE_COLORS.L }}
+                      onClick={openLiberoSettings}
+                      onKeyDown={liberoKey}
+                      title="Set up a libero"
+                    >
+                      <span className="gpb-lineup-no">L</span>
+                      <div className="gpb-bench-mid">
+                        <div className="gpb-bench-line">
+                          <span className="gpb-bench-name">No libero</span>
+                        </div>
+                      </div>
+                    </div>
+                  ) : liberos.map((l, i) => {
+                    const at = effectiveLineup.indexOf(l.id);
+                    return (
+                      <div
+                        key={l.id}
+                        role="button"
+                        tabIndex={0}
+                        className={`gpb-bench-row gpb-libbox-row${at >= 0 ? ' is-in' : ''}`}
+                        style={{ '--role-c': ROLE_COLORS.L }}
+                        onClick={openLiberoSettings}
+                        onKeyDown={liberoKey}
+                        title="Change the libero or who they replace"
+                      >
+                        <span className="gpb-lineup-no">{i === 0 ? 'L' : `L${i + 1}`}</span>
+                        <div className="gpb-bench-num">{badgeFor(l)}</div>
+                        <div className="gpb-bench-mid">
+                          <div className="gpb-bench-line">
+                            <span className="gpb-bench-name">{nameIn(l, nameMode) || l.name}</span>
+                            <span className="gpb-bench-role">L</span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
 
               const rosterList = isPlayground ? (
                   <div className="gpb-roster-list">
@@ -4022,37 +5063,20 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
                     {onCourtRoster.length > 0 && (
                       <>
                         <div className="gpb-roster-group">
-                          <span className="gpb-roster-group-dot is-oncourt" aria-hidden="true" />
-                          On Court
-                          <span className="gpb-roster-group-count">{onCourtRoster.length}</span>
+                          On court <span className="gpb-count-badge">{onCourtRoster.length}</span>
                         </div>
-                        {onCourtRoster.map(renderRosterRow)}
+                        {renderByCourtPosition()}
+                        {renderLiberoBox()}
                       </>
                     )}
+                    {/* Pinned to the bottom of the panel (margin-top: auto);
+                        when space runs out the gap goes and the list scrolls. */}
                     {benchRoster.length > 0 && (
-                      <>
+                      <div className="gpb-bench-section">
                         <div className="gpb-roster-group">
-                          <span className="gpb-roster-group-dot is-bench" aria-hidden="true" />
-                          Bench
-                          <span className="gpb-roster-group-count">{benchRoster.length}</span>
+                          Bench <span className="gpb-count-badge">{benchRoster.length}</span>
                         </div>
-                        {benchRoster.map(renderRosterRow)}
-                      </>
-                    )}
-                    {showStatusLegend && (
-                      <div className="gpb-roster-legend">
-                        <span className="gpb-roster-legend-item">
-                          <SubStatusIcon status={{ kind: 'paired', pairType: 'fb', label: 'Front/Back pair' }} /> pair
-                        </span>
-                        <span className="gpb-roster-legend-item">
-                          <SubStatusIcon status={{ kind: 'paired', pairType: 'sub', label: 'Manual sub pair' }} /> sub
-                        </span>
-                        <span className="gpb-roster-legend-item">
-                          <SubStatusIcon status={{ kind: 'locked', label: 'Already used this set' }} /> used
-                        </span>
-                        <span className="gpb-roster-legend-item">
-                          <SubStatusIcon status={{ kind: 'available', label: 'Available' }} /> free
-                        </span>
+                        {renderByPosition(benchRoster)}
                       </div>
                     )}
                   </div>
@@ -4061,7 +5085,7 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
                     {roster.length === 0 && (
                       <div className="gpb-roster-empty">No players on the roster yet.</div>
                     )}
-                    {roster.map(renderRosterRow)}
+                    {roster.map(p => renderRosterRow(playerById[p.id] || p))}
                   </div>
               );
 
@@ -4123,7 +5147,24 @@ export default function GameplanBuilderModal({ team, game: gameProp, players, on
                     )}
                     {courtColumn}
                     {!panelsHidden && (
-                      <aside className="gpb-roster gpb-col-subs">{subChrome}</aside>
+                      <aside className="gpb-roster gpb-col-subs">
+                        {/* This rotation, all six, notes — then Subs. */}
+                        <RotationOverview
+                          plan={activePlan}
+                          rotation={activeRotation}
+                          mode={activeMode}
+                          playerById={playerById}
+                          liberos={liberos}
+                          violations={violations}
+                          onFlash={flashViolations}
+                          onPickRotation={handleRotationClick}
+                          onNoteChange={(key, text) => patchActivePlan({
+                            rotation_notes: { ...(activePlan.rotation_notes || {}), [key]: text },
+                          })}
+                          lastSavedAt={lastSavedAt}
+                        />
+                        {subChrome}
+                      </aside>
                     )}
                   </>
                 );
@@ -4275,7 +5316,12 @@ function CourtSurface({
   onRemovePlayer, onBubbleDragStart, assignedPlayers, subOutPid,
   rowFlaggedPids, hideHint,
   courtWidth, courtHeight, bubbleSize, tooltipRef, tooltipTextRef,
+  dragGuide, guideSvgRef, hoverPid, onHoverPid, addChoices, onFillSlot,
+  slotRoles, flagPids, dropTargetIdx = -1,
 }) {
+  // Which empty spot's "Add player" picker is open (lineup index), if any.
+  const [pickIdx, setPickIdx] = useState(null);
+  const guideNeighbors = dragGuide && !dragGuide.leaving ? dragGuide.neighborPids : null;
   const { setNodeRef, isOver } = useDroppable({
     id: 'court-surface',
     data: { kind: 'court' },
@@ -4330,22 +5376,55 @@ function CourtSurface({
           courtHeight={courtHeight}
         />
 
-        {/* Slot guides — only when at least one slot is empty. Once 6 are
-            placed, the court is "clean": just the 6 bubbles, nothing else. */}
+        {/* Empty spots — a "+ Add player" placeholder in each one. Click it
+            to pick a bench player (or, with a player already armed, to drop
+            them straight in); dragging a bench row onto it works too. Once
+            6 are placed the court is "clean": just the 6 bubbles. */}
         {!courtIsFull && SLOTS.map(slot => {
           const idx = slotToArrayIdx(slot, activeRotation);
           const filled = idx >= 0 && !!assigned[idx];
-          if (filled) return null;
+          if (filled || idx < 0) return null;
           const c = SLOT_POS[slot];
+          const picking = pickIdx === idx;
           return (
-            <div
-              key={`guide-${slot}`}
-              className="gpb-slot-guide"
-              style={{ left: `${c.x}%`, top: `${c.y}%` }}
-            >
-              <div className="gpb-slot-guide-num">{slot.slice(1)}</div>
-              <div className="gpb-slot-guide-label">{slot}</div>
-            </div>
+            <Fragment key={`guide-${slot}`}>
+              <button
+                type="button"
+                className={`gpb-slot-guide gpb-slot-add${picking ? ' is-open' : ''}${dropTargetIdx === idx ? ' is-drop-target' : ''}`}
+                style={{ left: `${c.x}%`, top: `${c.y}%` }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (armedPlayer) { onFillSlot?.(idx, armedPlayer); return; }
+                  setPickIdx(curr => (curr === idx ? null : idx));
+                }}
+                onPointerDown={(e) => e.stopPropagation()}
+                aria-label={armedPlayer
+                  ? `Put ${armedPlayer.name} in ${slot}`
+                  : `Add a player to ${slot}`}
+                aria-expanded={armedPlayer ? undefined : picking}
+              >
+                <span className="gpb-slot-guide-label">{slot}</span>
+                <span className="gpb-slot-add-plus" aria-hidden="true">+</span>
+                {slotRoles?.[idx] ? (
+                  <span
+                    className="gpb-slot-add-text gpb-slot-add-role"
+                    style={{ '--role-c': ROLE_COLORS[slotRoles[idx]] || ROLE_COLOR_NONE }}
+                  >Add {slotRoles[idx]}</span>
+                ) : (
+                  <span className="gpb-slot-add-text">Add player</span>
+                )}
+              </button>
+              {picking && !armedPlayer && (
+                <SlotPicker
+                  slot={slot}
+                  pos={c}
+                  role={slotRoles?.[idx] || null}
+                  choices={addChoices || []}
+                  onPick={(p) => { setPickIdx(null); onFillSlot?.(idx, p); }}
+                  onClose={() => setPickIdx(null)}
+                />
+              )}
+            </Fragment>
           );
         })}
 
@@ -4372,11 +5451,25 @@ function CourtSurface({
               bubbleSize={bubbleSize}
               subbingOut={pid === subOutPid}
               rowFlagged={!!rowFlaggedPids?.has(pid)}
+              constraining={!!guideNeighbors?.includes(pid)}
+              linked={hoverPid === pid}
+              flagged={!!flagPids?.includes(pid)}
+              dropTarget={dropTargetIdx === idx}
+              onHover={onHoverPid}
               onDragStart={onBubbleDragStart}
               onRemove={onRemovePlayer}
             />
           );
         })}
+
+        {dragGuide && (
+          <DragGuides
+            guide={dragGuide}
+            svgRef={guideSvgRef}
+            width={courtWidth}
+            height={courtHeight}
+          />
+        )}
 
         {tipTarget && (
           <div
@@ -4401,6 +5494,90 @@ function CourtSurface({
         </div>
       </div>
     </div>
+  );
+}
+
+// ─── SlotPicker — bench list for an empty court spot ─────────────────────
+// Opens under the "+ Add player" placeholder. Closes on a pick, Escape, or
+// a click anywhere else.
+function SlotPicker({ slot, pos, role, choices, onPick, onClose }) {
+  const dn = useDisplayName();
+  const ref = useRef(null);
+  // Players for the role this spot is meant for come first; everyone else
+  // sits behind "Choose someone else…", grouped by role. A spot with no
+  // expected role (gameplan surface) just lists everybody, grouped.
+  const matching = role ? choices.filter(p => roleTagFor(p) === role) : [];
+  const others = role ? choices.filter(p => roleTagFor(p) !== role) : choices;
+  const [showOthers, setShowOthers] = useState(!role);
+  useEffect(() => {
+    const onDown = (e) => {
+      if (ref.current?.contains(e.target)) return;
+      if (e.target.closest?.('.gpb-slot-add.is-open')) return; // its own toggle
+      onClose();
+    };
+    // stopPropagation keeps the modal's own Escape (close) from also firing.
+    const onKey = (e) => { if (e.key === 'Escape') { e.stopPropagation(); onClose(); } };
+    document.addEventListener('pointerdown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('pointerdown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [onClose]);
+  // Open upward from back-row spots so the list stays on the court.
+  const up = pos.y > 50;
+  return (
+    <div
+      ref={ref}
+      className={`gpb-slotpick${up ? ' is-up' : ''}`}
+      style={{ left: `${pos.x}%`, top: `${pos.y}%` }}
+      role="menu"
+      aria-label={`Add a player to ${slot}`}
+      onClick={(e) => e.stopPropagation()}
+      onPointerDown={(e) => e.stopPropagation()}
+    >
+      <div className="gpb-slotpick-head">Add to {slot}</div>
+      {role && (matching.length === 0 ? (
+        <div className="gpb-slotpick-empty">No {role} available</div>
+      ) : matching.map(p => (
+        <SlotPickRow key={p.id} player={p} dn={dn} onPick={onPick} />
+      )))}
+      {role && !showOthers && others.length > 0 && (
+        <button
+          type="button"
+          className="gpb-slotpick-more"
+          onClick={() => setShowOthers(true)}
+        >Choose someone else…</button>
+      )}
+      {showOthers && (others.length === 0 ? (
+        !role && <div className="gpb-slotpick-empty">No bench players available</div>
+      ) : BENCH_GROUPS.map(g => {
+        const members = others.filter(p => benchGroupOf(p, false) === g.key);
+        if (members.length === 0) return null;
+        return (
+          <Fragment key={g.key}>
+            <div className="gpb-slotpick-group" style={{ '--role-c': g.color }}>{g.label}</div>
+            {members.map(p => <SlotPickRow key={p.id} player={p} dn={dn} onPick={onPick} />)}
+          </Fragment>
+        );
+      }))}
+    </div>
+  );
+}
+function SlotPickRow({ player, dn, onPick }) {
+  const tag = roleTagFor(player);
+  return (
+    <button
+      type="button"
+      role="menuitem"
+      className="gpb-slotpick-item"
+      style={{ '--role-c': roleColorFor(player) }}
+      onClick={() => onPick(player)}
+    >
+      <span className="gpb-slotpick-num">{badgeFor(player)}</span>
+      <span className="gpb-slotpick-name">{dn(player)}</span>
+      {tag && <span className="gpb-slotpick-role">{tag}</span>}
+    </button>
   );
 }
 
@@ -4453,6 +5630,74 @@ function PairLines({ subs, positions, playerById, courtWidth, courtHeight }) {
   );
 }
 
+// ─── DragGuides ──────────────────────────────────────────────────────────
+// Two layers: the legal-zone shading sits under the bubbles, the dashed
+// guide lines and labels sit above them. Mounted once when a drag lifts;
+// paintDragGuides() moves the lines each frame. The fade in is a CSS
+// animation on mount, the fade out is the `leaving` flag set on drop.
+function DragGuides({ guide, svgRef, width, height }) {
+  if (!width || !height) return null;
+  const cls = `gpb-guides${guide.leaving ? ' is-leaving' : ''}`;
+  if (guide.serverFree) {
+    return (
+      <div className={`${cls} gpb-guides-free`} aria-live="polite">
+        Server: free to move
+      </div>
+    );
+  }
+  const z = guide.zone;
+  const hasZone = z.maxX > z.minX && z.maxY > z.minY;
+  // Outer rectangle minus the legal box (even-odd) = everything outside it.
+  const outside = hasZone
+    ? `M0 0H${width}V${height}H0Z M${z.minX} ${z.minY}H${z.maxX}V${z.maxY}H${z.minX}Z`
+    : `M0 0H${width}V${height}H0Z`;
+  return (
+    <>
+      <svg
+        className={`${cls} gpb-guides-zone`}
+        width={width} height={height}
+        aria-hidden="true"
+      >
+        <path className="gpb-guide-outside" d={outside} fillRule="evenodd" />
+        {hasZone && (
+          <rect
+            className="gpb-guide-legal"
+            x={z.minX} y={z.minY}
+            width={z.maxX - z.minX} height={z.maxY - z.minY}
+            rx="6"
+          />
+        )}
+      </svg>
+      <svg
+        ref={svgRef}
+        className={`${cls} gpb-guides-lines`}
+        width={width} height={height}
+        aria-hidden="true"
+      >
+        {guide.constraints.map((c, i) => {
+          const g = guideGeometry(c, guide.cx, guide.cy, guide.radius, width, height);
+          const broken = guideBroken(c, guide.cx, guide.cy);
+          return (
+            <g key={`${c.axis}-${c.dir}-${c.nSlot || 'lib'}`}>
+              <line
+                data-gl={i}
+                className={`gpb-guide-line${broken ? ' is-broken' : ''}`}
+                x1={g.x1} y1={g.y1} x2={g.x2} y2={g.y2}
+              />
+              <text
+                data-gt={i}
+                className={`gpb-guide-label${broken ? ' is-broken' : ''}`}
+                x={g.tx} y={g.ty}
+                textAnchor="middle"
+              >{c.label}</text>
+            </g>
+          );
+        })}
+      </svg>
+    </>
+  );
+}
+
 // ─── Court bubble — pure presentation, drag is owned by the parent.
 //
 // The bubble itself is a `position: absolute` div with `left`/`top` set in
@@ -4472,9 +5717,13 @@ function PairLines({ subs, positions, playerById, courtWidth, courtHeight }) {
 const CourtBubble = memo(function CourtBubble({
   player, playerId, arrayIdx, position, plan, violation, slotLabel,
   courtWidth, courtHeight, bubbleSize, subbingOut, rowFlagged, onDragStart, onRemove,
+  constraining, linked, flagged, dropTarget, onHover,
 }) {
   const dn = useDisplayName();
   const size = bubbleSize || BUBBLE_RADIUS * 2;
+  // Mouse-only, and never while a button is held (a drag in progress).
+  const hoverIn = (e) => { if (e.pointerType === 'mouse' && !e.buttons) onHover?.(playerId); };
+  const hoverOut = (e) => { if (e.pointerType === 'mouse') onHover?.(null); };
   const halfBubble = size / 2;
   const libero = isLiberoIn(plan, player);
   // Bubble's TOP-LEFT in pixels from the court's top-left, clamped to the
@@ -4500,6 +5749,10 @@ const CourtBubble = memo(function CourtBubble({
         subbingOut ? 'is-subbing-out' : '',
         rowFlagged ? 'is-row-flag' : '',
         libero ? 'is-libero' : '',
+        constraining ? 'is-constraint' : '',
+        linked ? 'is-linked' : '',
+        flagged ? 'is-flagged' : '',
+        dropTarget ? 'is-drop-target' : '',
       ].filter(Boolean).join(' ')}
       style={{
         left: `${px}px`,
@@ -4508,10 +5761,22 @@ const CourtBubble = memo(function CourtBubble({
         ...colorVarsFor(player, arrayIdx, plan),
       }}
       onPointerDown={pointerDown}
-      title={violation || (libero ? `${player.name} — libero` : `${player.name}`)}
+      onPointerEnter={hoverIn}
+      onPointerLeave={hoverOut}
+      title={violation || (libero ? `${player.name} — libero`
+        : player.play_as ? `${player.name} — playing as ${player.play_as} (natural ${roleTagOf(player.natural_position) || 'role'})`
+        : `${player.name}`)}
     >
       {slotLabel && <div className="gpb-bubble-slot">{slotLabel}</div>}
       {libero && <div className="gpb-bubble-libero" title="Libero">L</div>}
+      {/* Makeshift: the fill is the role being played; this tag is the
+          player's real one, so you can tell at a glance. */}
+      {!libero && player.play_as && (
+        <div className="gpb-bubble-natural" aria-label={`Natural ${roleTagOf(player.natural_position)}`}>
+          {player.play_as_manual && <PinMark />}
+          {roleTagOf(player.natural_position) || '?'}
+        </div>
+      )}
       <div className="gpb-bubble-num">{badgeFor(player)}</div>
       <div className="gpb-bubble-name">{dn(player)}</div>
       <button
@@ -4541,50 +5806,12 @@ function BubblePreview({ player, colorVars, slotLabel, bubbleSize }) {
   );
 }
 
-// ─── SubStatusIcon ─────────────────────────────────────────────────────────
-// One small glyph per roster row saying whether the player is still usable
-// for a substitution. Icon + colour + a title/aria label, so the meaning
-// never rests on colour alone. `available` draws a faint hollow dot rather
-// than nothing, which keeps the column aligned and lets "clean" read as a
-// deliberate state instead of a missing one.
-function SubStatusIcon({ status }) {
-  const kind = status?.kind || 'available';
-  const label = status?.label || 'Available for a substitution';
-  // Blue for a Front/Back pair, purple for a manual sub pair. The row's
-  // "Pair"/"Sub" text and this element's label say which regardless.
-  const tint = kind === 'paired' && status?.pairType ? ` is-pair-${status.pairType}` : '';
-  return (
-    <span
-      className={`gpb-substatus is-${kind}${tint}`}
-      title={label}
-      aria-label={label}
-      role="img"
-    >
-      {kind === 'locked' && (
-        <svg viewBox="0 0 24 24" width="11" height="11" aria-hidden="true">
-          <rect x="5" y="11" width="14" height="9" rx="2"
-                fill="none" stroke="currentColor" strokeWidth="2.2" />
-          <path d="M8.5 11V8a3.5 3.5 0 0 1 7 0v3"
-                fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
-        </svg>
-      )}
-      {kind === 'paired' && (
-        <svg viewBox="0 0 24 24" width="12" height="12" aria-hidden="true">
-          <path d="M10 14a4.5 4.5 0 0 0 6.4 0l2.6-2.6a4.5 4.5 0 0 0-6.4-6.4L11.4 6.2"
-                fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
-          <path d="M14 10a4.5 4.5 0 0 0-6.4 0L5 12.6a4.5 4.5 0 0 0 6.4 6.4l1.2-1.2"
-                fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
-        </svg>
-      )}
-      {kind === 'available' && <span className="gpb-substatus-dot" aria-hidden="true" />}
-    </span>
-  );
-}
-
 function BenchRow({
   player, isOnCourt, isSelected, pairs, playerById,
   arrayIdx, plan, canSubIn, subInIdx, showStatus, subStatus, blockedReason,
-  onSubIn, onClick,
+  onSubIn, onClick, linked, onHover,
+  playAsOpen = false, naturalTag = '', onSetPlayAs, onClosePlayAs,
+  courtNo = null, liberoIn = false,
 }) {
   const { setNodeRef, listeners, attributes, isDragging } = useDraggable({
     id: `bench-${player.id}`,
@@ -4599,6 +5826,24 @@ function BenchRow({
   const partners = (pairs || [])
     .map(p => playerById[pairOpponent(p, player.id)])
     .filter(Boolean);
+  // A libero in the On court list is just number, name and an "L" tag (a
+  // session-designated one included, whatever their roster position says).
+  const courtLibero = libero && courtNo != null;
+  const roleTag = courtLibero ? 'L' : roleTagFor(player);
+  const roleColor = roleColorFor(player, libero);
+  // Playing another role: their real one, in gray beside the name.
+  const naturalNote = player.play_as ? (naturalTag || roleTagOf(player.natural_position)) : '';
+  // Status in words, only when it matters. Elsewhere a session-designated
+  // libero has no "L" in their roster position, so the note is what says
+  // they're the one who auto-swaps.
+  const notes = [];
+  if (libero && !courtLibero) notes.push({ kind: 'libero', text: 'Libero' });
+  if (showStatus) {
+    if (subStatus?.kind === 'locked') notes.push({ kind: 'used', text: 'Sub used' });
+    else if (subStatus?.kind === 'paired' && subStatus.partnerTags) notes.push({ kind: 'paired', text: `Paired with ${subStatus.partnerTags}` });
+  } else if (partners.length > 0) {
+    notes.push({ kind: 'paired', text: `Paired with ${partners.map(p => jerseyTag(p)).join(', ')}` });
+  }
 
   function onKeyDown(e) {
     if (e.key === 'Enter' || e.key === ' ') {
@@ -4610,8 +5855,10 @@ function BenchRow({
     <div
       ref={setNodeRef}
       role="button"
-      tabIndex={isOnCourt || blockedReason ? -1 : 0}
-      aria-pressed={isSelected}
+      tabIndex={blockedReason ? -1 : 0}
+      aria-pressed={isOnCourt ? undefined : isSelected}
+      aria-haspopup={isOnCourt && !libero && !liberoIn ? 'menu' : undefined}
+      aria-expanded={isOnCourt && !libero && !liberoIn ? playAsOpen : undefined}
       aria-disabled={blockedReason ? true : undefined}
       className={[
         'gpb-bench-row',
@@ -4621,59 +5868,47 @@ function BenchRow({
         isDragging ? 'is-dragging-row' : '',
         blockedReason ? 'is-blocked' : '',
         showStatus && subStatus?.kind === 'locked' ? 'is-locked' : '',
+        linked ? 'is-linked' : '',
+        liberoIn ? 'is-libero-out' : '',
       ].filter(Boolean).join(' ')}
-      style={colorVars}
+      style={{ ...colorVars, '--role-c': roleColor }}
       onClick={blockedReason ? undefined : onClick}
       onKeyDown={blockedReason ? undefined : onKeyDown}
+      onMouseEnter={() => onHover?.(player.id)}
+      onMouseLeave={() => onHover?.(null)}
       title={blockedReason || undefined}
       {...listeners}
       {...attributes}
     >
-      <span className="gpb-bench-dot" aria-hidden="true" />
+      {/* On court: the court position this rotation, scoresheet-small. */}
+      {courtNo && <span className="gpb-lineup-no">{courtNo}</span>}
       <div className="gpb-bench-num">{badgeFor(player)}</div>
       <div className="gpb-bench-mid">
-        <div className="gpb-bench-name">{showStatus ? dn(player) : player.name}</div>
-        <div className="gpb-bench-meta">
-          {/* Playground says the status in words as well as by colour. */}
-          {showStatus && (
-            <span className={`gpb-bench-status${isOnCourt ? ' is-oncourt' : ''}`}>
-              {isOnCourt ? 'On court' : 'Bench'}
+        <div className="gpb-bench-line">
+          <span className="gpb-bench-name">{showStatus ? dn(player) : player.name}</span>
+          {naturalNote && (
+            <span className="gpb-bench-natural" title={`Natural position: ${naturalNote}`}>({naturalNote})</span>
+          )}
+          {isOnCourt && player.play_as_manual && (
+            <PinMark title={player.play_as ? `Play as ${player.play_as} — your pick` : 'Kept in natural role — your pick'} />
+          )}
+          {/* Status pills inline, so the row stays one line. */}
+          {notes.map(n => (
+            <span key={n.kind} className={`gpb-bench-pill is-${n.kind}`} title={n.text}>{n.text}</span>
+          ))}
+          {/* The libero is in for this starter: a gold "⇄ L" where the
+              role tag goes. */}
+          {liberoIn ? (
+            <span className="gpb-bench-libin" title="Libero in" aria-label="Libero in">
+              <span aria-hidden="true">⇄</span>L
             </span>
-          )}
-          {!showStatus && ([player.position, player.grade].filter(Boolean).join(' · ') || 'Player')}
-          {showStatus && libero && (
-            <span className="gpb-rolepill is-libero" title="Libero">LIBERO</span>
-          )}
-          {showStatus && player.position && !libero && (
-            <span className="gpb-rolepill">{roleTagFor(player)}</span>
-          )}
-          {showStatus && subStatus?.partner && (
-            <span className={`gpb-bench-pair${subStatus.pairType ? ` is-pair-${subStatus.pairType}` : ''}`}>
-              {subStatus.typeLabel && (
-                <span className="gpb-bench-pair-type">{subStatus.typeLabel}</span>
-              )}
-              ↔ {subStatus.partner}
-            </span>
-          )}
-          {!showStatus && partners.length === 1 && (
-            <span className="gpb-bench-pair">↔ {lastNameOf(partners[0].name) || partners[0].name}</span>
-          )}
-          {!showStatus && partners.length > 1 && (
-            <span className="gpb-bench-pair" title={partners.map(p => p.name).join(', ')}>
-              ↔ {partners.length} subs
-            </span>
-          )}
+          ) : roleTag && <span className="gpb-bench-role">{roleTag}</span>}
         </div>
         {blockedReason && (
           <div className="gpb-bench-blocked">{blockedReason}</div>
         )}
       </div>
-      {/* The libero badge rides on both surfaces — a session-designated
-          libero has no "L" in their roster position, so this glyph is the
-          only thing saying they're the one who auto-swaps. */}
-      {libero && <div className="gpb-bench-libero" title="Libero">L</div>}
       {!showStatus && isOnCourt && <div className="gpb-bench-check" title="On court">✓</div>}
-      {showStatus && <SubStatusIcon status={subStatus} />}
       {!isOnCourt && canSubIn && (
         <button
           type="button"
@@ -4685,34 +5920,157 @@ function BenchRow({
           onPointerDown={(e) => e.stopPropagation()}
           title={`Sub in for player at slot ${subInIdx + 1}`}
         >
-          SUB IN
+          Sub in
         </button>
+      )}
+      {playAsOpen && (
+        <PlayAsMenu
+          natural={naturalTag}
+          current={player.play_as || null}
+          manual={!!player.play_as_manual}
+          onPick={onSetPlayAs}
+          onClose={onClosePlayAs}
+        />
       )}
     </div>
   );
 }
 
-// ─── SubFlowPanel — Playground substitution UI ─────────────────────────────
+// A tiny pushpin: this play-as is the coach's pick, kept through system
+// changes.
+function PinMark({ title }) {
+  return (
+    <span className="gpb-pinmark" title={title} aria-label={title || 'Pinned'}>
+      <svg viewBox="0 0 24 24" width="10" height="10" fill="currentColor" aria-hidden="true">
+        <path d="M15 3H9a1 1 0 0 0 0 2h1v5.2l-2.6 2.1A1 1 0 0 0 7 13v1a1 1 0 0 0 1 1h3v6l1 1 1-1v-6h3a1 1 0 0 0 1-1v-1a1 1 0 0 0-.4-.8L14 10.2V5h1a1 1 0 0 0 0-2Z" />
+      </svg>
+    </span>
+  );
+}
+
+// ─── PlayAsMenu — the small "Play as" popover on an on-court roster row ──
+// Lists the roles a player can stand in for; their natural role is marked.
+// A pick is pinned (manual); "Reset to natural" removes the pin, back to the
+// system's role for the slot. Closes on a pick, Escape, or a click anywhere
+// else.
+function PlayAsMenu({ natural, current, manual, onPick, onClose }) {
+  const ref = useRef(null);
+  useEffect(() => {
+    const onDown = (e) => {
+      if (ref.current?.contains(e.target)) return;
+      // The row's own click toggles it; don't close-then-reopen.
+      if (ref.current?.parentElement?.contains(e.target)) return;
+      onClose?.();
+    };
+    document.addEventListener('pointerdown', onDown);
+    return () => document.removeEventListener('pointerdown', onDown);
+  }, [onClose]);
+  const shown = current || natural;
+  return (
+    <div
+      ref={ref}
+      className="gpb-playas-menu"
+      role="menu"
+      aria-label="Play as"
+      onClick={(e) => e.stopPropagation()}
+      onPointerDown={(e) => e.stopPropagation()}
+      onKeyDown={(e) => e.stopPropagation()}
+    >
+      <div className="gpb-playas-head">Play as</div>
+      {PLAY_AS_ROLES.map(role => (
+        <button
+          key={role}
+          type="button"
+          role="menuitemradio"
+          aria-checked={shown === role}
+          className={`gpb-playas-item${shown === role ? ' is-on' : ''}`}
+          style={{ '--role-c': ROLE_COLORS[role] || ROLE_COLOR_NONE }}
+          onClick={() => onPick?.(role)}
+        >
+          <span className="gpb-playas-dot" aria-hidden="true" />
+          {role}
+          {role === natural && <span className="gpb-playas-natural">natural</span>}
+        </button>
+      ))}
+      {manual && (
+        <button
+          type="button"
+          role="menuitem"
+          className="gpb-playas-item is-reset"
+          onClick={() => onPick?.(null)}
+          title="Clears your pick — the system's role for this slot applies again"
+        >Reset to natural{natural ? ` (${natural})` : ''}</button>
+      )}
+    </div>
+  );
+}
+
+// ─── PlaygroundSubsPanel — Playground substitution UI ──────────────────────
 //
-// Two guided steps, always in the same order:
-//   STEP 1  tap a bubble on the court  → that player is "coming out"
-//   STEP 2  tap a name from the bench  → they come in, pair recorded
+// Direct, no mode button:
+//   tap a court player  → "Sub out #3 Bravo" with the bench right there
+//                         (same role first, then Other); tap one — done
+//   drag a bench player onto a court player — done (handled by the modal)
+// Every sub counts toward the set's 12 and is listed under "This set",
+// newest first, each with an × to reverse it.
 //
-// Step 2 only exists once step 1 is answered, so the coach is never asked to
-// pick a substitute before knowing who they're replacing. Candidates carry a
-// role tag (“Taliyah — DS”) so the reason the swap makes sense is on screen.
-//
-// Confirmed pairs render one per line, incoming player first:
-//   Taliyah (back row) → in for Audrenah (front row)
 // Small shared pieces so a player reads identically in every sub surface:
 // name prominent, role and row secondary, direction always spelled out in
 // words as well as colour (colour alone is never the only signal).
 function RolePill({ player }) {
-  return <span className="gpb-rolepill">{roleTagFor(player)}</span>;
+  const tag = roleTagFor(player);
+  return tag ? <span className="gpb-rolepill">{tag}</span> : null;
+}
+
+// Small "⋯" menu for the occasional per-line actions, so they don't sit on
+// every line as big buttons. Closes on a pick, Escape, or a click elsewhere.
+function LineMenu({ label, items }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  useEffect(() => {
+    if (!open) return undefined;
+    const onDown = (e) => { if (!ref.current?.contains(e.target)) setOpen(false); };
+    // stopPropagation keeps the modal's own Escape (close) from also firing.
+    const onKey = (e) => { if (e.key === 'Escape') { e.stopPropagation(); setOpen(false); } };
+    document.addEventListener('pointerdown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('pointerdown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+  if (!items.length) return null;
+  return (
+    <span className="gpb-linemenu" ref={ref}>
+      <button
+        type="button"
+        className="gpb-linemenu-btn"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label={label}
+        title={label}
+        onClick={() => setOpen(o => !o)}
+      >⋯</button>
+      {open && (
+        <span className="gpb-linemenu-list" role="menu">
+          {items.map(it => (
+            <button
+              key={it.label}
+              type="button"
+              role="menuitem"
+              className="gpb-linemenu-item"
+              title={it.title}
+              onClick={() => { setOpen(false); it.onClick(); }}
+            >{it.label}</button>
+          ))}
+        </span>
+      )}
+    </span>
+  );
 }
 function DirTag({ kind, children }) {
   // kind: 'out' | 'in' | 'front' | 'back'
-  return <span className={`gpb-dirtag is-${kind}`}>{children || kind.toUpperCase()}</span>;
+  return <span className={`gpb-dirtag is-${kind}`}>{children || kind[0].toUpperCase() + kind.slice(1)}</span>;
 }
 function PlayerLine({ player, dir, note }) {
   const dn = useDisplayName();
@@ -4726,90 +6084,454 @@ function PlayerLine({ player, dir, note }) {
   );
 }
 
-function SubFlowPanel({
-  subFlow, mode, onModeChange, candidates, pairs, fbPairs, playerById,
-  effectiveLineup, activeRotation, onCancel, onPickIn, onUnpair, onUnpairFb,
-  rowIssues, onSetPairRows, onSwapPairSpots, libero,
-  fbDraft, onFbDraftFront, onFbDraftCancel, onFbDraftConfirm, onFlipFbRoles,
+// ─── RotationOverview — the Playground's right panel, above Subs ──────────
+//
+// "Rotation 1 · Serve": who serves, where the setter is, how many attack in
+// front, the libero, and whether it's legal (click a problem to flash those
+// players on the court). "All rotations": six small courts for the current
+// mode, each with a legal dot — click one to go there. "Notes": a note per
+// rotation and per Serve/Receive, saved with the plan.
+// Everything is read from the plan with the same helpers the court uses, so
+// it can't disagree with what's drawn.
+function RotationOverview({
+  plan, rotation, mode, playerById, liberos, violations,
+  onFlash, onPickRotation, onNoteChange, lastSavedAt,
 }) {
   const dn = useDisplayName();
-  const isLiberoMode = mode === 'libero';
-  const isFb = mode === 'fb';
-  const issueByPair = {};
-  for (const iss of rowIssues || []) issueByPair[iss.pairIdx] = iss;
-  const outPlayer = subFlow ? playerById[subFlow.outPid] : null;
-  const outRow = subFlow
-    ? rowLabelFor(subFlow.outPid, effectiveLineup, activeRotation, playerById)
-    : null;
+  const [editedAt, setEditedAt] = useState(0);
+  const lineup = effectiveLineupAt(plan, rotation);
+  const holders = slotLineupOf(plan);
+  const isLib = (p) => isLiberoIn(plan, p);
+  const slotOf = (idx) => slotInRotation(`P${idx + 1}`, rotation);
+  const players = lineup
+    .map((pid, idx) => ({ pid, idx, slot: slotOf(idx), p: pid ? playerById[pid] : null }))
+    .filter(x => x.p);
+  // "#13" in the player's role colour; "#13 Cruda" with the name.
+  const num = (p) => (
+    <span className="gpb-ro-num" style={{ '--role-c': roleColorFor(p, isLib(p)) }}>
+      {p.jersey_number ? `#${p.jersey_number}` : dn(p)}
+    </span>
+  );
+  const who = (p) => <>{num(p)} {p.jersey_number ? dn(p) : ''}</>;
+
+  // Server: whoever stands in P1 (serve only).
+  const server = players.find(x => x.slot === 'P1')?.p || null;
+  // Setter: the one setting this rotation — the back-row setter when there
+  // are two (a 6-2), by the role being played.
+  const setters = players.filter(x => !isLib(x.p) && roleTagFor(x.p) === 'S');
+  const setter = setters.find(x => !FRONT_SLOTS.has(x.slot)) || setters[0] || null;
+  // Front-row attackers: the front three, less a front-row setter.
+  const attackers = players
+    .filter(x => FRONT_SLOTS.has(x.slot) && !isLib(x.p) && x.pid !== setter?.pid)
+    .sort((a, b) => ['P4', 'P3', 'P2'].indexOf(a.slot) - ['P4', 'P3', 'P2'].indexOf(b.slot));
+  // Libero: in for whoever holds the slot she's standing in.
+  const libIn = players.find(x => isLib(x.p) && holders[x.idx] && holders[x.idx] !== x.pid);
+  const libFor = libIn ? playerById[holders[libIn.idx]] : null;
+
+  const modeLabel = mode === 'receive' ? 'Receive' : 'Serve';
+  const noteKey = `${rotation}-${mode}`;
+  const note = plan?.rotation_notes?.[noteKey] || '';
+  const noteStatus = !editedAt ? '' : lastSavedAt >= editedAt ? 'Saved' : 'Saving…';
 
   return (
-    <div className={`gpb-subflow${subFlow ? ' is-active' : ''}${isFb ? ' is-fb' : ''}${isLiberoMode ? ' is-libero' : ''}`}>
-      <div className="gpb-subflow-head">
-        <span className="gpb-subflow-title">SUBSTITUTIONS</span>
-        {subFlow && (
+    <div className="gpb-ro">
+      <section className="gpb-ro-sec" aria-label={`Rotation ${rotation} ${modeLabel}`}>
+        <h3 className="gpb-ro-title">Rotation {rotation} · {modeLabel}</h3>
+        <dl className="gpb-ro-facts">
+          {mode !== 'receive' && (
+            <div className="gpb-ro-fact">
+              <dt>Server</dt>
+              <dd>{server ? who(server) : <span className="gpb-ro-muted">—</span>}</dd>
+            </div>
+          )}
+          <div className="gpb-ro-fact">
+            <dt>Setter</dt>
+            <dd>
+              {setter ? <>{FRONT_SLOTS.has(setter.slot) ? 'Front row' : 'Back row'} <span className="gpb-ro-muted">·</span> {num(setter.p)}</>
+                : <span className="gpb-ro-muted">None on court</span>}
+            </dd>
+          </div>
+          <div className="gpb-ro-fact">
+            <dt>Front-row attackers</dt>
+            <dd>
+              {attackers.length}
+              {attackers.length > 0 && <span className="gpb-ro-muted"> ·</span>}
+              {attackers.map(x => <Fragment key={x.pid}> {num(x.p)}</Fragment>)}
+            </dd>
+          </div>
+          <div className="gpb-ro-fact">
+            <dt>Libero</dt>
+            <dd>
+              {libIn
+                ? <>in for {libFor ? who(libFor) : 'a starter'}</>
+                : <span className="gpb-ro-muted">{liberos.length ? 'Off court' : 'None set'}</span>}
+            </dd>
+          </div>
+        </dl>
+        {violations.length === 0 ? (
+          <div className="gpb-ro-legal is-ok">✓ Legal</div>
+        ) : (
           <button
             type="button"
-            className="gpb-subflow-cancel"
-            onClick={onCancel}
-            title="Cancel (Esc)"
-          >Cancel</button>
+            className="gpb-ro-legal is-bad"
+            onClick={onFlash}
+            title="Show these players on the court"
+          >
+            {violations[0].reason}
+            {violations.length > 1 && <span className="gpb-ro-more"> +{violations.length - 1} more</span>}
+          </button>
+        )}
+      </section>
+
+      <section className="gpb-ro-sec" aria-label="All rotations">
+        <h3 className="gpb-ro-title">All rotations</h3>
+        <div className="gpb-ro-grid">
+          {[1, 2, 3, 4, 5, 6].map(r => {
+            const lin = effectiveLineupAt(plan, r);
+            const pos = positionsAt(plan, lin, r, mode);
+            const ok = validateFormation(pos, lin, r, playerById).length === 0;
+            return (
+              <button
+                key={r}
+                type="button"
+                className={`gpb-ro-thumb${r === rotation ? ' is-current' : ''}`}
+                onClick={() => onPickRotation(r)}
+                aria-label={`Rotation ${r}${ok ? '' : ', overlap'}`}
+                aria-current={r === rotation ? 'true' : undefined}
+              >
+                <span className="gpb-ro-thumb-head">
+                  <span className="gpb-ro-thumb-no">{r}</span>
+                  <span className={`gpb-ro-thumb-dot${ok ? ' is-ok' : ' is-bad'}`} title={ok ? 'Legal' : 'Overlap'} />
+                </span>
+                <span className="gpb-ro-thumb-court" aria-hidden="true">
+                  {lin.map(pid => {
+                    const p = pid && playerById[pid];
+                    const at = pid && pos[pid];
+                    if (!p || !at) return null;
+                    return (
+                      <span
+                        key={pid}
+                        className="gpb-ro-thumb-p"
+                        style={{ left: `${at.x}%`, top: `${at.y}%`, background: roleColorFor(p, isLib(p)) }}
+                      />
+                    );
+                  })}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </section>
+
+      <section className="gpb-ro-sec" aria-label="Notes">
+        <div className="gpb-ro-title-row">
+          <h3 className="gpb-ro-title">Notes</h3>
+          {noteStatus && <span className="gpb-ro-saved">{noteStatus}</span>}
+        </div>
+        <textarea
+          className="gpb-ro-notes"
+          value={note}
+          placeholder={`Notes for rotation ${rotation}…`}
+          rows={3}
+          onChange={(e) => { setEditedAt(Date.now()); onNoteChange(noteKey, e.target.value); }}
+          aria-label={`Notes for rotation ${rotation}, ${modeLabel.toLowerCase()}`}
+        />
+      </section>
+    </div>
+  );
+}
+
+function PlaygroundSubsPanel({
+  setNumber, used, onUndo, mode, subFlow, outPlayer, naturalOut, candidates,
+  onPickIn, onCancel, onSetPlayAs, log, subLine, onReverse,
+  playerById, onUnpairFb, onFlipFbRoles,
+  fbDraft, onFbDraftFront, onFbDraftCancel, onFbDraftConfirm,
+  rowIssues, onSetPairRows, onSwapPairSpots, libero,
+  libOpen = false, setLibOpen, onNewSet,
+  fbCards = [], fbChoices = { front: [], back: [] }, onAddPair, rotation = 1,
+}) {
+  const dn = useDisplayName();
+  const isFb = mode === 'fb';
+  // "+ Add front/back pair": null, then 'front' (pick a starter), then
+  // 'back' (pick from the bench) — the pair is made on the second tap.
+  const [pairStep, setPairStep] = useState(null);
+  const [pairFront, setPairFront] = useState(null);
+  const closePairAdd = () => { setPairStep(null); setPairFront(null); };
+  const pickRef = useRef(null);
+  useEffect(() => {
+    if (pairStep) pickRef.current?.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' });
+  }, [pairStep]);
+  // The small ⋯ menu beside undo (New set); closes on any outside press.
+  const [moreOpen, setMoreOpen] = useState(false);
+  const moreRef = useRef(null);
+  useEffect(() => {
+    if (!moreOpen) return undefined;
+    const onDown = (e) => { if (!moreRef.current?.contains(e.target)) setMoreOpen(false); };
+    document.addEventListener('pointerdown', onDown);
+    return () => document.removeEventListener('pointerdown', onDown);
+  }, [moreOpen]);
+  // Subs sit at the bottom of the panel now: bring a just-tapped "Sub out"
+  // list into view.
+  const outRef = useRef(null);
+  useEffect(() => {
+    if (subFlow) outRef.current?.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' });
+  }, [subFlow]);
+  const libIds = new Set((libero?.liberos || []).map(p => p.id));
+  // Opened from elsewhere (the roster's Libero box): bring it into view.
+  const libEditRef = useRef(null);
+  useEffect(() => {
+    if (libOpen) libEditRef.current?.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' });
+  }, [libOpen]);
+  const pct = Math.min(100, (used / SET_SUB_LIMIT) * 100);
+  // Pink, orange from 10, red at the limit.
+  const level = used >= SET_SUB_LIMIT ? ' is-full' : used >= SET_SUB_LIMIT - 2 ? ' is-warn' : '';
+
+  // Sub-out list: the same role first (the role being PLAYED, for a
+  // makeshift player), everyone else under "Other".
+  const outRole = outPlayer ? roleTagFor(outPlayer) : '';
+  const sameRole = isFb ? [] : (candidates || []).filter(p => roleTagFor(p) === outRole).sort(byJersey);
+  const others = (candidates || []).filter(p => !sameRole.includes(p)).sort(byJersey);
+  const groupLabel = BENCH_GROUPS.find(g => g.key === benchGroupOf({ position: outRole }, false))?.label || outRole;
+  const naturalTag = naturalOut ? roleTagFor(naturalOut) : '';
+  const canPlayAs = !isFb && outPlayer && !libIds.has(outPlayer.id);
+  const candRow = (p) => (
+    <button
+      key={p.id}
+      type="button"
+      className="gpb-subs-cand"
+      style={{ '--role-c': roleColorFor(p) }}
+      onClick={() => onPickIn(p.id)}
+    >
+      <span className="gpb-subs-cand-num">{badgeFor(p)}</span>
+      <span className="gpb-subs-cand-name">{dn(p)}</span>
+      {roleTagFor(p) && <span className="gpb-subs-cand-role">{roleTagFor(p)}</span>}
+    </button>
+  );
+
+  // Libero row: who, and who they cover.
+  const libs = libero?.liberos || [];
+  const covered = [...new Set(libs.flatMap(l => (libero?.pairs?.[l.id] || []).filter(Boolean)))];
+  const coveredNatural = covered.map(pid => libero?.rosterById?.[pid]).filter(Boolean);
+  const coverText = covered.length === 0
+    ? 'not linked yet'
+    : coveredNatural.length && coveredNatural.every(p => roleTagFor(p) === 'MB')
+      ? 'replaces MBs in back row'
+      : `replaces ${coveredNatural.map(p => (p.jersey_number ? `#${p.jersey_number}` : dn(p))).join(', ')} in back row`;
+
+  const entries = (log || []).map((e, i) => ({ e, i })).reverse();
+
+  // Pair cards: a member's square + name, dimmed when they're the one off.
+  const pairSide = (label, p, on) => (
+    <span className={`gpb-fb-side${on ? '' : ' is-off'}`}>
+      <span className="gpb-fb-label">{label}</span>
+      <span className="gpb-fb-who">
+        <span className="gpb-fb-num" style={{ '--role-c': roleColorFor(p) }}>{badgeFor(p)}</span>
+        <span className="gpb-fb-name">{dn(p)}</span>
+      </span>
+    </span>
+  );
+  // "Swaps in rotation 4 and 1", the next swap first.
+  const swapText = (rots) => {
+    if (!rots.length) return 'Not in the lineup · no swaps';
+    const order = [...rots].sort((a, b) => ((a - rotation + 5) % 6) - ((b - rotation + 5) % 6));
+    const list = order.length === 2 ? `${order[0]} and ${order[1]}` : order.join(', ');
+    return `Swaps in rotation ${list} · uses ${rots.length} sub${rots.length === 1 ? '' : 's'} per cycle`;
+  };
+  // A new pair adds two swaps a cycle on top of the pairs already set.
+  const cycleSubs = fbCards.reduce((n, c) => n + c.swapRots.length, 0);
+  const overAfterAdd = used + cycleSubs + 2 > SET_SUB_LIMIT;
+  const chip = (p, onPick) => (
+    <button key={p.id} type="button" className="gpb-fb-chip" onClick={() => onPick(p.id)} title={p.name}>
+      <span className="gpb-fb-num" style={{ '--role-c': roleColorFor(p) }}>{badgeFor(p)}</span>
+      <span className="gpb-fb-chip-name">{dn(p)}</span>
+    </button>
+  );
+
+  return (
+    <div className={`gpb-subs${subFlow ? ' is-active' : ''}${isFb ? ' is-fb' : ''}`}>
+      {/* "Subs", then Set · count · undo · ⋯ (New set), and the bar. */}
+      <div className="gpb-subs-head">
+        <h3 className="gpb-ro-title">Subs</h3>
+        <div className="gpb-subs-head-row">
+          <span className="gpb-subs-set" title="Substitution rules apply per set">Set {setNumber}</span>
+          <span className={`gpb-subs-count${level}`}>· {used} / {SET_SUB_LIMIT}</span>
+          <button
+            type="button"
+            className="gpb-subs-undo"
+            onClick={onUndo}
+            disabled={(log || []).length === 0}
+            title="Undo last substitution"
+            aria-label="Undo last substitution"
+          >↶</button>
+          {onNewSet && (
+            <div className="gpb-subs-more" ref={moreRef}>
+              <button
+                type="button"
+                className="gpb-subs-undo gpb-subs-more-btn"
+                aria-haspopup="menu"
+                aria-expanded={moreOpen}
+                aria-label="More"
+                title="More"
+                onClick={() => setMoreOpen(o => !o)}
+              >⋯</button>
+              {moreOpen && (
+                <div className="gpb-subs-more-menu" role="menu">
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="gpb-subs-more-item"
+                    onClick={() => { setMoreOpen(false); onNewSet(); }}
+                  >New set</button>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+        <div
+          className={`gpb-subs-track${level}`}
+          role="progressbar"
+          aria-label="Substitutions used this set"
+          aria-valuemin={0}
+          aria-valuemax={SET_SUB_LIMIT}
+          aria-valuenow={used}
+        >
+          <span className="gpb-subs-fill" style={{ width: `${pct}%` }} />
+        </div>
+      </div>
+
+      {/* Front / back pairs: one card each, then "+ Add". The swaps happen
+          on their own as the rotation changes. */}
+      <div className="gpb-fb">
+        <div className="gpb-subs-log-label">Front / back pairs</div>
+        {fbCards.map(c => (
+          <div key={`fbc-${c.front.id}::${c.back.id}`} className="gpb-fb-card">
+            <div className="gpb-fb-row">
+              {pairSide('Front', c.front, c.onCourt === c.front.id)}
+              <button
+                type="button"
+                className="gpb-fb-swap"
+                onClick={() => onFlipFbRoles(c.i)}
+                title={`Swap roles: ${c.back.name} front, ${c.front.name} back`}
+                aria-label={`Swap roles of ${c.front.name} and ${c.back.name}`}
+              >⇄</button>
+              {pairSide('Back', c.back, c.onCourt === c.back.id)}
+              <button
+                type="button"
+                className="gpb-subs-x gpb-fb-x"
+                onClick={() => onUnpairFb(c.i)}
+                aria-label={`Remove ${c.front.name} / ${c.back.name} front-back pair`}
+                title="Remove pair"
+              >×</button>
+            </div>
+            <div className="gpb-fb-meta">{swapText(c.swapRots)}</div>
+          </div>
+        ))}
+
+        {pairStep === null ? (
+          <button type="button" className="gpb-fb-add" onClick={() => setPairStep('front')}>
+            + Add front/back pair
+          </button>
+        ) : (
+          <div className="gpb-fb-pick" ref={pickRef}>
+            <div className="gpb-fb-pick-head">
+              <span className="gpb-fb-pick-title">
+                {pairStep === 'front' ? '1. Front-row player (on court)' : '2. Back-row player (bench)'}
+              </span>
+              <button type="button" className="gpb-subs-cancel" onClick={closePairAdd}>Cancel</button>
+            </div>
+            <div className="gpb-fb-chips">
+              {pairStep === 'front'
+                ? fbChoices.front.map(p => chip(p, (pid) => { setPairFront(pid); setPairStep('back'); }))
+                : fbChoices.back.map(p => chip(p, (pid) => { onAddPair(pairFront, pid); closePairAdd(); }))}
+              {(pairStep === 'front' ? fbChoices.front : fbChoices.back).length === 0 && (
+                <span className="gpb-subs-muted gpb-fb-none">
+                  {pairStep === 'front' ? 'Every starter is already paired.' : 'No one left on the bench to pair.'}
+                </span>
+              )}
+            </div>
+            {overAfterAdd && (
+              <div className="gpb-fb-warn">
+                One full rotation would take the set to {used + cycleSubs + 2} / {SET_SUB_LIMIT} subs.
+              </div>
+            )}
+          </div>
         )}
       </div>
 
-      {/* Mode switch — a one-off swap, a standing front/back pairing, or the
-          libero, who swaps on his own and off the sub counter entirely. */}
-      <div className="gpb-subflow-modes" role="tablist">
-        <button
-          type="button"
-          role="tab"
-          aria-selected={mode === 'sub'}
-          className={`gpb-subflow-mode${mode === 'sub' ? ' is-on' : ''}`}
-          onClick={() => onModeChange('sub')}
-        >Substitute Now</button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={isFb}
-          className={`gpb-subflow-mode${isFb ? ' is-on' : ''}`}
-          onClick={() => onModeChange('fb')}
-        >Front Row / Back Row Pair</button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={isLiberoMode}
-          className={`gpb-subflow-mode is-libero-tab${isLiberoMode ? ' is-on' : ''}`}
-          onClick={() => onModeChange(isLiberoMode ? 'sub' : 'libero')}
-          title="Designate a libero and link them to the player they cover"
-        >
-          Libero
-          {(libero?.liberos?.length || 0) > 0 && (
-            <span className="gpb-subflow-mode-count">{libero.liberos.length}</span>
+      {/* "Set up a pair…" (from the ⋯ menu), before a starter is tapped. */}
+      {isFb && !subFlow && !fbDraft && (
+        <div className="gpb-subs-out">
+          <div className="gpb-subs-out-head">
+            <span className="gpb-subs-out-title">Set up a pair: tap a starter on the court</span>
+            <button type="button" className="gpb-subs-cancel" onClick={onCancel}>Cancel</button>
+          </div>
+        </div>
+      )}
+
+      {/* Tapped a court player: who comes on for them. */}
+      {subFlow && outPlayer && (
+        <div className="gpb-subs-out" ref={outRef}>
+          <div className="gpb-subs-out-head">
+            <span className="gpb-subs-out-title">
+              {isFb ? 'Pair' : 'Sub out'} {outPlayer.jersey_number ? `#${outPlayer.jersey_number} ` : ''}{dn(outPlayer)}
+              {isFb ? ' with…' : ''}
+            </span>
+            <button type="button" className="gpb-subs-cancel" onClick={onCancel} title="Cancel (Esc)">Cancel</button>
+          </div>
+
+          {canPlayAs && (
+            <div className="gpb-subs-playas" role="group" aria-label={`${dn(outPlayer)} plays as`}>
+              <span className="gpb-subs-playas-label">Play as</span>
+              {PLAY_AS_ROLES.map(role => (
+                <button
+                  key={role}
+                  type="button"
+                  aria-pressed={outRole === role}
+                  className={`gpb-subs-playas-chip${outRole === role ? ' is-on' : ''}`}
+                  style={{ '--role-c': ROLE_COLORS[role] || ROLE_COLOR_NONE }}
+                  onClick={() => onSetPlayAs(outPlayer.id, role)}
+                  title={role === naturalTag ? `${role} (natural)` : `Play as ${role}`}
+                >{role}</button>
+              ))}
+              {outPlayer.play_as_manual && (
+                <button
+                  type="button"
+                  className="gpb-subs-playas-reset"
+                  onClick={() => onSetPlayAs(outPlayer.id, null)}
+                >Reset to natural{naturalTag ? ` (${naturalTag})` : ''}</button>
+              )}
+            </div>
           )}
-        </button>
-      </div>
 
-      {isLiberoMode && <LiberoTab {...(libero || {})} playerById={playerById} />}
-
-      {/* The selected court player, once tapped. No step numbers and no
-          instructional copy — the tag says which half they are, and the
-          candidate list appearing underneath is the next move. */}
-      {!isLiberoMode && outPlayer && (
-        <div className="gpb-subflow-picked">
-          <DirTag kind={isFb ? 'front' : 'out'}>
-            {isFb ? 'FRONT' : 'OUT'}
-          </DirTag>
-          <PlayerLine
-            player={outPlayer}
-            dir={isFb ? 'front' : 'out'}
-            note={isFb ? `now ${outRow}` : outRow}
-          />
+          {(candidates || []).length === 0 ? (
+            <div className="gpb-subs-empty">
+              {isFb
+                ? 'Every bench player is already in a pair.'
+                : 'Nobody on the bench can come on here — they’re paired elsewhere or the limit is used.'}
+            </div>
+          ) : (
+            <>
+              {sameRole.length > 0 && (
+                <>
+                  <div className="gpb-subs-group" style={{ '--role-c': ROLE_COLORS[outRole] || ROLE_COLOR_NONE }}>{groupLabel}</div>
+                  {sameRole.map(candRow)}
+                </>
+              )}
+              {others.length > 0 && (
+                <>
+                  {sameRole.length > 0 && <div className="gpb-subs-group">Other</div>}
+                  {others.map(candRow)}
+                </>
+              )}
+            </>
+          )}
         </div>
       )}
 
       {/* Role assignment. Both players are chosen; neither has a role yet.
           Two explicit options, nothing preselected — the app must not pick,
           and "no default" is what makes that visible. */}
-      {!isLiberoMode && isFb && fbDraft && (() => {
+      {isFb && fbDraft && (() => {
         const courtP = playerById[fbDraft.courtPid];
         const benchP = playerById[fbDraft.benchPid];
         if (!courtP || !benchP) return null;
@@ -4823,11 +6545,11 @@ function SubFlowPanel({
             onClick={() => onFbDraftFront(frontP.id)}
           >
             <span className="gpb-fbrole-half">
-              <DirTag kind="front">FRONT</DirTag>
+              <DirTag kind="front">Front</DirTag>
               <PlayerLine player={frontP} dir="front" />
             </span>
             <span className="gpb-fbrole-half">
-              <DirTag kind="back">BACK</DirTag>
+              <DirTag kind="back">Back</DirTag>
               <PlayerLine player={backP} dir="back" />
             </span>
           </button>
@@ -4835,7 +6557,7 @@ function SubFlowPanel({
         return (
           <div className="gpb-fbroles">
             <div className="gpb-fbroles-head">
-              <span className="gpb-fbroles-eyebrow">ASSIGN ROLES</span>
+              <span className="gpb-fbroles-eyebrow">Assign roles</span>
               <span className="gpb-fbroles-hint">Who plays the front row?</span>
             </div>
             <div className="gpb-fbroles-opts" role="radiogroup" aria-label="Front and back row roles">
@@ -4856,176 +6578,80 @@ function SubFlowPanel({
         );
       })()}
 
-      {!isLiberoMode && subFlow && (
-        <div className="gpb-subflow-cands">
-          <div className="gpb-subflow-cands-head">
-            <DirTag kind={isFb ? 'back' : 'in'}>{isFb ? 'BACK' : 'IN'}</DirTag>
-          </div>
-          {candidates.length === 0 ? (
-            <div className="gpb-subflow-empty">
-              {isFb
-                ? 'No eligible partner — every bench player is already in a Front/Back pair.'
-                : 'No eligible substitute — every bench player is either already locked to another sub slot or the 6-sub limit is spent.'}
-            </div>
-          ) : candidates.map(p => (
+      {/* Libero: one line, a switch for the automatic swap, and "Change"
+          to designate / link (the full libero controls, inline). */}
+      <div className="gpb-subs-libero">
+        <span className="gpb-subs-libero-text">
+          <span className="gpb-subs-libero-label">Libero:</span>{' '}
+          {libs.length === 0 ? (
+            <span className="gpb-subs-muted">none</span>
+          ) : (
+            <>
+              <span className="gpb-subs-libero-who">
+                {libs.map(l => `${l.jersey_number ? `#${l.jersey_number} ` : ''}${dn(l)}`).join(', ')}
+              </span>
+              <span className="gpb-subs-muted"> · {coverText}</span>
+            </>
+          )}
+        </span>
+        {libs.length > 0 && (
+          <button
+            type="button"
+            role="switch"
+            aria-checked={!!libero?.auto}
+            aria-label="Libero swaps in automatically"
+            title={libero?.auto ? 'Automatic libero swap is on' : 'Automatic libero swap is off'}
+            className={`gpb-subs-switch${libero?.auto ? ' is-on' : ''}`}
+            onClick={() => libero?.onToggleAuto?.()}
+          ><span className="gpb-subs-switch-knob" aria-hidden="true" /></button>
+        )}
+        <button
+          type="button"
+          className="gpb-subs-link"
+          aria-expanded={libOpen}
+          onClick={() => setLibOpen(o => !o)}
+        >{libOpen ? 'Done' : libs.length ? 'Change' : 'Set up'}</button>
+      </div>
+      {libOpen && (
+        <div className="gpb-subs-libero-edit" ref={libEditRef}>
+          <LiberoTab {...(libero || {})} playerById={playerById} />
+        </div>
+      )}
+
+      {/* This set — the sub log, newest first, one plain line each. */}
+      <div className="gpb-subs-log">
+        <div className="gpb-subs-log-label">This set</div>
+        {entries.length === 0 ? (
+          <div className="gpb-subs-muted">No subs yet</div>
+        ) : entries.map(({ e, i }) => (
+          <div key={e.id || `${i}-${e.toPid}`} className="gpb-subs-log-line">
+            <span className="gpb-subs-log-text">{subLine(e)}</span>
             <button
-              key={p.id}
               type="button"
-              className={`gpb-subflow-cand${isFb ? '' : ' is-in'}`}
-              onClick={() => onPickIn(p.id)}
-            >
-              <span className="gpb-subflow-cand-num">#{p.jersey_number || '?'}</span>
-              <span className="gpb-subflow-cand-name">{p.name}</span>
-              <RolePill player={p} />
-            </button>
-          ))}
-        </div>
-      )}
+              className="gpb-subs-x"
+              onClick={() => onReverse(i)}
+              aria-label={`Reverse: ${subLine(e)}`}
+              title="Reverse this sub"
+            >×</button>
+          </div>
+        ))}
 
-      {/* Active pairs. Both lists share one row shape so they scan as a
-          single column; the type badge on the left says which kind each
-          row is without needing colour to carry it. */}
-      {!isLiberoMode && (fbPairs.length > 0 || pairs.length > 0) && (
-        <div className="gpb-subflow-pairs">
-          <div className="gpb-subflow-pairs-label">ACTIVE PAIRS</div>
+        {/* Labelled sub pairs whose players stand in the wrong row (older
+            plans only — rows can no longer be set from here). */}
+        {(rowIssues || []).map(issue => (
+          <div key={`row-${issue.pairIdx}`} className="gpb-subs-rowflag" role="alert">
+            {issue.wrong.map(w => {
+              const p = playerById[w.pid];
+              return p ? <span key={w.pid}>{dn(p)} should be {w.want} row.</span> : null;
+            })}
+            {issue.canSwap && (
+              <button type="button" className="gpb-subs-link" onClick={() => onSwapPairSpots(issue.pairIdx)}>Swap</button>
+            )}
+            <button type="button" className="gpb-subs-link" onClick={() => onSetPairRows(issue.pairIdx, null)}>Ignore</button>
+          </div>
+        ))}
+      </div>
 
-          {fbPairs.map((pair, i) => {
-            const pf = playerById[pair.front];
-            const pb = playerById[pair.back];
-            if (!pf || !pb) return null;
-            return (
-              <div key={`fb-${pair.front}::${pair.back}::${i}`} className="gpb-pairrow is-fb">
-                <span className="gpb-pairrow-type is-fb">Pair</span>
-                <span className="gpb-pairrow-body">
-                  <PlayerLine player={pf} dir="front" note="front row" />
-                  <span className="gpb-pairrow-arrow" aria-label="swaps with">↔</span>
-                  <PlayerLine player={pb} dir="back" note="back row" />
-                  {/* Roles are editable in place — no delete-and-recreate. */}
-                  <span className="gpb-fbrole-edit">
-                    <button
-                      type="button"
-                      className="gpb-fbrole-flip"
-                      onClick={() => onFlipFbRoles(i)}
-                      title={`Swap roles — make ${pb.name} front row and ${pf.name} back row`}
-                    >⇄ Swap roles</button>
-                  </span>
-                </span>
-                <button
-                  type="button"
-                  className="gpb-pairrow-x"
-                  onClick={() => onUnpairFb(i)}
-                  aria-label={`Remove ${pf.name} / ${pb.name} front-back pair`}
-                  title="Remove pair"
-                >×</button>
-              </div>
-            );
-          })}
-
-          {pairs.map((pair, i) => {
-            // Pairs written by this flow carry the true direction; older
-            // pairs (auto-detect / gameplan popup) fall back to the
-            // role-based guess.
-            const inPid  = pair.inPid || pairSub(pair, playerById);
-            const outPid = pairOpponent(pair, inPid);
-            const pIn  = playerById[inPid];
-            const pOut = playerById[outPid];
-            if (!pIn || !pOut) return null;
-            const rows = pair.rows || null;
-            const frontPid = rows
-              ? (rows[pair.a] === 'front' ? pair.a : pair.b)
-              : null;
-            const backPid = frontPid ? pairOpponent(pair, frontPid) : null;
-            const issue = issueByPair[i];
-            return (
-              <div key={`${pair.a}::${pair.b}::${i}`} className={`gpb-pairrow${issue ? ' has-issue' : ''}`}>
-                <span className="gpb-pairrow-type is-sub">Sub</span>
-                <span className="gpb-pairrow-body">
-                  <PlayerLine
-                    player={pIn}
-                    dir="in"
-                    note={rowLabelFor(inPid, effectiveLineup, activeRotation, playerById)}
-                  />
-                  <span className="gpb-pairrow-arrow">→ in for</span>
-                  <PlayerLine
-                    player={pOut}
-                    dir="out"
-                    note={rowLabelFor(outPid, effectiveLineup, activeRotation, playerById)}
-                  />
-
-                  {/* Intended rows. One control: who is the front-row half.
-                      ⇄ flips it, × clears the intent entirely. */}
-                  <span className="gpb-rowintent">
-                    {frontPid ? (
-                      <>
-                        <span className="gpb-rowintent-state">
-                          <strong>{dn(playerById[frontPid])}</strong> front
-                          {' · '}
-                          <strong>{dn(playerById[backPid])}</strong> back
-                        </span>
-                        <button
-                          type="button"
-                          className="gpb-rowintent-btn"
-                          onClick={() => onSetPairRows(i, backPid)}
-                          title="Flip which one is the front-row player"
-                        >⇄</button>
-                        <button
-                          type="button"
-                          className="gpb-rowintent-btn"
-                          onClick={() => onSetPairRows(i, null)}
-                          title="Clear the front/back intent"
-                        >×</button>
-                      </>
-                    ) : (
-                      <button
-                        type="button"
-                        className="gpb-rowintent-set"
-                        onClick={() => onSetPairRows(i, pair.a)}
-                        title="Label one player front row and the other back row"
-                      >+ Set rows</button>
-                    )}
-                  </span>
-
-                  {issue && (
-                    <span className="gpb-rowflag" role="alert">
-                      <span className="gpb-rowflag-head">
-                        <span className="gpb-rowflag-tag">ROW MISMATCH</span>
-                        {issue.canSwap && (
-                          <button
-                            type="button"
-                            className="gpb-rowflag-swap"
-                            onClick={() => onSwapPairSpots(i)}
-                            title="Exchange these two players' spots on the court"
-                          >Swap</button>
-                        )}
-                      </span>
-                      {issue.wrong.map(w => {
-                        const p = playerById[w.pid];
-                        if (!p) return null;
-                        return (
-                          <span key={w.pid} className="gpb-rowflag-line">
-                            <strong>{dn(p)}</strong> should be {w.want} row but is in
-                            {' '}{w.slot} ({w.got}).
-                          </span>
-                        );
-                      })}
-                      {!issue.canSwap && (
-                        <span className="gpb-rowflag-hint">Drag them to fix.</span>
-                      )}
-                    </span>
-                  )}
-                </span>
-                <button
-                  type="button"
-                  className="gpb-pairrow-x"
-                  onClick={() => onUnpair(i)}
-                  aria-label={`Remove ${pIn.name} / ${pOut.name} pair`}
-                  title="Remove pair"
-                >×</button>
-              </div>
-            );
-          })}
-        </div>
-      )}
     </div>
   );
 }
@@ -5053,7 +6679,7 @@ function LiberoTab({
   return (
     <div className="gpb-liberotab">
       <div className="gpb-liberotab-head">
-        <span className="gpb-liberotab-label">LIBERO</span>
+        <span className="gpb-liberotab-label">Libero</span>
         <button
           type="button"
           className="gpb-liberotab-add"
@@ -5445,6 +7071,61 @@ function PairPlayerPicker({ roster, currentPid, onPick, onClose }) {
 // ─── PlaygroundHeaderEditor ─────────────────────────────────────────────────
 // Inline-editable session name in playground mode. Click to edit, Enter or
 // blur to commit, Escape to revert.
+// ─── Header chip menus (system / formation) ──────────────────────────────
+// A bordered chip with a chevron that opens a small menu. Closes on a pick,
+// Escape, or a click outside.
+function HdrChipMenu({ id, open, onToggle, onClose, label, ariaLabel, children }) {
+  const ref = useRef(null);
+  useEffect(() => {
+    if (!open) return undefined;
+    const onDown = (e) => { if (!ref.current?.contains(e.target)) onClose(); };
+    // stopPropagation keeps the modal's own Escape (close) from also firing.
+    const onKey = (e) => { if (e.key === 'Escape') { e.stopPropagation(); onClose(); } };
+    document.addEventListener('pointerdown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('pointerdown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open, onClose]);
+  return (
+    <div className="gpb-hdr-chipwrap" ref={ref}>
+      <button
+        type="button"
+        className={`gpb-hdr-chip${open ? ' is-open' : ''}`}
+        onClick={onToggle}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-controls={`gpb-hdrmenu-${id}`}
+        aria-label={`${ariaLabel}: ${label}`}
+        title={ariaLabel}
+      >
+        <span className="gpb-hdr-chip-label">{label}</span>
+        <svg className="gpb-hdr-chevron" width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
+          <path d="M2 3.5 5 6.5 8 3.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </button>
+      {open && (
+        <div id={`gpb-hdrmenu-${id}`} className="gpb-hdrmenu" role="menu">{children}</div>
+      )}
+    </div>
+  );
+}
+function HdrMenuItem({ selected, onClick, children }) {
+  return (
+    <button
+      type="button"
+      role="menuitemradio"
+      aria-checked={selected}
+      className={`gpb-hdrmenu-item${selected ? ' is-selected' : ''}`}
+      onClick={onClick}
+    >
+      <span className="gpb-hdrmenu-check-mark" aria-hidden="true">{selected ? '✓' : ''}</span>
+      <span>{children}</span>
+    </button>
+  );
+}
+
 function PlaygroundHeaderEditor({ name, onCommit }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(name);
@@ -5571,7 +7252,7 @@ function LiberoPairingPanel({ roster, liberos: liberosProp, mbCandidates, libero
   return (
     <div className="gpb-libero-panel">
       <div className="gpb-libero-head">
-        <div className="gpb-libero-eyebrow">LIBERO PAIRING</div>
+        <div className="gpb-libero-eyebrow">Libero pairing</div>
         <div className="gpb-libero-tools">
           <button
             type="button"
@@ -5879,14 +7560,15 @@ const PRESET_ROLE_LABELS = {
   S: 'Setter', OH1: 'Outside 1', OH2: 'Outside 2',
   MB1: 'Middle 1', MB2: 'Middle 2', OPP: 'Opposite',
 };
-// Role marker colors — solid distinct hues so the coach can tell them apart.
+// Role marker colors — the shared role map; the 1/2 in the marker label
+// tells the two outsides (and the two middles) apart.
 const PRESET_ROLE_COLORS = {
-  S:   '#fbbf24',
-  OH1: '#38bdf8',
-  OH2: '#0ea5e9',
-  MB1: '#34d399',
-  MB2: '#10b981',
-  OPP: '#c084fc',
+  S:   ROLE_COLORS.S,
+  OH1: ROLE_COLORS.OH,
+  OH2: ROLE_COLORS.OH,
+  MB1: ROLE_COLORS.MB,
+  MB2: ROLE_COLORS.MB,
+  OPP: ROLE_COLORS.OPP,
 };
 
 function PresetEditor({ initial, onCancel, onSave }) {

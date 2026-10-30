@@ -3,10 +3,10 @@ import { useAuth } from '../contexts/AuthContext';
 import { useData } from '../contexts/DataContext';
 import { useToast } from '../contexts/ToastContext';
 import { sortByJersey } from '../utils/sort';
-import FullscreenButton from '../components/FullscreenButton';
+import AppHeader from '../components/AppHeader';
 import {
   IconArrowLeft, IconTrash, IconCheck, IconClipboard,
-  IconReceive, IconAttack, IconServe, IconDrill, IconUsers,
+  IconReceive, IconAttack, IconServe, IconDrill, IconUsers, IconChevronDown,
 } from '../components/Icons';
 import { ConfirmDelete } from '../components/dashboard/EditModeKit';
 import PracticeLive from './PracticeLive';
@@ -87,14 +87,14 @@ function SessionsMenu({
     <div className="pp-sessmenu" ref={wrap}>
       <button
         type="button"
-        className={`pp-sessbtn${open ? ' is-open' : ''}`}
+        className={`ah-btn${open ? ' is-on' : ''}`}
         onClick={() => setOpen(o => !o)}
         aria-expanded={open}
         aria-controls={menuId}
       >
         <IconClipboard size={14} />
-        <span className="pp-sessbtn-lbl">Sessions</span>
-        <span className="pp-sessbtn-n">{loading ? '' : sessions.length}</span>
+        Sessions
+        {!loading && <span className="pp-sessbtn-n">{sessions.length}</span>}
       </button>
 
       {open && (
@@ -174,27 +174,59 @@ function SessionsMenu({
   );
 }
 
+// One primary "Start drill ▾" button in the header; the drills live in its
+// menu, each with its icon in the drill's own hue. Every item calls the same
+// openSetup() the old row of buttons did.
 function DrillLauncher({ onPick }) {
+  const [open, setOpen] = useState(false);
+  const wrap = useRef(null);
+  const menuId = useId().replace(/:/g, '');
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const away = e => { if (wrap.current && !wrap.current.contains(e.target)) setOpen(false); };
+    const key = e => { if (e.key === 'Escape') setOpen(false); };
+    document.addEventListener('mousedown', away);
+    document.addEventListener('keydown', key);
+    return () => {
+      document.removeEventListener('mousedown', away);
+      document.removeEventListener('keydown', key);
+    };
+  }, [open]);
+
   return (
-    <nav className="pp-dl" aria-label="Start a drill">
-      {DRILL_ORDER.map(key => {
-        const d = DRILLS[key];
-        const Icon = DRILL_ICONS[key];
-        return (
-          <button
-            key={key}
-            type="button"
-            className={`pp-dl-btn pp-dl-${key}`}
-            onClick={() => onPick(key)}
-            title={d.label}
-            aria-label={`Start ${d.label}`}
-          >
-            <span className="pp-dl-ico"><Icon size={16} /></span>
-            <span className="pp-dl-lbl">{LAUNCH_LABEL[key] || d.label}</span>
-          </button>
-        );
-      })}
-    </nav>
+    <div className="pp-dlmenu" ref={wrap}>
+      <button
+        type="button"
+        className="ah-btn is-primary"
+        onClick={() => setOpen(o => !o)}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-controls={menuId}
+      >
+        Start drill <IconChevronDown size={14} />
+      </button>
+      {open && (
+        <div className="pp-dlmenu-list" id={menuId} role="menu">
+          {DRILL_ORDER.map(key => {
+            const d = DRILLS[key];
+            const Icon = DRILL_ICONS[key];
+            return (
+              <button
+                key={key}
+                type="button"
+                role="menuitem"
+                className={`pp-dlmenu-item pp-dl-${key}`}
+                onClick={() => { setOpen(false); onPick(key); }}
+              >
+                <span className="pp-dlmenu-ico"><Icon size={16} /></span>
+                {LAUNCH_LABEL[key] || d.label}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -763,7 +795,7 @@ function SessionDetailModal({ session, rows, players, onClose, onDelete }) {
 }
 
 // ─── Shell ─────────────────────────────────────────────────────────────────
-export default function PracticePal({ team, onHome }) {
+export default function PracticePal({ team, onHome, onSwitchTeam }) {
   const { currentUser } = useAuth();
   const { players, playerGameStats } = useData();
   const { addToast } = useToast();
@@ -910,22 +942,14 @@ export default function PracticePal({ team, onHome }) {
 
   return (
     <div className="pp-page" style={{ '--tc': team?.color || '#4ade80' }}>
-      <header className="pp-topbar">
-        <button
-          type="button"
-          className="pp-topbar-back"
-          onClick={inSetup ? () => { setSetupDrill(null); setView(VIEWS.DASH); } : onHome}
-        >
-          <IconArrowLeft size={13} /> {inSetup ? 'PracticePal' : 'Dashboard'}
-        </button>
-
-        <div className="pp-topbar-brand">
-          <span className="pp-topbar-name">Practice<span className="pp-topbar-accent">Pal</span></span>
-          <span className="pp-topbar-team">{team?.name}</span>
-        </div>
-
-        <div className="pp-topbar-right">
-          {!inSetup && (
+      <AppHeader
+        onBack={inSetup ? () => { setSetupDrill(null); setView(VIEWS.DASH); } : onHome}
+        backLabel={inSetup ? 'PracticePal' : 'Dashboard'}
+        teamName={team?.name}
+        section="practicepal"
+        onSwitchTeam={onSwitchTeam}
+        actions={!inSetup && (
+          <>
             <SessionsMenu
               sessions={sessions}
               rowsBySession={rowsBySession}
@@ -937,13 +961,12 @@ export default function PracticePal({ team, onHome }) {
               openId={openSessionId}
               onOpen={setOpenSessionId}
             />
-          )}
-          {/* Only on the dashboard: during setup or a live drill the banner is
-              a way back out, not a way into another drill. */}
-          {!inSetup && canTrack && <DrillLauncher onPick={openSetup} />}
-          <FullscreenButton className="pp-pill pp-pill-icon" size={14} />
-        </div>
-      </header>
+            {/* Only on the dashboard: during setup or a live drill the header
+                is a way back out, not a way into another drill. */}
+            {canTrack && <DrillLauncher onPick={openSetup} />}
+          </>
+        )}
+      />
 
       {inSetup ? (
         <main className="pp-main">

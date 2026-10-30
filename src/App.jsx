@@ -514,6 +514,7 @@ export default function App() {
           teams={candidateTeams}
           onSelectTeam={selectCurrentTeam}
           onHome={() => { setActiveEntry(null); nav(selectedTeam ? SCREENS.TEAM_LAUNCH : SCREENS.TEAM_PICKER); }}
+          onOpenStatsPal={selectedTeam ? () => { setActiveEntry(null); launchStatsPalForTeam(selectedTeam); } : undefined}
         />
       );
 
@@ -522,6 +523,7 @@ export default function App() {
         <PracticePal
           team={liveTeam}
           onHome={() => nav(SCREENS.TEAM_LAUNCH)}
+          onSwitchTeam={isAdmin || candidateTeams.length > 1 ? handleSwitchTeam : undefined}
         />
       );
 
@@ -539,6 +541,7 @@ export default function App() {
         <TeamDashboard
           team={selectedTeam}
           onBack={() => nav(SCREENS.TEAM_LAUNCH)}
+          onSwitchTeam={isAdmin || candidateTeams.length > 1 ? handleSwitchTeam : undefined}
           onSelectGame={handleSelectGame}
           onSelectPlayer={handleSelectPlayer}
           onPreGame={handlePreGame}

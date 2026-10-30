@@ -138,29 +138,16 @@ export default function Fab({ team, leagueTeams, onRefresh, onEventsChanged }) {
           </div>
         </div>
 
+        {/* The dashboard's primary action, styled by the shared header. */}
         <button
           ref={fabRef}
           type="button"
-          className={`dash-fab${open ? ' is-open' : ''}`}
+          className="ah-btn is-primary"
           onClick={() => setOpen(v => !v)}
-          aria-label={open ? 'Close quick add menu' : 'Open quick add menu'}
+          aria-haspopup="menu"
           aria-expanded={open}
         >
-          <svg
-            className="dash-fab-icon"
-            width="20"
-            height="20"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2.8"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            aria-hidden="true"
-          >
-            <line x1="12" y1="5" x2="12" y2="19" />
-            <line x1="5" y1="12" x2="19" y2="12" />
-          </svg>
+          + New
         </button>
       </div>
 

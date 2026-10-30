@@ -7,7 +7,7 @@ import {
   mapStatsPalRoster,
 } from './teams'
 import { readSecondaryMap, setSecondary as setPlayerSecondary } from '../../utils/playerSecondary'
-import { isTBD } from '../../utils/tournaments'
+import { isTBD, formatGameTime } from '../../utils/tournaments'
 import { useData } from '../../contexts/DataContext'
 
 // ── Feature flag: Schemes ───────────────────────────────────────────────────
@@ -47,7 +47,8 @@ import {
   makeDefaultFormations, defaultFormationFor, ensureFormations,
 } from './gameplanFormations'
 import { SCHEME_TEMPLATES, makeTemplateDraft } from './schemeTemplates'
-import FullscreenButton from '../../components/FullscreenButton'
+import { ROLE_COLORS, ROLE_COLOR_NONE, roleTagOf } from './roleColors'
+import AppHeader from '../../components/AppHeader'
 
 const SLOTS = ['P1', 'P2', 'P3', 'P4', 'P5', 'P6']
 const SLOT_COORDS = {
@@ -307,6 +308,7 @@ function shortName(p) {
 //   onSelectTeam  — (team) => void; makes a team the app-wide current team
 //                   (and remembers it). Called by the picker and the switcher.
 //   onHome        — navigate back to VolleyballPal landing
+//   onOpenStatsPal — navigate to the team's StatsPal schedule (optional)
 //   onLogout      — log out of the whole app
 // ============================================================
 
@@ -325,6 +327,7 @@ export default function RotationPalApp({
   currentTeamId = null,
   onSelectTeam,
   onHome,
+  onOpenStatsPal,
   onLogout,
   onPublishSession,
   onClearSession,
@@ -463,6 +466,7 @@ export default function RotationPalApp({
         statsPalSchedule={statsPalSchedule}
         statsPalCompletedGames={statsPalCompletedGames}
         onBack={() => onHome?.()}
+        onOpenStatsPal={onOpenStatsPal}
         onOpenRoster={() => setNav({ screen: 'roster', teamId: team.id })}
         onOpenSchedule={() => setNav({ screen: 'schedule', teamId: team.id })}
         onOpenFormations={() => setNav({ screen: 'formations', teamId: team.id })}
@@ -619,65 +623,32 @@ export default function RotationPalApp({
   )
 }
 
-// Team name with a dropdown arrow, in place of the page title. A native
-// <select> under the hood, so it works with keyboard and screen readers.
-function TeamSwitcher({ teams, currentId, onChange }) {
-  return (
-    <span className="rp-team-switch">
-      <select
-        className="rp-team-switch-select"
-        aria-label="Switch team"
-        value={currentId ?? ''}
-        onChange={e => {
-          const t = teams.find(x => String(x.id) === e.target.value)
-          if (t) onChange(t.id)
-        }}
-      >
-        {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-      </select>
-      <span className="rp-team-switch-caret" aria-hidden="true">▾</span>
-    </span>
-  )
-}
-
 // ============================================================
 // Shared header (dashboard-style pages)
 // ============================================================
-function HeaderBar({ session, onHome, onLogout, modeBadge, title, subtitle, leftActions, rightActions }) {
-  // On team pages (the title is the team name) the name becomes the team
-  // switcher when there is more than one team to switch between.
-  const switcher = useContext(TeamSwitcherContext)
+// The older RotationPal pages (team picker, roster, schedule, game) render
+// the same AppHeader. A page's own back button (leftActions) takes the back
+// spot; otherwise back goes to the VolleyballPal home. The subtitle is
+// dropped — the header's second line is always the section name.
+function HeaderBar({ session, onHome, onLogout, modeBadge, title, leftActions, rightActions }) {
   return (
-    <div className="dashboard-header">
-      <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
-        {leftActions}
-        <div>
-          <h1>{switcher && title ? <TeamSwitcher {...switcher} /> : (title || <>Rotation<span>Pal</span></>)}</h1>
-          {subtitle && <div className="subtitle">{subtitle}</div>}
-        </div>
-        {modeBadge && (
-          <span className={`rp-mode-badge rp-mode-badge-${modeBadge}`}>
-            {modeBadge === 'linked' ? 'Linked' : 'Standalone'}
-          </span>
-        )}
-      </div>
-      <div className="dashboard-actions">
-        {rightActions}
-        <FullscreenButton className="ghost rp-fs-btn" />
-        {onHome && (
-          <button className="ghost rp-home-btn" onClick={onHome} title="VolleyballPal home">
-            Home
-          </button>
-        )}
-        {session && (
-          <div className="user-pill">
-            <span className="uname">{session.username}</span>
-            {session.role && <span className={`rtag ${session.role}`}>{session.role}</span>}
-          </div>
-        )}
-        {onLogout && <button className="ghost" onClick={onLogout}>Logout</button>}
-      </div>
-    </div>
+    <RotationPalHeader
+      session={session}
+      onLogout={onLogout}
+      onBack={leftActions ? undefined : onHome}
+      leading={leftActions}
+      teamName={title || (modeBadge === 'standalone' ? 'Standalone lineups' : 'Choose a team')}
+      actions={(
+        <>
+          {modeBadge && (
+            <span className={`rp-mode-badge rp-mode-badge-${modeBadge}`}>
+              {modeBadge === 'linked' ? 'Linked' : 'Standalone'}
+            </span>
+          )}
+          {rightActions}
+        </>
+      )}
+    />
   )
 }
 
@@ -778,7 +749,7 @@ const RP_COLOR_LOSS = '#f85149'
 const RP_COLOR_UPCO = '#58a6ff'
 
 function TeamHomeView({
-  session, onLogout, onHome, team, onBack,
+  session, onLogout, team, onBack, onOpenStatsPal,
   statsPalPlayers = [], statsPalSchedule = [], statsPalCompletedGames = [],
 }) {
   const { addToast } = useToast()
@@ -815,6 +786,99 @@ function TeamHomeView({
   const [playgroundPickerOpen, setPlaygroundPickerOpen] = useState(false)
   const [playgroundOpen, setPlaygroundOpen] = useState(null) // playground_sessions row | null
 
+  // Saved game plans and playground sessions for this team — drives the
+  // "Plan ready" pills and the Recent plans list. Re-read whenever the
+  // builder or a playground closes, so edits show up straight away. A
+  // missing table just reads as "nothing saved yet".
+  const [savedPlans, setSavedPlans] = useState([])
+  const [savedSessions, setSavedSessions] = useState([])
+  const [plansLoaded, setPlansLoaded] = useState(false)
+  const [plansTick, setPlansTick] = useState(0)
+  useEffect(() => {
+    if (!team?.id) return undefined
+    let cancelled = false
+    Promise.all([
+      supabase.from('game_plans')
+        .select('id, name, schedule_game_id, assigned_players, updated_at')
+        .eq('team_id', team.id),
+      supabase.from('playground_sessions')
+        .select('id, name, plans, updated_at, created_at')
+        .eq('team_id', team.id),
+    ]).then(([plansRes, sessionsRes]) => {
+      if (cancelled) return
+      setSavedPlans(plansRes.error ? [] : (plansRes.data || []))
+      setSavedSessions(sessionsRes.error ? [] : (sessionsRes.data || []))
+      setPlansLoaded(true)
+    })
+    return () => { cancelled = true }
+  }, [team?.id, plansTick])
+
+  // A game counts as planned once one of its plans has a player on court —
+  // opening the builder seeds an empty "Plan A", which isn't a plan yet.
+  const plannedGameIds = useMemo(() => {
+    const ids = new Set()
+    for (const p of savedPlans) {
+      if ((p.assigned_players || []).some(Boolean)) ids.add(p.schedule_game_id)
+    }
+    return ids
+  }, [savedPlans])
+
+  // Playground sessions, most recently edited first.
+  const recentSessions = useMemo(() => (
+    savedSessions
+      .map(s => ({ ...s, edited: s.updated_at || s.created_at }))
+      .sort((a, b) => String(b.edited || '').localeCompare(String(a.edited || '')))
+  ), [savedSessions])
+
+  // Unscored games split by date: the first one today or later is "Next up",
+  // the rest of the dated future ones are "Later this season", and dated
+  // ones already past only show up as a count (they need a score, not a plan).
+  const [today] = useState(() => localISODate())
+  const { nextGame, laterGames, pastUnscored } = useMemo(() => {
+    const future = []
+    let past = 0
+    for (const g of upcomingGames) {
+      const d = String(g.game_date || '').slice(0, 10)
+      if (!d) continue
+      if (d >= today) future.push(g)
+      else past += 1
+    }
+    return { nextGame: future[0] || null, laterGames: future.slice(1), pastUnscored: past }
+  }, [upcomingGames, today])
+
+  // The later list shows the next few; "Show all" expands it in place.
+  const LANDING_LIST_MAX = 6
+  const SESSIONS_LIST_MAX = 8
+  const [showAllGames, setShowAllGames] = useState(false)
+  const shownGames = showAllGames ? laterGames : laterGames.slice(0, LANDING_LIST_MAX)
+
+  const playerById = useMemo(() => {
+    const m = new Map()
+    for (const p of statsPalPlayers || []) m.set(p.id, p)
+    return m
+  }, [statsPalPlayers])
+
+  // Inline rename of a session from the Recent list. The new name shows
+  // straight away; a failed save puts the old one back.
+  const [renamingId, setRenamingId] = useState(null)
+  const [renameDraft, setRenameDraft] = useState('')
+  const renameCancelled = useRef(false)
+  function startRename(s) { renameCancelled.current = false; setRenamingId(s.id); setRenameDraft(s.name || '') }
+  function cancelRename() { renameCancelled.current = true; setRenamingId(null) }
+  async function commitRename(s) {
+    if (renameCancelled.current) return
+    renameCancelled.current = true
+    setRenamingId(null)
+    const name = renameDraft.trim()
+    if (!name || name === s.name) return
+    setSavedSessions(list => list.map(x => x.id === s.id ? { ...x, name } : x))
+    const { error } = await supabase.from('playground_sessions').update({ name }).eq('id', s.id)
+    if (error) {
+      setSavedSessions(list => list.map(x => x.id === s.id ? { ...x, name: s.name } : x))
+      addToast(`Rename failed: ${error.message || 'Supabase error'}`, 'error')
+    }
+  }
+
   function openGameplanFor(g) {
     setPickGameOpen(false)
     setGameplanModalGame({
@@ -827,10 +891,7 @@ function TeamHomeView({
 
   async function launchPlayground() {
     if (!team?.id) return
-    const stamp = new Date().toLocaleDateString('en-US', {
-      month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
-    })
-    const seed = { team_id: team.id, name: `Playground · ${stamp}`, plans: {} }
+    const seed = { team_id: team.id, name: 'Untitled session', plans: {} }
     const { data, error } = await supabase
       .from('playground_sessions')
       .insert(seed)
@@ -852,57 +913,172 @@ function TeamHomeView({
   }
 
   return (
-    <div className="dashboard rp-hub-page rp-dash-page">
-      <HeaderBar
+    <div className="rp-land">
+      <RotationPalHeader
         session={session}
         onLogout={onLogout}
-        onHome={onHome}
-        title={team.name}
-        subtitle="RotationPal"
-        leftActions={<button className="ghost" onClick={onBack}>← Dashboard</button>}
+        onBack={onBack}
+        teamName={team.name}
       />
 
-      <main className="rp-dash-main">
-        <div className={`rp-dash-grid${SHOW_SCHEMES ? '' : ' rp-dash-grid-2up'}`}>
-          <button
-            type="button"
-            className="rp-dash-card rp-dash-card-gameplan"
-            onClick={() => setPickGameOpen(true)}
-          >
-            <span className="rp-dash-card-icon" aria-hidden="true">
-              <IconClipboard size={26} />
+      <main className="rp-land-main">
+        {/* Left: Gameplan bar, the next game, then the rest of the season. */}
+        <section className="rp-land-half" aria-label="Gameplan">
+          {/* The whole bar opens the game picker; the button is its
+              keyboard-reachable half, so its click mustn't fire twice. */}
+          <div className="rp-land-bar is-gameplan" onClick={() => setPickGameOpen(true)}>
+            <span className="rp-land-bar-icon" aria-hidden="true">
+              <IconClipboard size={20} />
             </span>
-            <span className="rp-dash-card-title">Gameplan</span>
-            <span className="rp-dash-card-sub">Build a plan for an upcoming game.</span>
-          </button>
+            <span className="rp-land-bar-text">
+              <span className="rp-land-bar-title">Gameplan</span>
+              <span className="rp-land-bar-sub">Build a plan for an upcoming game.</span>
+            </span>
+            <button
+              type="button"
+              className="rp-land-btn is-solid"
+              onClick={e => { e.stopPropagation(); setPickGameOpen(true) }}
+            >
+              + New plan
+            </button>
+          </div>
+
+          {nextGame ? (
+            <NextUpCard
+              game={nextGame}
+              today={today}
+              planned={plannedGameIds.has(nextGame.id)}
+              onOpen={() => openGameplanFor(nextGame)}
+            />
+          ) : (
+            <p className="rp-land-empty">No upcoming games. Add games in StatsPal.</p>
+          )}
+
+          {laterGames.length > 0 && (
+            <div className="rp-land-sub">
+              <h2 className="rp-land-h2">Later this season</h2>
+              <ul className="rp-land-list">
+                {/* The builder opens a game's existing plans, or starts
+                    one when it has none — so every row opens the same way. */}
+                {shownGames.map(g => (
+                  <li key={g.id}>
+                    <button type="button" className="rp-land-row" onClick={() => openGameplanFor(g)}>
+                      {plannedGameIds.has(g.id)
+                        ? <span className="rp-land-dot is-on" role="img" aria-label="Plan ready" title="Plan ready" />
+                        : <span className="rp-land-dot" aria-hidden="true" />}
+                      <span className="rp-land-date">{landingDate(g.game_date)}</span>
+                      <span className="rp-land-opp">vs {g.opponent || 'TBD'}</span>
+                      <span className="rp-land-where">{whereLabel(g.location)}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+              {laterGames.length > LANDING_LIST_MAX && (
+                <button type="button" className="rp-land-more" onClick={() => setShowAllGames(v => !v)}>
+                  {showAllGames ? 'Show fewer' : `Show all (${laterGames.length})`}
+                </button>
+              )}
+            </div>
+          )}
 
           {/* Hidden behind SHOW_SCHEMES (top of file) — not removed. */}
           {SHOW_SCHEMES && (
-            <button
-              type="button"
-              className="rp-dash-card rp-dash-card-schemes"
-              onClick={() => setSchemesOpen(true)}
-            >
-              <span className="rp-dash-card-icon" aria-hidden="true">
-                <IconRotate size={26} />
-              </span>
-              <span className="rp-dash-card-title">Schemes</span>
-              <span className="rp-dash-card-sub">Save reusable systems — 5-1, 6-2, 4-2.</span>
+            <button type="button" className="rp-land-more" onClick={() => setSchemesOpen(true)}>
+              Schemes
             </button>
           )}
 
-          <button
-            type="button"
-            className="rp-dash-card rp-dash-card-playground"
-            onClick={() => setPlaygroundPickerOpen(true)}
-          >
-            <span className="rp-dash-card-icon" aria-hidden="true">
-              <IconPlay size={26} />
+          {pastUnscored > 0 && (
+            onOpenStatsPal ? (
+              <button type="button" className="rp-land-past" onClick={onOpenStatsPal}>
+                {pastUnscored} past game{pastUnscored === 1 ? '' : 's'} need{pastUnscored === 1 ? 's' : ''} a score →
+              </button>
+            ) : (
+              <p className="rp-land-past">
+                {pastUnscored} past game{pastUnscored === 1 ? '' : 's'} need{pastUnscored === 1 ? 's' : ''} a score
+              </p>
+            )
+          )}
+        </section>
+
+        {/* Right: Playground bar + recent sessions under it. */}
+        <section className="rp-land-half" aria-label="Playground">
+          <div className="rp-land-bar is-playground" onClick={launchPlayground}>
+            <span className="rp-land-bar-icon" aria-hidden="true">
+              <IconPlay size={20} />
             </span>
-            <span className="rp-dash-card-title">Playground</span>
-            <span className="rp-dash-card-sub">Free-play sandbox for quick tactics.</span>
-          </button>
-        </div>
+            <span className="rp-land-bar-text">
+              <span className="rp-land-bar-title">Playground</span>
+              <span className="rp-land-bar-sub">Free-play sandbox for quick tactics.</span>
+            </span>
+            <button
+              type="button"
+              className="rp-land-btn"
+              onClick={e => { e.stopPropagation(); launchPlayground() }}
+            >
+              + New session
+            </button>
+          </div>
+
+          <div className="rp-land-sub">
+            <h2 className="rp-land-h2">Recent sessions</h2>
+            {plansLoaded && recentSessions.length === 0 ? (
+              <p className="rp-land-empty">No sessions yet.</p>
+            ) : (
+              <>
+                <ul className="rp-land-list">
+                  {recentSessions.slice(0, SESSIONS_LIST_MAX).map(s => {
+                    const name = s.name || 'Untitled session'
+                    return (
+                      <li key={s.id} className="rp-land-srow">
+                        {/* The row opens the session; the name sits above
+                            that and renames it instead. */}
+                        <button
+                          type="button"
+                          className="rp-land-sopen"
+                          aria-label={`Open ${name}`}
+                          onClick={() => setPlaygroundOpen(s)}
+                        />
+                        <SessionThumb plan={s.plans} playerById={playerById} />
+                        {renamingId === s.id ? (
+                          <input
+                            className="rp-land-rename"
+                            value={renameDraft}
+                            autoFocus
+                            maxLength={80}
+                            aria-label="Session name"
+                            onChange={e => setRenameDraft(e.target.value)}
+                            onFocus={e => e.target.select()}
+                            onBlur={() => commitRename(s)}
+                            onKeyDown={e => {
+                              if (e.key === 'Enter') e.currentTarget.blur()
+                              else if (e.key === 'Escape') cancelRename()
+                            }}
+                          />
+                        ) : (
+                          <button
+                            type="button"
+                            className="rp-land-sname"
+                            title="Rename"
+                            onClick={() => startRename(s)}
+                          >
+                            {name}
+                          </button>
+                        )}
+                        <span className="rp-land-edited">{s.edited ? timeAgo(s.edited) : ''}</span>
+                      </li>
+                    )
+                  })}
+                </ul>
+                {recentSessions.length > SESSIONS_LIST_MAX && (
+                  <button type="button" className="rp-land-more" onClick={() => setPlaygroundPickerOpen(true)}>
+                    Show all ({recentSessions.length})
+                  </button>
+                )}
+              </>
+            )}
+          </div>
+        </section>
       </main>
 
       {pickGameOpen && (
@@ -918,7 +1094,7 @@ function TeamHomeView({
           team={team}
           game={gameplanModalGame}
           players={statsPalPlayers}
-          onClose={() => setGameplanModalGame(null)}
+          onClose={() => { setGameplanModalGame(null); setPlansTick(t => t + 1) }}
         />
       )}
 
@@ -945,10 +1121,136 @@ function TeamHomeView({
           game={null}
           players={statsPalPlayers}
           playgroundSession={playgroundOpen}
-          onClose={() => setPlaygroundOpen(null)}
+          onClose={() => { setPlaygroundOpen(null); setPlansTick(t => t + 1) }}
         />
       )}
     </div>
+  )
+}
+
+// "Sat, Nov 1" — the landing list's date column.
+function landingDate(d) {
+  if (!d) return 'Date TBD'
+  return new Date(d + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+}
+
+// Today as "YYYY-MM-DD" in local time — the same shape as game_date.
+function localISODate(d = new Date()) {
+  const p = n => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
+}
+
+function whereLabel(location) {
+  return location === 'Away' ? 'Away' : location === 'Neutral' ? 'Neutral' : 'Home'
+}
+
+// "Today" / "Tomorrow" / "in 3 days" from one YYYY-MM-DD to another.
+function untilLabel(dateStr, todayStr) {
+  const days = Math.round(
+    (new Date(dateStr + 'T00:00:00') - new Date(todayStr + 'T00:00:00')) / 86400000
+  )
+  if (days <= 0) return 'Today'
+  if (days === 1) return 'Tomorrow'
+  return `in ${days} days`
+}
+
+// ── NextUpCard — the next game with a date today or later, big, with its
+// plan status and the one thing to do about it.
+function NextUpCard({ game, today, planned, onOpen }) {
+  const date = String(game.game_date).slice(0, 10)
+  const time = formatGameTime(game.game_time)
+  const longDate = new Date(date + 'T00:00:00').toLocaleDateString('en-US', {
+    weekday: 'short', month: 'short', day: 'numeric',
+  })
+  return (
+    <div className="rp-land-next">
+      <div className="rp-land-next-top">
+        <span className="rp-land-next-eyebrow">Next up</span>
+        <span className="rp-land-next-when">{untilLabel(date, today)}</span>
+      </div>
+      <div className="rp-land-next-opp">vs {game.opponent || 'TBD'}</div>
+      <div className="rp-land-next-meta">
+        {[longDate, time, whereLabel(game.location)].filter(Boolean).join(' · ')}
+      </div>
+      <div className="rp-land-next-foot">
+        <span className={`rp-land-next-status${planned ? ' is-ready' : ''}`}>
+          <span className={`rp-land-dot${planned ? ' is-on' : ''}`} aria-hidden="true" />
+          {planned ? 'Plan ready' : 'No plan yet'}
+        </span>
+        <button type="button" className={`rp-land-btn${planned ? '' : ' is-solid'}`} onClick={onOpen}>
+          {planned ? 'Open plan' : 'Create plan'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// Default % spot of each rotational slot on the half court (net at the
+// top) — the builder's SLOT_POS, so a thumbnail matches the court.
+const THUMB_SLOT_POS = {
+  P4: { x: 22, y: 28 }, P3: { x: 50, y: 24 }, P2: { x: 78, y: 28 },
+  P5: { x: 22, y: 72 }, P6: { x: 50, y: 76 }, P1: { x: 78, y: 72 },
+}
+
+// ── SessionThumb — a tiny half court with the session's starting six in
+// rotation 1, each dot in its role colour. Saved spots win over defaults.
+function SessionThumb({ plan, playerById }) {
+  const assigned = Array.isArray(plan?.assigned_players) ? plan.assigned_players.slice(0, 6) : []
+  const placed = plan?.formations?.[1]?.serve || {}
+  const dots = []
+  assigned.forEach((pid, i) => {
+    if (!pid) return
+    const pos = placed[pid] || THUMB_SLOT_POS[`P${i + 1}`]
+    if (!pos || !Number.isFinite(pos.x) || !Number.isFinite(pos.y)) return
+    const color = ROLE_COLORS[roleTagOf(playerById.get(pid)?.position)] || ROLE_COLOR_NONE
+    dots.push({ pid, x: pos.x, y: pos.y, color })
+  })
+  return (
+    <svg className="rp-land-thumb" viewBox="0 0 100 100" aria-hidden="true">
+      <rect x="1" y="1" width="98" height="98" rx="10" className="rp-land-thumb-court" />
+      <line x1="1" y1="3" x2="99" y2="3" className="rp-land-thumb-net" />
+      <line x1="1" y1="34" x2="99" y2="34" className="rp-land-thumb-line" />
+      {dots.map(d => (
+        <circle key={d.pid} cx={d.x} cy={d.y} r="9" fill={d.color} />
+      ))}
+    </svg>
+  )
+}
+
+// "just now" / "6 min ago" / "3 hr ago" / "2 days ago" / "Aug 15".
+function timeAgo(iso) {
+  const then = new Date(iso).getTime()
+  if (!Number.isFinite(then)) return ''
+  const s = Math.max(0, (Date.now() - then) / 1000)
+  if (s < 60) return 'just now'
+  if (s < 3600) return `${Math.floor(s / 60)} min ago`
+  if (s < 86400) return `${Math.floor(s / 3600)} hr ago`
+  if (s < 86400 * 30) {
+    const d = Math.floor(s / 86400)
+    return `${d} day${d === 1 ? '' : 's'} ago`
+  }
+  return new Date(then).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+}
+
+// ── RotationPal's top header: the app-wide AppHeader ──
+// The team switcher (when there are several teams) comes from
+// TeamSwitcherContext; the account comes from the session RotationPal is
+// handed, so standalone mode shows the same user.
+function RotationPalHeader({ session, onLogout, onBack, leading, teamName, actions }) {
+  const switcher = useContext(TeamSwitcherContext)
+  return (
+    <AppHeader
+      onBack={onBack}
+      leading={leading}
+      teamName={teamName}
+      section="rotationpal"
+      teams={switcher?.teams}
+      currentTeamId={switcher?.currentId}
+      onSelectTeam={switcher ? (t => switcher.onChange(t.id)) : undefined}
+      actions={actions}
+      user={session ? { name: session.name || session.username, role: session.role } : undefined}
+      onLogout={onLogout}
+    />
   )
 }
 

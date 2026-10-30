@@ -287,13 +287,7 @@
   letter-spacing: -0.02em;
   text-align: center;
 }
-.lp-hero__gradient {
-  background: linear-gradient(90deg, var(--lp-pink), var(--lp-pink-light));
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  -webkit-text-fill-color: transparent;
-}
+.lp-hero__gradient { color: #f472b6; }
 
 /* The card sits centred in a ~1000px stage; the three tool chips float in
    the stage's side gutters, so they stay near the card on wide screens and
@@ -447,7 +441,7 @@
   height: 48px;
   margin-top: 22px;
   border-radius: 12px;
-  background: linear-gradient(90deg, var(--lp-pink), var(--lp-pink-light));
+  background: #f472b6;
   box-shadow: none;
   color: #2a0717;
   font-size: 15px;
